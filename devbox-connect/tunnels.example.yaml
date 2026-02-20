@@ -1,0 +1,66 @@
+# devbox-connect configuration example
+#
+# Two formats are supported:
+#   1. Simple format - flat list of tunnels (good for single host)
+#   2. Grouped format - tunnels organized by host (good for multiple hosts)
+
+# =============================================================================
+# SIMPLE FORMAT (recommended for single devbox)
+# =============================================================================
+
+# Global settings (can be overridden per tunnel)
+user: your-username
+key_file: ~/.ssh/id_rsa  # Optional: defaults to SSH agent or default keys
+
+# Reconnection settings
+reconnect_delay: 5       # Initial delay between reconnect attempts (seconds)
+max_reconnect_delay: 60  # Maximum delay with exponential backoff
+
+tunnels:
+  # Web development server
+  - name: web-dev
+    host: devbox.example.com
+    remote_port: 8080
+    # local_port: 8080  # Optional: defaults to remote_port
+
+  # Database
+  - name: postgres
+    host: devbox.example.com
+    remote_port: 5432
+
+  # Jupyter notebook
+  - name: jupyter
+    host: devbox.example.com
+    remote_port: 8888
+    local_port: 9999  # Use different local port to avoid conflicts
+
+  # Access a service running on a different host via devbox
+  - name: internal-api
+    host: devbox.example.com
+    remote_port: 8000
+    remote_host: internal-server.local  # Forward to a different host through SSH
+
+
+# =============================================================================
+# GROUPED FORMAT (for multiple hosts)
+# =============================================================================
+# Uncomment below and comment out the 'tunnels' section above to use this format
+
+# hosts:
+#   - host: devbox1.example.com
+#     user: your-username
+#     key_file: ~/.ssh/id_rsa
+#     port: 22  # SSH port, default 22
+#     tunnels:
+#       - name: web
+#         remote_port: 8080
+#       - name: db
+#         remote_port: 5432
+#
+#   - host: devbox2.example.com
+#     user: your-username
+#     tunnels:
+#       - name: api
+#         remote_port: 3000
+#       - name: redis
+#         remote_port: 6379

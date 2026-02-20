@@ -1,0 +1,9 @@
+[submodule "central-context"]
+	path = central-context
+	url = https://github.com/payneio/central-context.git
+[submodule "mboxer"]
+	path = mboxer
+	url = git@github.com:payneio/mboxer.git
+[submodule "notification-bridge"]
+	path = notification-bridge
+	url = https://github.com/payneio/attention-firewall.git
