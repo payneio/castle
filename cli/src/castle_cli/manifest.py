@@ -5,7 +5,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Annotated, Literal, Union
 
-from pydantic import BaseModel, Field, computed_field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 EnvMap = dict[str, str]
 
@@ -143,6 +143,7 @@ class SystemdSpec(BaseModel):
     restart_sec: int = 2
     no_new_privileges: bool = True
     readiness: ReadinessHttpGet | None = None
+    exec_reload: str | None = None
 
 
 class ManageSpec(BaseModel):
@@ -169,14 +170,9 @@ class InstallSpec(BaseModel):
 # ---------------------
 
 
-class ToolType(str, Enum):
-    PYTHON_STANDALONE = "python_standalone"
-    SCRIPT = "script"
-
-
 class ToolSpec(BaseModel):
-    tool_type: ToolType = ToolType.PYTHON_STANDALONE
-    category: str | None = None
+    model_config = ConfigDict(extra="ignore")
+
     version: str = "1.0.0"
     source: str | None = None
     system_dependencies: list[str] = Field(default_factory=list)

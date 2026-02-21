@@ -21,7 +21,6 @@ from castle_cli.manifest import (
     RunRemote,
     SystemdSpec,
     ToolSpec,
-    ToolType,
     TriggerSchedule,
 )
 
@@ -96,11 +95,7 @@ class TestRoleDerivation:
         """Component with tool spec gets TOOL role."""
         m = ComponentManifest(
             id="docx2md",
-            tool=ToolSpec(
-                tool_type=ToolType.PYTHON_STANDALONE,
-                category="document",
-                source="tools/document/",
-            ),
+            tool=ToolSpec(source="tools/document/"),
         )
         assert Role.TOOL in m.roles
 
@@ -108,7 +103,7 @@ class TestRoleDerivation:
         """Tool spec alone is enough for TOOL role, no install.path needed."""
         m = ComponentManifest(
             id="my-tool",
-            tool=ToolSpec(category="misc"),
+            tool=ToolSpec(),
         )
         assert Role.TOOL in m.roles
 

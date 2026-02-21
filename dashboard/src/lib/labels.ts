@@ -7,11 +7,6 @@ export const RUNNER_LABELS: Record<string, string> = {
   remote: "Remote",
 }
 
-export const TOOL_TYPE_LABELS: Record<string, string> = {
-  python_standalone: "Python package",
-  script: "Shell script",
-}
-
 export const ROLE_DESCRIPTIONS: Record<string, string> = {
   service: "Exposes HTTP endpoints",
   tool: "CLI utility installed to PATH",
@@ -24,8 +19,4 @@ export const ROLE_DESCRIPTIONS: Record<string, string> = {
 
 export function runnerLabel(runner: string): string {
   return RUNNER_LABELS[runner] ?? runner
-}
-
-export function toolTypeLabel(toolType: string): string {
-  return TOOL_TYPE_LABELS[toolType] ?? toolType
 }

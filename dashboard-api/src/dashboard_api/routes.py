@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import shutil
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, status
 
@@ -15,12 +16,13 @@ from dashboard_api.models import (
     ComponentSummary,
     GatewayInfo,
     StatusResponse,
+    SystemdInfo,
 )
 
 router = APIRouter(tags=["dashboard"])
 
 
-def _summary_from_manifest(name: str, manifest: object) -> ComponentSummary:
+def _summary_from_manifest(name: str, manifest: object, root: Path) -> ComponentSummary:
     """Build a ComponentSummary from a manifest."""
     port = None
     health_path = None
@@ -35,12 +37,33 @@ def _summary_from_manifest(name: str, manifest: object) -> ComponentSummary:
         manifest.manage and manifest.manage.systemd and manifest.manage.systemd.enable
     )
 
+    # Systemd info for managed components
+    systemd_info: SystemdInfo | None = None
+    if managed:
+        unit_name = f"castle-{name}.service"
+        unit_path = str(Path("~/.config/systemd/user") / unit_name)
+        has_timer = any(getattr(t, "type", None) == "schedule" for t in manifest.triggers)
+        systemd_info = SystemdInfo(
+            unit_name=unit_name,
+            unit_path=unit_path,
+            timer=has_timer,
+        )
+
     # Extract cron schedule from first schedule trigger, if any
     schedule = None
     for t in manifest.triggers:
         if t.type == "schedule":
             schedule = t.cron
             break
+
+    # Infer runner — from run block or from tool source
+    runner = manifest.run.runner if manifest.run else None
+    if runner is None and manifest.tool and manifest.tool.source:
+        source_dir = root / manifest.tool.source
+        if (source_dir / "pyproject.toml").exists():
+            runner = "python_uv_tool"
+        elif source_dir.is_file():
+            runner = "command"
 
     # Check if tool is actually installed on PATH
     installed: bool | None = None
@@ -52,14 +75,13 @@ def _summary_from_manifest(name: str, manifest: object) -> ComponentSummary:
         id=name,
         description=manifest.description,
         roles=[r.value for r in manifest.roles],
-        runner=manifest.run.runner if manifest.run else None,
+        runner=runner,
         port=port,
         health_path=health_path,
         proxy_path=proxy_path,
         managed=managed,
-        category=manifest.tool.category if manifest.tool else None,
+        systemd=systemd_info,
         version=manifest.tool.version if manifest.tool else None,
-        tool_type=manifest.tool.tool_type.value if manifest.tool else None,
         source=manifest.tool.source if manifest.tool else None,
         system_dependencies=manifest.tool.system_dependencies if manifest.tool else [],
         schedule=schedule,
@@ -72,7 +94,7 @@ def list_components() -> list[ComponentSummary]:
     """List all registered components."""
     config = load_config(settings.castle_root)
     return [
-        _summary_from_manifest(name, m)
+        _summary_from_manifest(name, m, config.root)
         for name, m in config.components.items()
     ]
 
@@ -87,7 +109,7 @@ def get_component(name: str) -> ComponentDetail:
             detail=f"Component '{name}' not found",
         )
     manifest = config.components[name]
-    summary = _summary_from_manifest(name, manifest)
+    summary = _summary_from_manifest(name, manifest, config.root)
     raw = manifest.model_dump(mode="json", exclude_none=True)
     return ComponentDetail(**summary.model_dump(), manifest=raw)
 

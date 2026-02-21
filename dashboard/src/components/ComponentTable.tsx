@@ -3,7 +3,7 @@ import { Link } from "react-router-dom"
 import { ArrowDown, ArrowUp, ArrowUpDown, Download, Play, RefreshCw, Square, Trash2 } from "lucide-react"
 import type { ComponentSummary, HealthStatus } from "@/types"
 import { useServiceAction, useToolAction } from "@/services/api/hooks"
-import { runnerLabel, toolTypeLabel } from "@/lib/labels"
+import { runnerLabel } from "@/lib/labels"
 import { HealthBadge } from "./HealthBadge"
 import { RoleBadge } from "./RoleBadge"
 
@@ -12,7 +12,7 @@ interface ComponentTableProps {
   statuses: HealthStatus[]
 }
 
-type SortKey = "id" | "role" | "runner" | "tool_type" | "category" | "schedule" | "port" | "status"
+type SortKey = "id" | "role" | "runner" | "schedule" | "port" | "status"
 type SortDir = "asc" | "desc"
 
 function statusRank(s: HealthStatus | undefined, installed: boolean | null): number {
@@ -76,10 +76,6 @@ export function ComponentTable({ components, statuses }: ComponentTableProps) {
           return dir * (a.roles[0] ?? "").localeCompare(b.roles[0] ?? "")
         case "runner":
           return dir * (a.runner ?? "").localeCompare(b.runner ?? "")
-        case "tool_type":
-          return dir * (a.tool_type ?? "").localeCompare(b.tool_type ?? "")
-        case "category":
-          return dir * (a.category ?? "").localeCompare(b.category ?? "")
         case "schedule":
           return dir * (a.schedule ?? "").localeCompare(b.schedule ?? "")
         case "port":
@@ -137,8 +133,6 @@ export function ComponentTable({ components, statuses }: ComponentTableProps) {
               <SortHeader label="Name" sortKey="id" current={sortKey} dir={sortDir} onSort={toggleSort} />
               <SortHeader label="Roles" sortKey="role" current={sortKey} dir={sortDir} onSort={toggleSort} />
               <SortHeader label="Runner" sortKey="runner" current={sortKey} dir={sortDir} onSort={toggleSort} />
-              <SortHeader label="Package" sortKey="tool_type" current={sortKey} dir={sortDir} onSort={toggleSort} />
-              <SortHeader label="Category" sortKey="category" current={sortKey} dir={sortDir} onSort={toggleSort} />
               <SortHeader label="Schedule" sortKey="schedule" current={sortKey} dir={sortDir} onSort={toggleSort} />
               <SortHeader label="Port" sortKey="port" current={sortKey} dir={sortDir} onSort={toggleSort} />
               <SortHeader label="Status" sortKey="status" current={sortKey} dir={sortDir} onSort={toggleSort} />
@@ -155,7 +149,7 @@ export function ComponentTable({ components, statuses }: ComponentTableProps) {
             ))}
             {sorted.length === 0 && (
               <tr>
-                <td colSpan={9} className="px-3 py-6 text-center text-[var(--muted)]">
+                <td colSpan={7} className="px-3 py-6 text-center text-[var(--muted)]">
                   No components match.
                 </td>
               </tr>
@@ -228,6 +222,7 @@ function ComponentRow({
         <Link
           to={`/${component.id}`}
           className="font-medium hover:text-[var(--primary)] transition-colors"
+          title={component.systemd?.unit_path ?? undefined}
         >
           {component.id}
         </Link>
@@ -246,12 +241,6 @@ function ComponentRow({
       </td>
       <td className="px-3 py-2.5 text-[var(--muted)]">
         {component.runner ? runnerLabel(component.runner) : "—"}
-      </td>
-      <td className="px-3 py-2.5 text-[var(--muted)]">
-        {component.tool_type ? toolTypeLabel(component.tool_type) : "—"}
-      </td>
-      <td className="px-3 py-2.5 text-[var(--muted)]">
-        {component.category ?? "—"}
       </td>
       <td className="px-3 py-2.5 font-mono text-[var(--muted)]">
         {component.schedule ?? "—"}

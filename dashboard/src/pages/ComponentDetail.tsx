@@ -4,7 +4,7 @@ import { ArrowLeft, Check, Play, RefreshCw, Square } from "lucide-react"
 import { useQueryClient } from "@tanstack/react-query"
 import { apiClient } from "@/services/api/client"
 import { useComponent, useStatus, useServiceAction, useEventStream, useToolDetail } from "@/services/api/hooks"
-import { runnerLabel, toolTypeLabel } from "@/lib/labels"
+import { runnerLabel } from "@/lib/labels"
 import { ComponentFields } from "@/components/ComponentFields"
 import { HealthBadge } from "@/components/HealthBadge"
 import { LogViewer } from "@/components/LogViewer"
@@ -142,12 +142,6 @@ export function ComponentDetailPage() {
             How this tool is packaged and what it depends on.
           </p>
           <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm mb-4">
-            {toolDetail.category && (
-              <>
-                <span className="text-[var(--muted)]">Category</span>
-                <span>{toolDetail.category}</span>
-              </>
-            )}
             {toolDetail.source && (
               <>
                 <span className="text-[var(--muted)]">Source</span>
@@ -158,12 +152,6 @@ export function ComponentDetailPage() {
               <>
                 <span className="text-[var(--muted)]">Version</span>
                 <span>{toolDetail.version}</span>
-              </>
-            )}
-            {toolDetail.tool_type && (
-              <>
-                <span className="text-[var(--muted)]">Type</span>
-                <span>{toolTypeLabel(toolDetail.tool_type)}</span>
               </>
             )}
             {toolDetail.runner && (
@@ -196,6 +184,26 @@ export function ComponentDetailPage() {
               </pre>
             </div>
           )}
+        </div>
+      )}
+
+      {component.systemd && (
+        <div className="bg-[var(--card)] border border-[var(--border)] rounded-lg p-5 mb-6">
+          <h2 className="text-sm font-semibold text-[var(--muted)] uppercase tracking-wider mb-1">
+            Systemd
+          </h2>
+          <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm mt-3">
+            <span className="text-[var(--muted)]">Unit</span>
+            <span className="font-mono">{component.systemd.unit_name}</span>
+            <span className="text-[var(--muted)]">Path</span>
+            <span className="font-mono">{component.systemd.unit_path}</span>
+            {component.systemd.timer && (
+              <>
+                <span className="text-[var(--muted)]">Timer</span>
+                <span>Active</span>
+              </>
+            )}
+          </div>
         </div>
       )}
 

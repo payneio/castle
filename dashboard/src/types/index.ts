@@ -1,3 +1,9 @@
+export interface SystemdInfo {
+  unit_name: string
+  unit_path: string
+  timer: boolean
+}
+
 export interface ComponentSummary {
   id: string
   description: string | null
@@ -7,9 +13,8 @@ export interface ComponentSummary {
   health_path: string | null
   proxy_path: string | null
   managed: boolean
-  category: string | null
+  systemd: SystemdInfo | null
   version: string | null
-  tool_type: string | null
   source: string | null
   system_dependencies: string[]
   schedule: string | null
@@ -57,9 +62,7 @@ export interface SSEServiceActionEvent {
 export interface ToolSummary {
   id: string
   description: string | null
-  category: string | null
   source: string | null
-  tool_type: string | null
   version: string | null
   runner: string | null
   system_dependencies: string[]

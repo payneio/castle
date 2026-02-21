@@ -16,19 +16,27 @@ from dashboard_api.models import ToolCategory, ToolDetail, ToolSummary
 router = APIRouter(tags=["tools"])
 
 
-def _tool_summary(name: str, manifest: ComponentManifest) -> ToolSummary:
+def _tool_summary(name: str, manifest: ComponentManifest, root: Path | None = None) -> ToolSummary:
     """Build a ToolSummary from a manifest that has a tool spec."""
     t = manifest.tool
     assert t is not None
     installed = bool(manifest.install and manifest.install.path and manifest.install.path.enable)
+
+    # Infer runner from run block or source directory
+    runner = manifest.run.runner if manifest.run else None
+    if runner is None and t.source and root:
+        source_dir = root / t.source
+        if (source_dir / "pyproject.toml").exists():
+            runner = "python_uv_tool"
+        elif source_dir.is_file():
+            runner = "command"
+
     return ToolSummary(
         id=name,
         description=manifest.description,
-        category=t.category,
         source=t.source,
-        tool_type=t.tool_type.value,
         version=t.version,
-        runner=manifest.run.runner if manifest.run else None,
+        runner=runner,
         system_dependencies=t.system_dependencies,
         installed=installed,
     )
@@ -38,7 +46,6 @@ def _find_md_for_tool(
     root: Path,
     source: str,
     tool_name: str,
-    category: str | None = None,
 ) -> Path | None:
     """Find the .md documentation file for a tool source path."""
     source_path = root / source
@@ -48,10 +55,10 @@ def _find_md_for_tool(
             return md
     elif source_path.is_dir():
         py_name = tool_name.replace("-", "_")
-        if category:
-            md = source_path / "src" / category / f"{py_name}.md"
-            if md.exists():
-                return md
+        pkg_name = source_path.name
+        md = source_path / "src" / pkg_name / f"{py_name}.md"
+        if md.exists():
+            return md
     return None
 
 
@@ -66,18 +73,23 @@ def _strip_frontmatter(content: str) -> str:
 
 @router.get("/tools", response_model=list[ToolCategory])
 def list_tools() -> list[ToolCategory]:
-    """List tools grouped by category."""
+    """List tools grouped by source directory."""
     config = load_config(settings.castle_root)
     tools = {k: v for k, v in config.components.items() if v.tool}
 
-    by_category: dict[str, list[ToolSummary]] = {}
+    by_group: dict[str, list[ToolSummary]] = {}
     for name, manifest in tools.items():
-        cat = manifest.tool.category or "uncategorized"  # type: ignore[union-attr]
-        by_category.setdefault(cat, []).append(_tool_summary(name, manifest))
+        t = manifest.tool
+        assert t is not None
+        if t.source:
+            group = Path(t.source).name
+        else:
+            group = "standalone"
+        by_group.setdefault(group, []).append(_tool_summary(name, manifest, config.root))
 
     return [
-        ToolCategory(name=cat, tools=sorted(items, key=lambda t: t.id))
-        for cat, items in sorted(by_category.items())
+        ToolCategory(name=group, tools=sorted(items, key=lambda t: t.id))
+        for group, items in sorted(by_group.items())
     ]
 
 
@@ -99,11 +111,11 @@ def get_tool(name: str) -> ToolDetail:
             detail=f"'{name}' is not a tool",
         )
 
-    summary = _tool_summary(name, manifest)
+    summary = _tool_summary(name, manifest, config.root)
     docs: str | None = None
     t = manifest.tool
     if t.source:
-        md_path = _find_md_for_tool(config.root, t.source, name, t.category)
+        md_path = _find_md_for_tool(config.root, t.source, name)
         if md_path and md_path.exists():
             docs = _strip_frontmatter(md_path.read_text())
             if not docs:
