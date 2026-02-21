@@ -1,4 +1,4 @@
-"""Castle API — dashboard data, health aggregation, event bus, service management."""
+"""Castle API — dashboard data, health aggregation, and service management."""
 
 from __future__ import annotations
 
@@ -11,10 +11,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import StreamingResponse
 
-from castle_api.bus import bus
 from castle_api.config import settings
 from castle_api.config_editor import router as config_router
-from castle_api.events import router as events_router
 from castle_api.logs import router as logs_router
 from castle_api.routes import router as dashboard_router
 from castle_api.secrets import router as secrets_router
@@ -41,7 +39,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     global _shutting_down
     _shutting_down = False
 
-    await bus.start()
     poll_task = asyncio.create_task(health_poll_loop())
 
     yield
@@ -49,12 +46,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     _shutting_down = True
     poll_task.cancel()
     close_all_subscribers()
-    await bus.stop()
 
 
 app = FastAPI(
     title="castle-api",
-    description="Castle API, event bus, and service management",
+    description="Castle API and service management",
     version="0.1.0",
     lifespan=lifespan,
 )
@@ -68,7 +64,6 @@ app.add_middleware(
 
 app.include_router(config_router)
 app.include_router(dashboard_router)
-app.include_router(events_router)
 app.include_router(logs_router)
 app.include_router(secrets_router)
 app.include_router(services_router)
