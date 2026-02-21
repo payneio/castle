@@ -1,6 +1,6 @@
 # Castle
 
-A declarative local control plane. Castle manages a collection of independent services, tools, and libraries from a single CLI, with a unified gateway, systemd integration, and standardized project scaffolding.
+A personal software platform. Castle manages independent services, tools, and frontends from a single CLI, with a unified gateway, systemd integration, and a web dashboard.
 
 ## Quick Start
 
@@ -21,87 +21,136 @@ castle services start
 open http://localhost:9000
 ```
 
-## Creating Projects
+## Creating Components
 
 ```bash
+# Service — FastAPI app with health endpoint, systemd unit, gateway route
 castle create my-api --type service --description "Does something useful"
 cd my-api && uv sync
 castle test my-api
 castle service enable my-api
+castle gateway reload
+
+# Standalone tool — CLI tool with argparse, stdin/stdout, Unix pipes
+castle create my-tool --type tool --description "Does something"
+
+# Category tool — adds to existing tools/<category>/ package
+castle create my-tool --type tool --category document --description "Converts something"
 ```
-
-Three project types are supported:
-
-- **service** — FastAPI app with health endpoint, pydantic-settings, systemd unit, gateway route
-- **tool** — CLI tool with argparse, stdin/stdout, Unix pipe conventions
-- **library** — Python package with src/ layout, no entry point
 
 ## CLI Reference
 
 ```
-castle list [--type TYPE] [--json]    List all projects
-castle create NAME --type TYPE        Scaffold a new project
-castle test [PROJECT]                 Run tests (one or all)
-castle lint [PROJECT]                 Run linter (one or all)
+castle list [--role ROLE] [--json]    List all components
+castle info NAME [--json]             Show component details
+castle create NAME --type TYPE        Scaffold a new component
+castle run NAME                       Run component in foreground
+castle test [NAME]                    Run tests (one or all)
+castle lint [NAME]                    Run linter (one or all)
 castle sync                           Update submodules + install deps
+castle logs NAME [-f] [-n 50]         View component logs
 castle gateway start|stop|reload      Manage Caddy reverse proxy
 castle service enable|disable NAME    Manage a systemd service
 castle service status                 Show all service statuses
 castle services start|stop            Start/stop everything
+castle tool list                      List tools grouped by category
+castle tool info NAME                 Show tool details + docs
 ```
 
 ## Registry
 
-`castle.yaml` at the repo root is the single source of truth. It defines every project's type, port, gateway path, data directory, command, and environment variables. The CLI reads this for all operations — generating Caddyfiles, systemd units, and dashboard HTML.
+`castle.yaml` is the single source of truth. Components declare **what they do** (run, expose, manage, install, build, triggers) and roles are **derived** from those declarations.
 
 ```yaml
 gateway:
   port: 9000
 
-projects:
+components:
   central-context:
-    type: service
-    port: 9001
-    path: /central-context
-    command: uv run central-context
-    working_dir: central-context
-    data_dir: /data/castle/central-context
     description: Content storage API
-    health: /health
-    env:
-      CENTRAL_CONTEXT_DATA_DIR: ${data_dir}
+    run:
+      runner: python_uv_tool
+      tool: central-context
+      working_dir: central-context
+      env:
+        CENTRAL_CONTEXT_DATA_DIR: /data/castle/central-context
+        CENTRAL_CONTEXT_PORT: "9001"
+    expose:
+      http:
+        internal: { port: 9001 }
+        health_path: /health
+    proxy:
+      caddy: { path_prefix: /central-context }
+    manage:
+      systemd: {}
 ```
 
 ## Architecture
 
 ```
-castle.yaml          ← project registry
-cli/                 ← castle CLI (castle-component)
-central-context/     ← content storage API (git submodule)
-notification-bridge/ ← notification forwarder (git submodule)
-devbox-connect/      ← SSH tunnel manager
-mboxer/              ← MBOX converter (git submodule)
-toolkit/             ← personal utility scripts (git submodule)
-event-bus/           ← inter-service event bus (castle-component)
-ruff.toml            ← shared lint config
-pyrightconfig.json   ← shared type checking config
+castle.yaml          <- component registry (single source of truth)
+cli/                 <- castle CLI
+castle-api/          <- Castle API (dashboard backend)
+app/                 <- Castle web app (React/Vite frontend)
+central-context/     <- content storage API (git submodule)
+notification-bridge/ <- desktop notification forwarder (git submodule)
+protonmail/          <- email sync tool/job
+devbox-connect/      <- SSH tunnel manager
+tools/               <- category tool packages (document/, search/, system/, etc.)
+ruff.toml            <- shared lint config
+pyrightconfig.json   <- shared type checking config
 ```
 
-**Independence principle:** Regular projects never depend on castle. They accept configuration (data dir, port, URLs) via environment variables. Only castle-components (CLI, gateway, event bus) know about castle internals like `castle.yaml`. This keeps projects portable and independently publishable.
+**Independence principle:** Services never depend on castle. They accept configuration (data dir, port, URLs) via environment variables. Only castle components (CLI, API, gateway) know about castle internals.
 
-**Gateway:** Caddy reverse proxy at port 9000. All services are accessible under one address (`localhost:9000/central-context/*` → `localhost:9001/*`). A dashboard with live health checks is served at the root.
+**Gateway:** Caddy reverse proxy at port 9000. Services are proxied under one address (`localhost:9000/central-context/*` -> `localhost:9001/*`). The web app is served at the root.
 
-**Systemd:** The CLI generates user units under `~/.config/systemd/user/castle-*.service`. `castle services start` brings up everything in one command.
+**Systemd:** The CLI generates user units under `~/.config/systemd/user/castle-*.service`. Scheduled jobs get `.timer` files alongside.
 
 **Data:** Service data lives in `/data/castle/<service-name>/`, outside the repo. Secrets live in `~/.castle/secrets/`.
 
-## Current Projects
+## Components
 
-| Project | Type | Port | Description |
-|---------|------|------|-------------|
-| central-context | service | 9001 | Content storage API |
-| notification-bridge | service | 9002 | Desktop notification forwarder |
-| devbox-connect | tool | — | SSH tunnel manager |
-| mboxer | tool | — | MBOX to EML converter |
-| toolkit | tool | — | Personal utility scripts |
-| event-bus | castle-component | 9010 | Inter-service event bus |
+### Services
+
+| Component | Port | Description |
+|-----------|------|-------------|
+| castle-gateway | 9000 | Caddy reverse proxy gateway |
+| central-context | 9001 | Content storage API |
+| notification-bridge | 9002 | Desktop notification forwarder |
+| castle-api | 9020 | Castle API (dashboard backend) |
+
+### Jobs
+
+| Component | Schedule | Description |
+|-----------|----------|-------------|
+| protonmail | Every 5 min | ProtonMail email sync |
+| backup-collect | 2:00 AM | Collect files into backup directory |
+| backup-data | 3:30 AM | Restic backup of /data to /storage |
+
+### Tools
+
+| Tool | Category | Description |
+|------|----------|-------------|
+| docx2md | document | Convert Word .docx to Markdown |
+| pdf2md | document | Convert PDF to Markdown |
+| html2text | document | Convert HTML to plain text |
+| md2pdf | document | Convert Markdown to PDF |
+| mbox2eml | document | Convert MBOX mailboxes to .eml files |
+| search | search | Manage searchable file collections |
+| docx-extractor | search | Extract content from Word files |
+| pdf-extractor | search | Extract content from PDF files |
+| text-extractor | search | Extract content from text files |
+| schedule | system | Manage systemd user timers |
+| backup-collect | system | Collect files for backup |
+| android-backup | android | Backup Android devices via ADB |
+| browser | browser | Browse the web via browser-use |
+| gpt | gpt | OpenAI text generation |
+| mdscraper | mdscraper | Combine text files into markdown |
+| devbox-connect | standalone | SSH tunnel manager |
+
+### Frontends
+
+| Component | Description |
+|-----------|-------------|
+| castle-app | Castle web dashboard (React/Vite/TypeScript) |
