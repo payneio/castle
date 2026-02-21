@@ -17,6 +17,10 @@ class ComponentSummary(BaseModel):
     category: str | None = None
     version: str | None = None
     tool_type: str | None = None
+    source: str | None = None
+    system_dependencies: list[str] = []
+    schedule: str | None = None
+    installed: bool | None = None
 
 
 class ComponentDetail(ComponentSummary):
@@ -54,3 +58,30 @@ class ServiceActionResponse(BaseModel):
     component: str
     action: str
     status: str
+
+
+class ToolSummary(BaseModel):
+    """Summary of a single tool."""
+
+    id: str
+    description: str | None = None
+    category: str | None = None
+    source: str | None = None
+    tool_type: str | None = None
+    version: str | None = None
+    runner: str | None = None
+    system_dependencies: list[str] = []
+    installed: bool = False
+
+
+class ToolCategory(BaseModel):
+    """Tools grouped by category."""
+
+    name: str
+    tools: list[ToolSummary]
+
+
+class ToolDetail(ToolSummary):
+    """Full detail for a single tool, including documentation."""
+
+    docs: str | None = None

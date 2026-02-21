@@ -72,6 +72,6 @@ class TestGateway:
         assert response.status_code == 200
         data = response.json()
         assert data["port"] == 9000
-        assert data["component_count"] == 2
+        assert data["component_count"] == 3
         assert data["service_count"] == 1
         assert data["managed_count"] == 1

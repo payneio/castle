@@ -3,7 +3,8 @@ import { useParams, Link, useNavigate } from "react-router-dom"
 import { ArrowLeft, Check, Play, RefreshCw, Square } from "lucide-react"
 import { useQueryClient } from "@tanstack/react-query"
 import { apiClient } from "@/services/api/client"
-import { useComponent, useStatus, useServiceAction, useEventStream } from "@/services/api/hooks"
+import { useComponent, useStatus, useServiceAction, useEventStream, useToolDetail } from "@/services/api/hooks"
+import { runnerLabel, toolTypeLabel } from "@/lib/labels"
 import { ComponentFields } from "@/components/ComponentFields"
 import { HealthBadge } from "@/components/HealthBadge"
 import { LogViewer } from "@/components/LogViewer"
@@ -19,6 +20,8 @@ export function ComponentDetailPage() {
   const { mutate, isPending } = useServiceAction()
   const health = statusResp?.statuses.find((s) => s.id === name)
   const isDown = health?.status === "down"
+  const isTool = component?.roles.includes("tool") ?? false
+  const { data: toolDetail } = useToolDetail(isTool ? (name ?? "") : "")
   const [message, setMessage] = useState<{ type: "ok" | "error"; text: string } | null>(null)
 
   const handleSave = async (compName: string, config: Record<string, unknown>) => {
@@ -127,6 +130,72 @@ export function ComponentDetailPage() {
             {message.type === "ok" && <Check size={14} />}
             {message.text}
           </span>
+        </div>
+      )}
+
+      {toolDetail && (
+        <div className="bg-[var(--card)] border border-[var(--border)] rounded-lg p-5 mb-6">
+          <h2 className="text-sm font-semibold text-[var(--muted)] uppercase tracking-wider mb-1">
+            Tool Info
+          </h2>
+          <p className="text-xs text-[var(--muted)] mb-4">
+            How this tool is packaged and what it depends on.
+          </p>
+          <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm mb-4">
+            {toolDetail.category && (
+              <>
+                <span className="text-[var(--muted)]">Category</span>
+                <span>{toolDetail.category}</span>
+              </>
+            )}
+            {toolDetail.source && (
+              <>
+                <span className="text-[var(--muted)]">Source</span>
+                <span className="font-mono">{toolDetail.source}</span>
+              </>
+            )}
+            {toolDetail.version && (
+              <>
+                <span className="text-[var(--muted)]">Version</span>
+                <span>{toolDetail.version}</span>
+              </>
+            )}
+            {toolDetail.tool_type && (
+              <>
+                <span className="text-[var(--muted)]">Type</span>
+                <span>{toolTypeLabel(toolDetail.tool_type)}</span>
+              </>
+            )}
+            {toolDetail.runner && (
+              <>
+                <span className="text-[var(--muted)]">Runner</span>
+                <span>{runnerLabel(toolDetail.runner)}</span>
+              </>
+            )}
+          </div>
+          {toolDetail.system_dependencies.length > 0 && (
+            <div className="mb-4">
+              <span className="text-sm text-[var(--muted)] block mb-1">System Dependencies</span>
+              <div className="flex flex-wrap gap-1">
+                {toolDetail.system_dependencies.map((dep) => (
+                  <span
+                    key={dep}
+                    className="text-xs px-2 py-0.5 rounded bg-amber-900/30 text-amber-400 border border-amber-800"
+                  >
+                    {dep}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+          {toolDetail.docs && (
+            <div>
+              <span className="text-sm text-[var(--muted)] block mb-1">Documentation</span>
+              <pre className="text-sm whitespace-pre-wrap bg-[var(--background)] rounded p-3 border border-[var(--border)]">
+                {toolDetail.docs}
+              </pre>
+            </div>
+          )}
         </div>
       )}
 

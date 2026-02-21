@@ -5,6 +5,99 @@ from __future__ import annotations
 from pathlib import Path
 
 
+def scaffold_category_tool(
+    category_dir: Path,
+    tool_name: str,
+    package_name: str,
+    category: str,
+    description: str,
+) -> None:
+    """Scaffold a tool inside an existing category package.
+
+    Creates the .py and .md files only — the category package
+    (pyproject.toml, tests, CLAUDE.md) already exists.
+    """
+    src_dir = category_dir / "src" / category
+
+    # tool .py file
+    _write(
+        src_dir / f"{package_name}.py",
+        f'''#!/usr/bin/env python3
+"""{tool_name}: {description}
+
+Usage:
+    {tool_name} [options] [input]
+    cat input.txt | {tool_name}
+
+Examples:
+    {tool_name} input.txt
+    {tool_name} input.txt -o output.txt
+    cat input.txt | {tool_name} > output.txt
+"""
+
+import argparse
+import sys
+
+__all__ = ["main"]
+
+
+def main() -> int:
+    """Main entry point."""
+    parser = argparse.ArgumentParser(
+        description="{description}",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("input", nargs="?", help="Input file (default: stdin)")
+    parser.add_argument(
+        "-o", "--output", default=None, help="Output file (default: stdout)"
+    )
+    args = parser.parse_args()
+
+    if args.input:
+        with open(args.input) as f:
+            data = f.read()
+    else:
+        data = sys.stdin.read()
+
+    # TODO: implement tool logic
+    result = data
+
+    if args.output:
+        with open(args.output, "w") as f:
+            f.write(result)
+    else:
+        print(result, end="")
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+''',
+    )
+
+    # tool .md documentation
+    _write(
+        src_dir / f"{package_name}.md",
+        f"""---
+name: {tool_name}
+category: {category}
+---
+
+# {tool_name}
+
+{description}
+
+## Usage
+
+```bash
+{tool_name} [options] [input]
+cat input.txt | {tool_name}
+```
+""",
+    )
+
+
 def scaffold_project(
     project_dir: Path,
     name: str,

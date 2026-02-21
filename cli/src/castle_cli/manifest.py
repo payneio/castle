@@ -170,17 +170,15 @@ class InstallSpec(BaseModel):
 
 
 class ToolType(str, Enum):
-    PYTHON_UV = "python_uv"
     PYTHON_STANDALONE = "python_standalone"
     SCRIPT = "script"
 
 
 class ToolSpec(BaseModel):
-    tool_type: ToolType = ToolType.PYTHON_UV
+    tool_type: ToolType = ToolType.PYTHON_STANDALONE
     category: str | None = None
     version: str = "1.0.0"
     source: str | None = None
-    entry_point: str | None = None
     system_dependencies: list[str] = Field(default_factory=list)
 
 

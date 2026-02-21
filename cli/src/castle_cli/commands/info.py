@@ -82,6 +82,15 @@ def run_info(args: argparse.Namespace) -> int:
         pi = manifest.install.path
         print(f"  {BOLD}install{RESET}:     path" + (f" (alias: {pi.alias})" if pi.alias else ""))
 
+    # Tool
+    if manifest.tool:
+        t = manifest.tool
+        print(f"  {BOLD}category{RESET}:    {t.category or 'uncategorized'}")
+        if t.source:
+            print(f"  {BOLD}source{RESET}:      {t.source}")
+        if t.system_dependencies:
+            print(f"  {BOLD}requires{RESET}:    {', '.join(t.system_dependencies)}")
+
     # Tags
     if manifest.tags:
         print(f"  {BOLD}tags{RESET}:        {', '.join(manifest.tags)}")

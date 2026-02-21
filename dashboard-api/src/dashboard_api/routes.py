@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import shutil
+
 from fastapi import APIRouter, HTTPException, status
 
 from castle_cli.config import load_config
@@ -33,6 +35,19 @@ def _summary_from_manifest(name: str, manifest: object) -> ComponentSummary:
         manifest.manage and manifest.manage.systemd and manifest.manage.systemd.enable
     )
 
+    # Extract cron schedule from first schedule trigger, if any
+    schedule = None
+    for t in manifest.triggers:
+        if t.type == "schedule":
+            schedule = t.cron
+            break
+
+    # Check if tool is actually installed on PATH
+    installed: bool | None = None
+    if manifest.install and manifest.install.path:
+        alias = manifest.install.path.alias or name
+        installed = shutil.which(alias) is not None
+
     return ComponentSummary(
         id=name,
         description=manifest.description,
@@ -45,6 +60,10 @@ def _summary_from_manifest(name: str, manifest: object) -> ComponentSummary:
         category=manifest.tool.category if manifest.tool else None,
         version=manifest.tool.version if manifest.tool else None,
         tool_type=manifest.tool.tool_type.value if manifest.tool else None,
+        source=manifest.tool.source if manifest.tool else None,
+        system_dependencies=manifest.tool.system_dependencies if manifest.tool else [],
+        schedule=schedule,
+        installed=installed,
     )
 
 

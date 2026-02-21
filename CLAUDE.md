@@ -14,6 +14,37 @@ are **derived**, not labeled.
 configuration (data dir, port, URLs) via env vars. Only castle-components (CLI, gateway,
 event bus) know about castle internals.
 
+## Creating Components
+
+When creating a new service, tool, or frontend, follow the detailed guides:
+
+- @docs/component-registry.md — Manifest architecture, castle.yaml structure, role derivation, lifecycle
+- @docs/web-apis.md — FastAPI service patterns (config, routes, models, testing)
+- @docs/python-tools.md — CLI tool patterns (argparse, stdin/stdout, piping, testing)
+- @docs/web-frontends.md — React/Vite/TypeScript frontend patterns
+
+### Quick start
+
+```bash
+# Service
+castle create my-service --type service --description "Does something"
+cd my-service && uv sync
+uv run my-service               # starts on auto-assigned port
+castle service enable my-service # register with systemd
+castle gateway reload            # update reverse proxy routes
+
+# Standalone tool
+castle create my-tool --type tool --description "Does something"
+cd my-tool && uv sync
+
+# Category tool (adds to existing tools/<category>/ package)
+castle create my-tool --type tool --category document --description "Does something"
+cd tools/document && uv sync
+```
+
+The `castle create` command scaffolds the project, generates a CLAUDE.md,
+and registers it in `castle.yaml` as a `ComponentManifest`.
+
 ## Castle CLI
 
 The CLI lives in `cli/` and is installed via `uv tool install --editable cli/`.
@@ -28,58 +59,13 @@ castle lint [project]                    # Run linter (one or all)
 castle sync                              # Update submodules + uv sync all
 castle run <component>                   # Run component in foreground
 castle logs <component> [-f] [-n 50]     # View component logs
+castle tool list                         # List tools grouped by category
+castle tool info <name>                  # Show tool details + docs
 castle gateway start|stop|reload|status  # Manage Caddy reverse proxy
 castle service enable|disable <name>     # Manage individual systemd service
 castle service status                    # Show all service statuses
 castle services start|stop               # Start/stop everything
-castle migrate                           # Convert castle.yaml to new format
 ```
-
-## Registry & Manifest Architecture
-
-`castle.yaml` at the repo root is the single source of truth. It uses a **manifest**
-model (`cli/src/castle_cli/manifest.py`) where components declare capabilities:
-
-- **`run`**: How to start it (RunSpec: `python_uv_tool`, `command`, `container`, `node`, `remote`)
-- **`expose`**: What it exposes (HTTP port, health endpoint)
-- **`proxy`**: How to proxy it (Caddy path prefix)
-- **`manage`**: How to manage it (systemd)
-- **`install`**: How to install it (PATH shim)
-- **`build`**: How to build it (commands, outputs)
-- **`triggers`**: What triggers it (manual, schedule, event, request)
-
-**Roles are derived** from these declarations:
-- `service` — has `expose.http`
-- `tool` — has `install.path` or is fallback
-- `worker` — has `manage.systemd` but no HTTP
-- `job` — has schedule trigger
-- `frontend` — has build outputs
-- `containerized` — uses container runner
-- `remote` — uses remote runner
-
-## Component Roles (replaces Project Types)
-
-| Role | Convention | Example |
-|------|-----------|---------|
-| **service** | FastAPI, pydantic-settings, lifespan, `/health` endpoint | central-context |
-| **tool** | argparse, stdin/stdout, exit codes, Unix pipes | devbox-connect |
-| **worker** | Systemd-managed, no HTTP | (none yet) |
-| **job** | Scheduled task | (none yet) |
-| **containerized** | Docker/Podman container | (none yet) |
-
-## Creating a New Project
-
-```bash
-castle create my-service --type service --description "Does something"
-cd my-service
-uv sync
-uv run my-service       # starts on auto-assigned port
-castle test my-service   # run tests
-castle service enable my-service  # register with systemd
-```
-
-The `castle create` command scaffolds the project, generates a CLAUDE.md, and registers
-it in `castle.yaml` as a `ComponentManifest`.
 
 ## Infrastructure
 
@@ -102,18 +88,6 @@ uv run ruff format .        # Format
 
 Services also support: `uv run <service-name>` to start.
 
-## Existing Components
-
-| Component | Roles | Port | Description |
-|-----------|-------|------|-------------|
-| central-context | service | 9001 | Content storage API (submodule) |
-| notification-bridge | service | 9002 | Desktop notification forwarder (submodule) |
-| devbox-connect | tool | — | SSH tunnel manager |
-| mboxer | tool | — | MBOX to EML converter (submodule) |
-| toolkit | tool | — | Personal utility scripts (submodule) |
-| protonmail | tool | — | ProtonMail email sync via Bridge |
-| event-bus | service | 9010 | Inter-service event bus |
-
 ## Code Style
 
 - **Linting/formatting**: ruff — shared `ruff.toml` at repo root (100-char lines)
@@ -121,11 +95,11 @@ Services also support: `uv run <service-name>` to start.
 - **Testing**: pytest, pytest-asyncio for async tests
 - **Python**: 3.13 for services, 3.11+ minimum for tools/libraries
 
-## Agent Workflow
+## Key Files
 
-When creating a new service or tool:
-1. `castle create <name> --type <type>` — scaffold and register
-2. Implement the project logic
-3. `castle test <name>` — verify tests pass
-4. `castle service enable <name>` — deploy as systemd service (services only)
-5. `castle gateway reload` — update reverse proxy routes
+- `castle.yaml` — Component registry (single source of truth)
+- `cli/src/castle_cli/manifest.py` — Pydantic models (ComponentManifest, RunSpec, etc.)
+- `cli/src/castle_cli/config.py` — Config loader (castle.yaml → CastleConfig)
+- `cli/src/castle_cli/templates/scaffold.py` — Project scaffolding templates
+- `cli/src/castle_cli/commands/service.py` — Systemd unit generation
+- `ruff.toml` / `pyrightconfig.json` — Shared lint/type config

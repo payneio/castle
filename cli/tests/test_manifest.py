@@ -97,10 +97,9 @@ class TestRoleDerivation:
         m = ComponentManifest(
             id="docx2md",
             tool=ToolSpec(
-                tool_type=ToolType.PYTHON_UV,
+                tool_type=ToolType.PYTHON_STANDALONE,
                 category="document",
-                source="tools/document/docx2md.py",
-                entry_point="tools.document.docx2md:main",
+                source="tools/document/",
             ),
         )
         assert Role.TOOL in m.roles

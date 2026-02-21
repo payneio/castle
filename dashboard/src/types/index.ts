@@ -7,6 +7,13 @@ export interface ComponentSummary {
   health_path: string | null
   proxy_path: string | null
   managed: boolean
+  category: string | null
+  version: string | null
+  tool_type: string | null
+  source: string | null
+  system_dependencies: string[]
+  schedule: string | null
+  installed: boolean | null
 }
 
 export interface ComponentDetail extends ComponentSummary {
@@ -47,11 +54,23 @@ export interface SSEServiceActionEvent {
   status: string
 }
 
-export interface ToolInfo {
-  command: string
-  description: string
-  category: string
-  version: string
+export interface ToolSummary {
+  id: string
+  description: string | null
+  category: string | null
+  source: string | null
+  tool_type: string | null
+  version: string | null
+  runner: string | null
   system_dependencies: string[]
-  script: string
+  installed: boolean
+}
+
+export interface ToolCategory {
+  name: string
+  tools: ToolSummary[]
+}
+
+export interface ToolDetail extends ToolSummary {
+  docs: string | null
 }

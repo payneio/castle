@@ -1,7 +1,6 @@
 # Python Tools in Castle
 
-How to build CLI tools following Unix philosophy. Based on the patterns in the
-[toolkit](https://github.com/payneio/toolkit) project.
+How to build CLI tools following Unix philosophy.
 
 ## Principles
 
@@ -18,88 +17,120 @@ How to build CLI tools following Unix philosophy. Based on the patterns in the
 | **CLI** | argparse |
 | **Package manager** | uv (never pip) |
 | **Build** | hatchling |
-| **Testing** | unittest + mocking |
-| **Linting** | ruff |
-| **Type checking** | pyright |
+| **Testing** | pytest |
+| **Linting** | ruff (shared `ruff.toml` at repo root) |
+| **Type checking** | pyright (shared `pyrightconfig.json` at repo root) |
+| **Python** | 3.11+ minimum |
 
-## Project layout
+## Two kinds of tools
 
-Tools live inside a single package with categories:
+### Standalone tools
+
+Independent projects at the repo root with their own `pyproject.toml`:
 
 ```
-toolkit/
-├── tools/
-│   ├── document/
-│   │   ├── pdf2md.py          # Implementation
-│   │   ├── pdf2md.md          # Docs + YAML frontmatter (single source of truth)
-│   │   └── test_pdf2md.py     # Tests alongside tool
-│   ├── search/
-│   │   ├── search.py
-│   │   ├── search.md
-│   │   └── test_search.py
-│   ├── system/
-│   │   ├── schedule.py
-│   │   └── schedule.md
-│   └── toolkit/
-│       ├── toolkit.py         # Meta-tool for discovery/scaffolding
-│       └── toolkit.md
+my-tool/
+├── src/my_tool/
+│   ├── __init__.py
+│   └── main.py       # Entry point
+├── tests/
+│   └── test_main.py
 ├── pyproject.toml
-├── Makefile
-└── README.md
+└── CLAUDE.md
 ```
 
-Each tool is a `.py` + `.md` pair. The `.md` file has YAML frontmatter for
-metadata — no separate config files needed.
+Examples: `devbox-connect/`, `mboxer/`, `protonmail/`
 
-## YAML frontmatter (.md file)
+### Category tools
 
-```yaml
----
-command: pdf2md
-script: document/pdf2md.py
-description: Convert PDF files to Markdown
-version: 1.0.0
-category: document
-system_dependencies:
-  - pandoc
-  - poppler-utils
----
+Multiple tools sharing a single package under `tools/<category>/`:
 
-# pdf2md
-
-Converts PDF files to Markdown format...
+```
+tools/document/
+├── src/document/
+│   ├── __init__.py
+│   ├── pdf2md.py      # Each tool is a module
+│   ├── docx2md.py
+│   ├── html2text.py
+│   └── md2pdf.py
+├── tests/
+├── pyproject.toml     # One pyproject with multiple [project.scripts]
+└── CLAUDE.md
 ```
 
-The toolkit management command discovers tools by scanning for these `.md` files.
+Examples: `tools/document/`, `tools/search/`, `tools/system/`
+
+## Creating a new tool
+
+### Standalone
+
+```bash
+castle create my-tool --type tool --description "Does something"
+cd my-tool && uv sync
+```
+
+This scaffolds the project and registers it in `castle.yaml`.
+
+### Category tool
+
+```bash
+castle create my-tool --type tool --category document --description "Does something"
+cd tools/document && uv sync
+```
+
+This adds a `.py` file to the existing category package and updates its
+`pyproject.toml` entry points.
 
 ## pyproject.toml
 
+### Standalone tool
+
 ```toml
 [project]
-name = "toolkit"
+name = "my-tool"
 version = "0.1.0"
+description = "Does something useful"
 requires-python = ">=3.11"
-dependencies = [
-    "requests>=2.28.0",
-    "pyyaml>=6.0.0",
-]
+dependencies = []
 
 [project.scripts]
-pdf2md = "tools.document.pdf2md:main"
-docx2md = "tools.document.docx2md:main"
-search = "tools.search.search:main"
-toolkit = "tools.toolkit.toolkit:main"
+my-tool = "my_tool.main:main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["tools"]
+packages = ["src/my_tool"]
+
+[dependency-groups]
+dev = ["pytest>=7.0.0"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["my_tool"]
 ```
 
-Entry points follow `command = "tools.<category>.<tool>:main"`. After
-`uv tool install --editable .`, all commands are in PATH.
+### Category package
+
+```toml
+[project]
+name = "castle-document"
+version = "0.1.0"
+description = "Castle document conversion tools"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+docx2md = "document.docx2md:main"
+pdf2md = "document.pdf2md:main"
+html2text = "document.html2text:main"
+md2pdf = "document.md2pdf:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/document"]
+```
+
+After `uv tool install --editable .`, all commands are in PATH.
 
 ## Tool implementation patterns
 
@@ -112,8 +143,6 @@ to stdout.
 #!/usr/bin/env python3
 """
 my-tool: Brief description
-
-Detailed usage docs here.
 
 Usage:
     my-tool [options] [FILE]
@@ -224,7 +253,7 @@ import sys
 
 def convert(input_file: str, output_file: str) -> int:
     try:
-        result = subprocess.run(
+        subprocess.run(
             ["pandoc", input_file, "-o", output_file],
             check=True,
             capture_output=True,
@@ -244,24 +273,6 @@ def convert(input_file: str, output_file: str) -> int:
 
 Always use `check=True` and `capture_output=True` with subprocess. Handle
 `FileNotFoundError` for missing system dependencies.
-
-### Tool with optional dependencies
-
-```python
-tantivy_available = False
-try:
-    import tantivy
-    tantivy_available = True
-except ImportError:
-    tantivy = None
-
-
-def check_tantivy() -> None:
-    if not tantivy_available:
-        print("Error: tantivy not found. Install with: uv add tantivy",
-              file=sys.stderr)
-        sys.exit(1)
-```
 
 ## Error handling
 
@@ -301,119 +312,94 @@ for f in *.pdf; do pdf2md "$f" > "${f%.pdf}.md"; done
 cat doc.txt | text-extractor | jq .content
 ```
 
-When a tool writes to both a file and stdout, status messages must go to
-stderr so they don't contaminate the pipe:
-
-```python
-with open(output_file, "w") as f:
-    f.write(result)
-print(result)                                    # stdout (for piping)
-print(f"Wrote to {output_file}", file=sys.stderr)  # stderr (status)
-```
-
 ## Testing
 
-Tests live alongside the tool implementation, using unittest with mocking:
+Tests use pytest. For standalone tools, test via subprocess to exercise the
+real CLI interface:
 
 ```python
-# tools/gpt/test_gpt.py
-import unittest
-from unittest.mock import patch, MagicMock
-from io import StringIO
-
-from tools.gpt import gpt
+import subprocess
+import sys
 
 
-class TestGPT(unittest.TestCase):
-    @patch("tools.gpt.gpt.get_api_key")
-    @patch("openai.OpenAI")
-    def test_generate(self, mock_openai, mock_key):
-        mock_key.return_value = "fake-key"
-        mock_client = MagicMock()
-        mock_openai.return_value = mock_client
-        mock_client.chat.completions.create.return_value = MagicMock(
-            choices=[MagicMock(message=MagicMock(content="response"))]
+class TestCLI:
+    def test_version(self) -> None:
+        result = subprocess.run(
+            [sys.executable, "-m", "my_tool.main", "--version"],
+            capture_output=True,
+            text=True,
         )
+        assert "my-tool" in result.stdout
 
-        result = gpt.generate_text("prompt", "gpt-4", 0.7, 500)
-        self.assertEqual(result, "response")
+    def test_stdin(self) -> None:
+        result = subprocess.run(
+            [sys.executable, "-m", "my_tool.main"],
+            input="hello\n",
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0
+        assert "hello" in result.stdout
 
-    @patch("tools.gpt.gpt.generate_text")
-    def test_cli(self, mock_gen):
-        mock_gen.return_value = "output"
-        with patch("sys.argv", ["gpt", "prompt"]):
-            with patch("sys.stdout", new=StringIO()) as out:
-                gpt.main()
-                self.assertEqual(out.getvalue().strip(), "output")
+    def test_file_input(self, tmp_path) -> None:
+        input_file = tmp_path / "input.txt"
+        input_file.write_text("test data")
+        result = subprocess.run(
+            [sys.executable, "-m", "my_tool.main", str(input_file)],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0
+        assert "test data" in result.stdout
 ```
 
-Pattern: mock external dependencies (APIs, file I/O, subprocesses), test the
-CLI by patching `sys.argv`.
+For unit testing core logic, import the function directly and test it as a
+pure function.
 
-## Build and install
-
-```makefile
-# Makefile
-all: build install
-
-build:
-	uv sync
-
-install:
-	uv tool install --editable .
-
-check:
-	uv run ruff format .
-	uv run ruff check . --fix
-	uv run pyright
-
-test:
-	uv run pytest -v
-
-clean:
-	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
-```
+## Commands
 
 ```bash
-make all        # Sync deps + install to PATH
-make check      # Format, lint, type-check
-make test       # Run tests
+uv sync                     # Install deps
+uv run my-tool --help       # Run the tool
+uv run pytest tests/ -v     # Run tests
+uv run ruff check .         # Lint
+uv run ruff format .        # Format
 ```
 
-## Creating a new tool
+## Registering in castle.yaml
 
-Use the toolkit management command:
-
-```bash
-toolkit create my-tool --description "Does something" --category document
-```
-
-This creates the `.py` template, `.md` with frontmatter, and updates
-`pyproject.toml` with the entry point.
-
-Or manually:
-1. Create `tools/<category>/my_tool.py` with the argparse pattern above
-2. Create `tools/<category>/my_tool.md` with YAML frontmatter
-3. Add entry to `pyproject.toml` under `[project.scripts]`:
-   ```toml
-   my-tool = "tools.category.my_tool:main"
-   ```
-4. Run `make install` to register in PATH
-
-## Registering in castle
+Standalone tools:
 
 ```yaml
-# castle.yaml
 components:
-  toolkit:
-    description: Personal utility scripts
-    run:
-      runner: command
-      argv: ["toolkit"]
-      cwd: toolkit
+  my-tool:
+    description: Does something useful
+    tool:
+      tool_type: python_standalone
+      category: utilities
+      source: my-tool/
     install:
-      path: { alias: toolkit }
+      path:
+        alias: my-tool
 ```
 
-Tools with `install.path` get the `tool` role. They don't need `expose`,
-`proxy`, or `manage` blocks.
+Category tools get one entry per tool, all pointing to the same source:
+
+```yaml
+components:
+  pdf2md:
+    description: Convert PDF files to Markdown
+    tool:
+      tool_type: python_standalone
+      category: document
+      source: tools/document/
+      system_dependencies: [pandoc, poppler-utils]
+    install:
+      path:
+        alias: pdf2md
+```
+
+Tools with `install.path` get the **tool** role. They don't need `expose`,
+`proxy`, or `manage` blocks unless castle also runs them (e.g., scheduled jobs).
+
+See @docs/component-registry.md for the full manifest reference.

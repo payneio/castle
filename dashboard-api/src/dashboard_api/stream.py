@@ -33,6 +33,16 @@ def unsubscribe(q: asyncio.Queue[str]) -> None:
         pass
 
 
+def close_all_subscribers() -> None:
+    """Unblock all SSE generators so they exit during shutdown."""
+    for q in list(_subscribers):
+        try:
+            q.put_nowait("")
+        except asyncio.QueueFull:
+            pass
+    _subscribers.clear()
+
+
 async def broadcast(event_type: str, data: dict) -> None:
     """Send an event to all connected SSE clients."""
     payload = f"event: {event_type}\ndata: {json.dumps(data)}\n\n"

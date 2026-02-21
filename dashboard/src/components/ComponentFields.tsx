@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react"
 import { Check, Loader2, Save, Trash2 } from "lucide-react"
 import type { ComponentDetail } from "@/types"
+import { runnerLabel } from "@/lib/labels"
 import { SecretsEditor } from "./SecretsEditor"
 
 interface ComponentFieldsProps {
@@ -113,7 +114,7 @@ export function ComponentFields({ component, onSave, onDelete }: ComponentFields
       {runner && (
         <Field label="Runner">
           <span className="text-sm font-mono text-[var(--muted)]">
-            {runner}
+            {runnerLabel(runner)}
             {(m.run as Record<string, string>)?.tool && (
               <> &middot; {(m.run as Record<string, string>).tool}</>
             )}
