@@ -144,7 +144,7 @@ def _generate_unit(config: CastleConfig, name: str, manifest: ComponentManifest)
     if run is None:
         raise ValueError(f"Component '{name}' has no run spec")
 
-    working_dir = config.root / (run.cwd or name)
+    working_dir = config.root / (run.working_dir or name)
     exec_start = _manifest_to_exec_start(manifest, config.root)
 
     resolved_env = resolve_env_vars(run.env, manifest)

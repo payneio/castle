@@ -29,7 +29,7 @@ def run_info(args: argparse.Namespace) -> int:
     if getattr(args, "json", False):
         data = manifest.model_dump(exclude_none=True)
         # Include CLAUDE.md content if it exists
-        cwd = manifest.run.cwd if manifest.run else None
+        cwd = manifest.run.working_dir if manifest.run else None
         claude_md = _find_claude_md(config.root, cwd or name)
         if claude_md:
             data["claude_md"] = claude_md
@@ -46,8 +46,8 @@ def run_info(args: argparse.Namespace) -> int:
     # Run spec
     if manifest.run:
         print(f"  {BOLD}runner{RESET}:      {manifest.run.runner}")
-        if manifest.run.cwd:
-            print(f"  {BOLD}cwd{RESET}:         {manifest.run.cwd}")
+        if manifest.run.working_dir:
+            print(f"  {BOLD}working_dir{RESET}: {manifest.run.working_dir}")
         if hasattr(manifest.run, "tool"):
             print(f"  {BOLD}tool{RESET}:        {manifest.run.tool}")
         elif hasattr(manifest.run, "argv"):
@@ -105,7 +105,7 @@ def run_info(args: argparse.Namespace) -> int:
             print(f"    - {cap.type}" + (f" ({cap.name})" if cap.name else ""))
 
     # Show CLAUDE.md if it exists
-    cwd = manifest.run.cwd if manifest.run else None
+    cwd = manifest.run.working_dir if manifest.run else None
     claude_md = _find_claude_md(config.root, cwd or name)
     if claude_md:
         print(f"\n{BOLD}{CYAN}CLAUDE.md{RESET}")

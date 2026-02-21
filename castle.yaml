@@ -5,7 +5,7 @@ components:
     description: Caddy reverse proxy gateway
     run:
       runner: command
-      cwd: .
+      working_dir: .
       argv:
       - caddy
       - run
@@ -26,7 +26,7 @@ components:
     description: Content storage API
     run:
       runner: python_uv_tool
-      cwd: central-context
+      working_dir: central-context
       env:
         CENTRAL_CONTEXT_DATA_DIR: /data/castle/central-context
         CENTRAL_CONTEXT_PORT: '9001'
@@ -47,7 +47,7 @@ components:
       server.
     run:
       runner: python_uv_tool
-      cwd: notification-bridge
+      working_dir: notification-bridge
       env:
         CENTRAL_CONTEXT_URL: http://localhost:9001
         BUCKET_NAME: notifications
@@ -67,7 +67,7 @@ components:
     description: Castle API
     run:
       runner: python_uv_tool
-      cwd: castle-api
+      working_dir: castle-api
       env:
         CASTLE_API_CASTLE_ROOT: /data/repos/castle
       tool: castle-api
@@ -85,7 +85,7 @@ components:
     description: ProtonMail email sync via Bridge
     run:
       runner: command
-      cwd: protonmail
+      working_dir: protonmail
       env:
         PROTONMAIL_USERNAME: paul@payne.io
         PROTONMAIL_API_KEY: ${secret:PROTONMAIL_API_KEY}
@@ -107,6 +107,7 @@ components:
     description: Collect files from various sources into backup directory
     run:
       runner: command
+      working_dir: .
       env:
         DBACKUP: /data/backup
       argv:
@@ -125,6 +126,7 @@ components:
     description: Nightly restic backup of /data to /storage
     run:
       runner: command
+      working_dir: .
       env:
         RESTIC_REPOSITORY: /storage/restic-data
         RESTIC_PASSWORD_FILE: /home/payne/.config/restic-password

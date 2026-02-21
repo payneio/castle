@@ -35,7 +35,7 @@ def run_run(args: argparse.Namespace) -> int:
         return 1
 
     # Working directory
-    cwd = config.root / (run.cwd or name)
+    cwd = config.root / (run.working_dir or name)
     if not cwd.exists():
         print(f"Error: working directory '{cwd}' does not exist")
         return 1
