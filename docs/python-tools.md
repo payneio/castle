@@ -375,8 +375,6 @@ components:
   my-tool:
     description: Does something useful
     tool:
-      tool_type: python_standalone
-      category: utilities
       source: my-tool/
     install:
       path:
@@ -390,8 +388,6 @@ components:
   pdf2md:
     description: Convert PDF files to Markdown
     tool:
-      tool_type: python_standalone
-      category: document
       source: tools/document/
       system_dependencies: [pandoc, poppler-utils]
     install:

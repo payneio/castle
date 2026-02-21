@@ -132,8 +132,6 @@ Creates a shim so the tool is available system-wide after
 
 ```yaml
 tool:
-  tool_type: python_standalone    # or "script"
-  category: document              # Grouping for display
   source: tools/document/         # Source directory
   version: "1.0.0"
   system_dependencies: [pandoc, poppler-utils]
@@ -142,6 +140,11 @@ tool:
 This block provides metadata for `castle tool list` and the dashboard.
 It's separate from `install` (which handles PATH registration) and `run`
 (which handles execution).
+
+The install method (uv tool install vs symlink) is inferred from the source
+directory: if `pyproject.toml` exists, it's a Python package; if the source
+is a file, it's symlinked. Grouping for `castle tool list` and the dashboard
+is derived from the source directory name (e.g., `tools/document/` → "document").
 
 ### `build` — How to build it
 
@@ -223,8 +226,6 @@ components:
   my-tool:
     description: Does something useful
     tool:
-      tool_type: python_standalone
-      category: utilities
       source: my-tool/
     install:
       path:

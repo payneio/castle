@@ -3,6 +3,14 @@
 from pydantic import BaseModel
 
 
+class SystemdInfo(BaseModel):
+    """Systemd unit information for a managed component."""
+
+    unit_name: str
+    unit_path: str
+    timer: bool = False
+
+
 class ComponentSummary(BaseModel):
     """Summary of a single component."""
 
@@ -14,9 +22,8 @@ class ComponentSummary(BaseModel):
     health_path: str | None = None
     proxy_path: str | None = None
     managed: bool = False
-    category: str | None = None
+    systemd: SystemdInfo | None = None
     version: str | None = None
-    tool_type: str | None = None
     source: str | None = None
     system_dependencies: list[str] = []
     schedule: str | None = None
@@ -65,9 +72,7 @@ class ToolSummary(BaseModel):
 
     id: str
     description: str | None = None
-    category: str | None = None
     source: str | None = None
-    tool_type: str | None = None
     version: str | None = None
     runner: str | None = None
     system_dependencies: list[str] = []

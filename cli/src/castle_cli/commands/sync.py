@@ -8,7 +8,6 @@ import subprocess
 from pathlib import Path
 
 from castle_cli.config import ensure_dirs, load_config
-from castle_cli.manifest import ToolType
 
 
 def run_sync(args: argparse.Namespace) -> int:
@@ -46,7 +45,7 @@ def run_sync(args: argparse.Namespace) -> int:
             print("  OK")
         synced_dirs.add(project_dir)
 
-    # Install tools by type
+    # Install tools — infer method from project structure
     uv_path = shutil.which("uv") or "uv"
     installed_dirs: set[Path] = set()
 
@@ -54,18 +53,19 @@ def run_sync(args: argparse.Namespace) -> int:
         if not manifest.tool:
             continue
 
-        if manifest.tool.tool_type == ToolType.PYTHON_STANDALONE:
-            source = manifest.tool.source
-            if not source:
-                continue
-            project_dir = config.root / source
-            if not (project_dir / "pyproject.toml").exists():
-                continue
-            if project_dir in installed_dirs:
+        source = manifest.tool.source
+        if not source:
+            continue
+
+        source_dir = config.root / source
+
+        if (source_dir / "pyproject.toml").exists():
+            # Python package — uv tool install
+            if source_dir in installed_dirs:
                 continue
             print(f"\nInstalling {name}...")
             result = subprocess.run(
-                [uv_path, "tool", "install", "--editable", str(project_dir),
+                [uv_path, "tool", "install", "--editable", str(source_dir),
                  "--force"],
                 capture_output=True, text=True,
             )
@@ -77,23 +77,19 @@ def run_sync(args: argparse.Namespace) -> int:
                     all_ok = False
             else:
                 print(f"  {name}: OK")
-            installed_dirs.add(project_dir)
+            installed_dirs.add(source_dir)
 
-        elif manifest.tool.tool_type == ToolType.SCRIPT:
-            # Verify script tools are accessible
+        elif source_dir.is_file():
+            # Script file — symlink to ~/.local/bin/
             alias = name
             if manifest.install and manifest.install.path and manifest.install.path.alias:
                 alias = manifest.install.path.alias
             if not shutil.which(alias):
-                source = manifest.tool.source
-                if source:
-                    script_path = config.root / source
-                    if script_path.exists():
-                        link = Path.home() / ".local" / "bin" / alias
-                        link.parent.mkdir(parents=True, exist_ok=True)
-                        if not link.exists():
-                            link.symlink_to(script_path)
-                            print(f"\n  Linked {alias} → {script_path}")
+                link = Path.home() / ".local" / "bin" / alias
+                link.parent.mkdir(parents=True, exist_ok=True)
+                if not link.exists():
+                    link.symlink_to(source_dir)
+                    print(f"\n  Linked {alias} → {source_dir}")
 
     if all_ok:
         print("\nAll projects synced.")

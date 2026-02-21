@@ -85,7 +85,6 @@ def run_info(args: argparse.Namespace) -> int:
     # Tool
     if manifest.tool:
         t = manifest.tool
-        print(f"  {BOLD}category{RESET}:    {t.category or 'uncategorized'}")
         if t.source:
             print(f"  {BOLD}source{RESET}:      {t.source}")
         if t.system_dependencies:

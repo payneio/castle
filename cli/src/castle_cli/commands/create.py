@@ -18,7 +18,6 @@ from castle_cli.manifest import (
     RunPythonUvTool,
     SystemdSpec,
     ToolSpec,
-    ToolType,
 )
 from castle_cli.templates.scaffold import scaffold_category_tool, scaffold_project
 
@@ -102,10 +101,7 @@ def run_create(args: argparse.Namespace) -> int:
         manifest = ComponentManifest(
             id=name,
             description=args.description or f"A castle {proj_type}",
-            tool=ToolSpec(
-                tool_type=ToolType.PYTHON_STANDALONE,
-                source=f"{name}/",
-            ),
+            tool=ToolSpec(source=f"{name}/"),
             install=InstallSpec(path=PathInstallSpec(alias=name)),
         )
     else:
@@ -173,11 +169,7 @@ def _create_category_tool(config: object, name: str, description: str | None, ca
     manifest = ComponentManifest(
         id=name,
         description=desc,
-        tool=ToolSpec(
-            tool_type=ToolType.PYTHON_STANDALONE,
-            category=category,
-            source=f"tools/{category}/",
-        ),
+        tool=ToolSpec(source=f"tools/{category}/"),
         install=InstallSpec(path=PathInstallSpec(alias=name)),
     )
     config.components[name] = manifest

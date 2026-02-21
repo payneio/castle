@@ -36,14 +36,17 @@ def _tool_list() -> int:
         print("No tools registered.")
         return 0
 
-    by_category: dict[str, list[tuple[str, object]]] = {}
+    by_group: dict[str, list[tuple[str, object]]] = {}
     for name, manifest in tools.items():
-        cat = manifest.tool.category or "uncategorized"
-        by_category.setdefault(cat, []).append((name, manifest))
+        if manifest.tool and manifest.tool.source:
+            group = Path(manifest.tool.source).name
+        else:
+            group = "standalone"
+        by_group.setdefault(group, []).append((name, manifest))
 
-    for category in sorted(by_category):
-        items = by_category[category]
-        print(f"\n{BOLD}{CYAN}{category}{RESET}")
+    for group in sorted(by_group):
+        items = by_group[group]
+        print(f"\n{BOLD}{CYAN}{group}{RESET}")
         print(f"{CYAN}{'─' * 40}{RESET}")
         for name, manifest in sorted(items):
             desc = manifest.description or ""
@@ -74,7 +77,6 @@ def _tool_info(name: str) -> int:
     print(f"{'─' * 40}")
     if manifest.description:
         print(f"  {manifest.description}")
-    print(f"  {BOLD}category{RESET}: {t.category or 'uncategorized'}")
     print(f"  {BOLD}version{RESET}:  {t.version}")
     if t.source:
         print(f"  {BOLD}source{RESET}:   {t.source}")
@@ -83,7 +85,7 @@ def _tool_info(name: str) -> int:
 
     # Read and display .md documentation if available
     if t.source:
-        md_path = _find_md_for_tool(config.root, t.source, name, t.category)
+        md_path = _find_md_for_tool(config.root, t.source, name)
         if md_path and md_path.exists():
             content = md_path.read_text()
             # Strip YAML frontmatter
@@ -102,7 +104,7 @@ def _tool_info(name: str) -> int:
 
 
 def _find_md_for_tool(
-    root: Path, source: str, tool_name: str, category: str | None = None,
+    root: Path, source: str, tool_name: str,
 ) -> Path | None:
     """Find the .md documentation file for a tool source path."""
     source_path = root / source
@@ -111,10 +113,9 @@ def _find_md_for_tool(
         if md.exists():
             return md
     elif source_path.is_dir():
-        # Directory source — look for src/<category>/<tool_name>.md
         py_name = tool_name.replace("-", "_")
-        if category:
-            md = source_path / "src" / category / f"{py_name}.md"
-            if md.exists():
-                return md
+        pkg_name = source_path.name
+        md = source_path / "src" / pkg_name / f"{py_name}.md"
+        if md.exists():
+            return md
     return None
