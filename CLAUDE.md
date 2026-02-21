@@ -1,77 +1,131 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code (claude.ai/code) when working
+with code in this repository.
 
-## Repository Overview
+## Overview
 
-Castle is a monorepo of four independent Python projects that form personal infrastructure services. Each project has its own `pyproject.toml`, `uv.lock`, and dependencies.
+Castle is a personal software platform — a monorepo of independent projects
+(services, tools, libraries) managed by the `castle` CLI. Components declare
+**what they do** (expose HTTP, manage via systemd, install to PATH) and roles
+are **derived**, not labeled.
 
-| Project | Purpose | Layout |
-|---------|---------|--------|
-| **central-context** | REST API for storing/retrieving UTF-8 content in buckets | `src/central_context/` |
-| **notification-bridge** | Cross-platform desktop notification forwarder | `notification_bridge/` (no src/) |
-| **devbox-connect** | SSH tunnel manager with auto-reconnect | `src/devbox_connect/` |
-| **mboxer** | MBOX to EML email converter | Single file `convert.py` |
+**Key principle:** Regular projects must never depend on castle. They accept standard
+configuration (data dir, port, URLs) via env vars. Only castle-components (CLI, gateway,
+event bus) know about castle internals.
 
-## Build & Development Commands
+## Castle CLI
 
-All projects use **uv** as the package manager. Commands must be run from each project's directory.
+The CLI lives in `cli/` and is installed via `uv tool install --editable cli/`.
 
-### central-context
 ```bash
-cd central-context
+castle list                              # List all components
+castle list --role service               # Filter by derived role
+castle info <component>                  # Show manifest details (--json for machine-readable)
+castle create <name> --type service      # Scaffold new project
+castle test [project]                    # Run tests (one or all)
+castle lint [project]                    # Run linter (one or all)
+castle sync                              # Update submodules + uv sync all
+castle run <component>                   # Run component in foreground
+castle logs <component> [-f] [-n 50]     # View component logs
+castle gateway start|stop|reload|status  # Manage Caddy reverse proxy
+castle service enable|disable <name>     # Manage individual systemd service
+castle service status                    # Show all service statuses
+castle services start|stop               # Start/stop everything
+castle migrate                           # Convert castle.yaml to new format
+```
+
+## Registry & Manifest Architecture
+
+`castle.yaml` at the repo root is the single source of truth. It uses a **manifest**
+model (`cli/src/castle_cli/manifest.py`) where components declare capabilities:
+
+- **`run`**: How to start it (RunSpec: `python_uv_tool`, `command`, `container`, `node`, `remote`)
+- **`expose`**: What it exposes (HTTP port, health endpoint)
+- **`proxy`**: How to proxy it (Caddy path prefix)
+- **`manage`**: How to manage it (systemd)
+- **`install`**: How to install it (PATH shim)
+- **`build`**: How to build it (commands, outputs)
+- **`triggers`**: What triggers it (manual, schedule, event, request)
+
+**Roles are derived** from these declarations:
+- `service` — has `expose.http`
+- `tool` — has `install.path` or is fallback
+- `worker` — has `manage.systemd` but no HTTP
+- `job` — has schedule trigger
+- `frontend` — has build outputs
+- `containerized` — uses container runner
+- `remote` — uses remote runner
+
+## Component Roles (replaces Project Types)
+
+| Role | Convention | Example |
+|------|-----------|---------|
+| **service** | FastAPI, pydantic-settings, lifespan, `/health` endpoint | central-context |
+| **tool** | argparse, stdin/stdout, exit codes, Unix pipes | devbox-connect |
+| **worker** | Systemd-managed, no HTTP | (none yet) |
+| **job** | Scheduled task | (none yet) |
+| **containerized** | Docker/Podman container | (none yet) |
+
+## Creating a New Project
+
+```bash
+castle create my-service --type service --description "Does something"
+cd my-service
+uv sync
+uv run my-service       # starts on auto-assigned port
+castle test my-service   # run tests
+castle service enable my-service  # register with systemd
+```
+
+The `castle create` command scaffolds the project, generates a CLAUDE.md, and registers
+it in `castle.yaml` as a `ComponentManifest`.
+
+## Infrastructure
+
+- **Gateway**: Caddy reverse proxy at port 9000, config generated from `castle.yaml`
+  into `~/.castle/generated/Caddyfile`. Dashboard served at root.
+- **Systemd**: User units generated under `~/.config/systemd/user/castle-*.service`
+- **Data**: Service data lives in `/data/castle/<service-name>/`, passed via env var.
+- **Secrets**: `~/.castle/secrets/` — never in project directories.
+
+## Per-Project Commands
+
+All projects use **uv**. Commands run from each project's directory:
+
+```bash
 uv sync                     # Install deps
-uv run central-context      # Run service (port 9000)
 uv run pytest tests/ -v     # Run tests
-uv run pytest tests/test_storage.py -v  # Single test file
-```
-
-### notification-bridge
-```bash
-cd notification-bridge
-uv sync --extra linux       # Install deps (use --extra windows on Windows)
-uv run notification-bridge  # Run service (port 9001)
-uv run pytest --cov=notification_bridge  # Run tests with coverage
-uv run ruff format .        # Format
 uv run ruff check .         # Lint
+uv run ruff format .        # Format
 ```
 
-### devbox-connect
-```bash
-cd devbox-connect
-uv sync                     # Install deps
-uv tool install .           # Install as CLI tool
-devbox-connect -c tunnels.yaml start     # Start tunnels
-devbox-connect -c tunnels.yaml status    # Show status
-devbox-connect -c tunnels.yaml validate  # Validate config
-```
+Services also support: `uv run <service-name>` to start.
 
-### mboxer
-```bash
-cd mboxer
-uv sync             # Install deps
-python convert.py   # Run converter (configure via .env)
-ruff check . --fix  # Lint
-```
+## Existing Components
 
-## Architecture
-
-**central-context** is the hub — notification-bridge forwards captured desktop notifications to it via its REST API. The API organizes content into buckets (filesystem directories), auto-names entries by SHA256 checksum, and stores JSON metadata sidecars alongside content files.
-
-**notification-bridge** uses a platform adapter pattern: `listeners/base.py` defines a `NotificationListener` protocol, with `linux.py` (D-Bus) and `windows.py` (WinRT) implementations. The server captures notifications and POSTs them to central-context.
-
-**devbox-connect** manages persistent SSH tunnels defined in YAML config. It supports two config formats: simple (flat list) and grouped (by host). Tunnels auto-reconnect with exponential backoff. Has Windows service support via NSSM.
-
-## Configuration
-
-- **central-context**: Env vars with `CENTRAL_CONTEXT_` prefix, pydantic-settings
-- **notification-bridge**: `.env` file (`CENTRAL_CONTEXT_URL`, `BUCKET_NAME`, `PORT`)
-- **devbox-connect**: YAML config file (`tunnels.yaml`)
-- **mboxer**: `.env` file (`MBOX_PATH`, `OUTPUT_DIR`)
+| Component | Roles | Port | Description |
+|-----------|-------|------|-------------|
+| central-context | service | 9001 | Content storage API (submodule) |
+| notification-bridge | service | 9002 | Desktop notification forwarder (submodule) |
+| devbox-connect | tool | — | SSH tunnel manager |
+| mboxer | tool | — | MBOX to EML converter (submodule) |
+| toolkit | tool | — | Personal utility scripts (submodule) |
+| protonmail | tool | — | ProtonMail email sync via Bridge |
+| event-bus | service | 9010 | Inter-service event bus |
 
 ## Code Style
 
-- **Linting/formatting**: ruff (project-specific configs in each `pyproject.toml`)
-- **devbox-connect**: 100-char line length, pyright type checking at standard level, Python 3.10+
-- **central-context / notification-bridge**: Python 3.13, FastAPI
-- **Testing**: pytest with pytest-asyncio for async tests
+- **Linting/formatting**: ruff — shared `ruff.toml` at repo root (100-char lines)
+- **Type checking**: pyright — shared `pyrightconfig.json` at repo root
+- **Testing**: pytest, pytest-asyncio for async tests
+- **Python**: 3.13 for services, 3.11+ minimum for tools/libraries
+
+## Agent Workflow
+
+When creating a new service or tool:
+1. `castle create <name> --type <type>` — scaffold and register
+2. Implement the project logic
+3. `castle test <name>` — verify tests pass
+4. `castle service enable <name>` — deploy as systemd service (services only)
+5. `castle gateway reload` — update reverse proxy routes

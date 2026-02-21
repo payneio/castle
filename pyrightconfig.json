@@ -1,0 +1,8 @@
+{
+    "pythonVersion": "3.11",
+    "pythonPlatform": "Linux",
+    "typeCheckingMode": "standard",
+    "reportMissingImports": true,
+    "reportUnusedVariable": true,
+    "reportUnusedImport": true
+}
