@@ -39,7 +39,7 @@ class Role(str, Enum):
 
 class RunBase(BaseModel):
     runner: str
-    cwd: str | None = None
+    working_dir: str | None = None
     env: EnvMap = Field(default_factory=dict)
 
 

@@ -28,7 +28,7 @@ def run_sync(args: argparse.Namespace) -> int:
     all_ok = True
     synced_dirs: set[Path] = set()
     for name, manifest in config.components.items():
-        cwd = manifest.run.cwd if manifest.run else None
+        cwd = manifest.run.working_dir if manifest.run else None
         working_dir = cwd or name
         project_dir = config.root / working_dir
         pyproject = project_dir / "pyproject.toml"
