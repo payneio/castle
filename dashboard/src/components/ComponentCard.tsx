@@ -2,6 +2,7 @@ import { ExternalLink, Play, RefreshCw, Server, Square, Terminal } from "lucide-
 import { Link } from "react-router-dom"
 import type { ComponentSummary, HealthStatus } from "@/types"
 import { useServiceAction } from "@/services/api/hooks"
+import { runnerLabel } from "@/lib/labels"
 import { HealthBadge } from "./HealthBadge"
 import { RoleBadge } from "./RoleBadge"
 
@@ -56,7 +57,7 @@ export function ComponentCard({ component, health }: ComponentCardProps) {
           {component.runner && (
             <span className="flex items-center gap-1">
               <Terminal size={12} />
-              {component.runner}
+              {runnerLabel(component.runner)}
             </span>
           )}
           {component.proxy_path && (

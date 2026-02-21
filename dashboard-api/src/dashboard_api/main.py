@@ -19,16 +19,36 @@ from dashboard_api.logs import router as logs_router
 from dashboard_api.routes import router as dashboard_router
 from dashboard_api.secrets import router as secrets_router
 from dashboard_api.services import router as services_router
-from dashboard_api.stream import health_poll_loop, subscribe, unsubscribe
+from dashboard_api.stream import close_all_subscribers, health_poll_loop, subscribe, unsubscribe
+from dashboard_api.tools import router as tools_router
+
+# Set by _watch_shutdown when uvicorn begins its shutdown sequence.
+_shutting_down = False
+
+
+async def _watch_shutdown(server: uvicorn.Server) -> None:
+    """Poll uvicorn's should_exit flag and close SSE subscribers promptly."""
+    while not server.should_exit:
+        await asyncio.sleep(0.5)
+    global _shutting_down
+    _shutting_down = True
+    close_all_subscribers()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan handler."""
+    global _shutting_down
+    _shutting_down = False
+
     await bus.start()
     poll_task = asyncio.create_task(health_poll_loop())
+
     yield
+
+    _shutting_down = True
     poll_task.cancel()
+    close_all_subscribers()
     await bus.stop()
 
 
@@ -52,6 +72,7 @@ app.include_router(events_router)
 app.include_router(logs_router)
 app.include_router(secrets_router)
 app.include_router(services_router)
+app.include_router(tools_router)
 
 
 @app.get("/health")
@@ -70,6 +91,8 @@ async def sse_stream() -> StreamingResponse:
             yield "event: connected\ndata: {}\n\n"
             while True:
                 msg = await q.get()
+                if not msg:
+                    break
                 yield msg
         except asyncio.CancelledError:
             pass
@@ -85,12 +108,20 @@ async def sse_stream() -> StreamingResponse:
 
 def run() -> None:
     """Run the application with uvicorn."""
-    uvicorn.run(
+    config = uvicorn.Config(
         "dashboard_api.main:app",
         host=settings.host,
         port=settings.port,
         reload=False,
     )
+    server = uvicorn.Server(config)
+
+    async def serve_with_watcher() -> None:
+        watcher = asyncio.create_task(_watch_shutdown(server))
+        await server.serve()
+        watcher.cancel()
+
+    asyncio.run(serve_with_watcher())
 
 
 if __name__ == "__main__":

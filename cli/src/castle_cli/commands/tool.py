@@ -46,13 +46,11 @@ def _tool_list() -> int:
         print(f"\n{BOLD}{CYAN}{category}{RESET}")
         print(f"{CYAN}{'─' * 40}{RESET}")
         for name, manifest in sorted(items):
-            tt = manifest.tool.tool_type.value
-            ver = manifest.tool.version
             desc = manifest.description or ""
             deps = ""
             if manifest.tool.system_dependencies:
                 deps = f"  {DIM}[{', '.join(manifest.tool.system_dependencies)}]{RESET}"
-            print(f"  {BOLD}{name:<20}{RESET} {ver:<6} {tt:<20} {desc}{deps}")
+            print(f"  {BOLD}{name:<20}{RESET} {desc}{deps}")
 
     print()
     return 0
@@ -76,13 +74,10 @@ def _tool_info(name: str) -> int:
     print(f"{'─' * 40}")
     if manifest.description:
         print(f"  {manifest.description}")
-    print(f"  {BOLD}type{RESET}:     {t.tool_type.value}")
     print(f"  {BOLD}category{RESET}: {t.category or 'uncategorized'}")
     print(f"  {BOLD}version{RESET}:  {t.version}")
     if t.source:
         print(f"  {BOLD}source{RESET}:   {t.source}")
-    if t.entry_point:
-        print(f"  {BOLD}entry{RESET}:    {t.entry_point}")
     if t.system_dependencies:
         print(f"  {BOLD}requires{RESET}: {', '.join(t.system_dependencies)}")
 
@@ -106,7 +101,9 @@ def _tool_info(name: str) -> int:
     return 0
 
 
-def _find_md_for_tool(root: Path, source: str, tool_name: str, category: str | None = None) -> Path | None:
+def _find_md_for_tool(
+    root: Path, source: str, tool_name: str, category: str | None = None,
+) -> Path | None:
     """Find the .md documentation file for a tool source path."""
     source_path = root / source
     if source_path.is_file():

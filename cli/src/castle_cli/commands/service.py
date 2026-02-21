@@ -190,6 +190,7 @@ WorkingDirectory={working_dir}
 ExecStart={exec_start}
 {env_lines}Restart={restart}
 RestartSec={restart_sec}
+SuccessExitStatus=143
 """
 
     if sd and sd.no_new_privileges:

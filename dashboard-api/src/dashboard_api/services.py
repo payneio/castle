@@ -6,6 +6,7 @@ import asyncio
 import time
 
 from fastapi import APIRouter, HTTPException, status
+from starlette.responses import JSONResponse
 
 from castle_cli.config import load_config
 
@@ -17,6 +18,7 @@ from dashboard_api.stream import broadcast
 router = APIRouter(prefix="/services", tags=["services"])
 
 UNIT_PREFIX = "castle-"
+SELF_NAME = "dashboard-api"
 
 
 async def _systemctl(action: str, unit: str) -> tuple[bool, str]:
@@ -77,10 +79,25 @@ async def _broadcast_health_with_override(
     })
 
 
-async def _do_action(name: str, action: str) -> dict:
+async def _deferred_systemctl(action: str, unit: str, delay: float = 0.5) -> None:
+    """Run a systemctl action after a delay, allowing the HTTP response to flush."""
+    await asyncio.sleep(delay)
+    await _systemctl(action, unit)
+
+
+async def _do_action(name: str, action: str) -> JSONResponse:
     """Execute a systemctl action and broadcast updated health."""
     _validate_managed(name)
     unit = f"{UNIT_PREFIX}{name}.service"
+
+    # Self-restart: defer the systemctl call so the response can be sent first
+    if name == SELF_NAME and action in ("restart", "stop"):
+        asyncio.create_task(_deferred_systemctl(action, unit))
+        return JSONResponse(
+            status_code=202,
+            content={"component": name, "action": action, "status": "accepted"},
+        )
+
     ok, output = await _systemctl(action, unit)
     unit_status = await _get_unit_status(unit)
 
@@ -90,22 +107,24 @@ async def _do_action(name: str, action: str) -> dict:
     # Broadcast immediately with systemd status as the source of truth
     await _broadcast_health_with_override(name, unit_status)
 
-    return {"component": name, "action": action, "status": unit_status}
+    return JSONResponse(
+        content={"component": name, "action": action, "status": unit_status},
+    )
 
 
 @router.post("/{name}/start")
-async def start_service(name: str) -> dict:
+async def start_service(name: str) -> JSONResponse:
     """Start a systemd-managed service."""
     return await _do_action(name, "start")
 
 
 @router.post("/{name}/stop")
-async def stop_service(name: str) -> dict:
+async def stop_service(name: str) -> JSONResponse:
     """Stop a systemd-managed service."""
     return await _do_action(name, "stop")
 
 
 @router.post("/{name}/restart")
-async def restart_service(name: str) -> dict:
+async def restart_service(name: str) -> JSONResponse:
     """Restart a systemd-managed service."""
     return await _do_action(name, "restart")

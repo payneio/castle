@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils"
+import { ROLE_DESCRIPTIONS } from "@/lib/labels"
 
 const roleColors: Record<string, string> = {
   service: "bg-green-700 text-white",
@@ -17,6 +18,7 @@ export function RoleBadge({ role }: { role: string }) {
         "inline-block text-[0.65rem] font-semibold uppercase px-1.5 py-0.5 rounded",
         roleColors[role] ?? "bg-gray-600 text-gray-200",
       )}
+      title={ROLE_DESCRIPTIONS[role]}
     >
       {role}
     </span>

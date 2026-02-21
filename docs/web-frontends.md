@@ -156,6 +156,9 @@ components:
 This gives the component both the `frontend` role (from `build`) and the
 `service` role (from `expose.http`) during development.
 
+See @docs/component-registry.md for the full manifest reference and role
+derivation rules.
+
 ## Serving with Caddy
 
 For production, serve the static `dist/` output directly from Caddy rather than

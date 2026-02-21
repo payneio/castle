@@ -8,6 +8,8 @@ import type {
   GatewayInfo,
   ServiceActionResponse,
   SSEHealthEvent,
+  ToolCategory,
+  ToolDetail,
 } from "@/types"
 
 export function useComponents() {
@@ -41,11 +43,66 @@ export function useGateway() {
   })
 }
 
+async function waitForApi(attempts = 20, interval = 1000): Promise<void> {
+  for (let i = 0; i < attempts; i++) {
+    try {
+      await apiClient.get<{ status: string }>("/health")
+      return
+    } catch {
+      await new Promise((r) => setTimeout(r, interval))
+    }
+  }
+}
+
 export function useServiceAction() {
+  const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ name, action }: { name: string; action: string }) =>
-      apiClient.post<ServiceActionResponse>(`/services/${name}/${action}`),
-    // SSE health event handles the UI update; no need to refetch here
+    mutationFn: async ({ name, action }: { name: string; action: string }) => {
+      try {
+        return await apiClient.post<ServiceActionResponse>(`/services/${name}/${action}`)
+      } catch (err) {
+        // Network error from self-restart killing the connection — expected
+        if (err instanceof TypeError) {
+          return { component: name, action, status: "accepted" } as ServiceActionResponse
+        }
+        throw err
+      }
+    },
+    onSuccess: async (data) => {
+      if (data.status === "accepted") {
+        // API is restarting itself — poll until it's back, then refresh everything
+        await waitForApi()
+        qc.invalidateQueries()
+      }
+    },
+  })
+}
+
+export function useToolAction() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ name, action }: { name: string; action: "install" | "uninstall" }) =>
+      apiClient.post<{ component: string; action: string; status: string }>(
+        `/tools/${name}/${action}`,
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["components"] })
+    },
+  })
+}
+
+export function useTools() {
+  return useQuery({
+    queryKey: ["tools"],
+    queryFn: () => apiClient.get<ToolCategory[]>("/tools"),
+  })
+}
+
+export function useToolDetail(name: string) {
+  return useQuery({
+    queryKey: ["tools", name],
+    queryFn: () => apiClient.get<ToolDetail>(`/tools/${name}`),
+    enabled: !!name,
   })
 }
 
