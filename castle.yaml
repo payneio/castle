@@ -155,13 +155,13 @@ components:
         alias: devbox-connect
     tool:
       source: devbox-connect/
-  mboxer:
+  mbox2eml:
     description: MBOX to EML email converter
     install:
       path:
-        alias: mboxer
+        alias: mbox2eml
     tool:
-      source: mboxer/
+      source: tools/document/
   android-backup:
     description: Backup Android device using ADB
     install:
