@@ -1,4 +1,4 @@
-"""Configuration for dashboard-api."""
+"""Configuration for castle-api."""
 
 from pathlib import Path
 
@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     port: int = 9020
 
     model_config = {
-        "env_prefix": "DASHBOARD_API_",
+        "env_prefix": "CASTLE_API_",
         "env_file": ".env",
     }
 

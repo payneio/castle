@@ -12,8 +12,8 @@ from pydantic import BaseModel
 from castle_cli.config import load_config, save_config
 from castle_cli.manifest import ComponentManifest
 
-from dashboard_api.config import settings
-from dashboard_api.stream import broadcast
+from castle_api.config import settings
+from castle_api.stream import broadcast
 
 router = APIRouter(prefix="/config", tags=["config"])
 

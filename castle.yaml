@@ -1,8 +1,7 @@
 gateway:
   port: 9000
 components:
-  # ── Infrastructure ──────────────────────────────────────
-  gateway:
+  castle-gateway:
     description: Caddy reverse proxy gateway
     run:
       runner: command
@@ -14,16 +13,15 @@ components:
       - /home/payne/.castle/generated/Caddyfile
       - --adapter
       - caddyfile
+    manage:
+      systemd:
+        exec_reload: caddy reload --config /home/payne/.castle/generated/Caddyfile
+          --adapter caddyfile
     expose:
       http:
         internal:
           port: 9000
         health_path: /
-    manage:
-      systemd:
-        exec_reload: caddy reload --config /home/payne/.castle/generated/Caddyfile --adapter caddyfile
-
-  # ── Services ──────────────────────────────────────────────
   central-context:
     description: Content storage API
     run:
@@ -44,7 +42,9 @@ components:
       caddy:
         path_prefix: /central-context
   notification-bridge:
-    description: Desktop notification forwarder
+    description: Desktop notification forwarder. This taps into your notifications
+      system on the desktop and will forward all notifications the the central context
+      server.
     run:
       runner: python_uv_tool
       cwd: notification-bridge
@@ -63,14 +63,14 @@ components:
     proxy:
       caddy:
         path_prefix: /notifications
-  dashboard-api:
-    description: Castle dashboard API
+  castle-api:
+    description: Castle API
     run:
       runner: python_uv_tool
-      cwd: dashboard-api
+      cwd: castle-api
       env:
-        DASHBOARD_API_CASTLE_ROOT: /data/repos/castle
-      tool: dashboard-api
+        CASTLE_API_CASTLE_ROOT: /data/repos/castle
+      tool: castle-api
     manage:
       systemd: {}
     expose:
@@ -137,10 +137,10 @@ components:
     manage:
       systemd: {}
     tool: {}
-  dashboard:
-    description: Castle web dashboard
+  castle-app:
+    description: Castle web app
     build:
-      working_dir: dashboard
+      working_dir: app
       commands:
       - - pnpm
         - build

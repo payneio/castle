@@ -10,7 +10,7 @@ from starlette.responses import StreamingResponse
 
 from castle_cli.config import load_config
 
-from dashboard_api.config import settings
+from castle_api.config import settings
 
 router = APIRouter(prefix="/logs", tags=["logs"])
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from dashboard_api.bus import bus
+from castle_api.bus import bus
 
 router = APIRouter(prefix="/events", tags=["events"])
 

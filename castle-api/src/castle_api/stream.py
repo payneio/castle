@@ -9,8 +9,8 @@ import time
 
 from castle_cli.config import load_config
 
-from dashboard_api.config import settings
-from dashboard_api.health import check_all_health
+from castle_api.config import settings
+from castle_api.health import check_all_health
 
 logger = logging.getLogger(__name__)
 

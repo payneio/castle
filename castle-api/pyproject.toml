@@ -1,7 +1,7 @@
 [project]
-name = "dashboard-api"
+name = "castle-api"
 version = "0.1.0"
-description = "Castle dashboard API"
+description = "Castle API"
 requires-python = ">=3.13"
 dependencies = [
     "fastapi>=0.115.0",
@@ -15,14 +15,14 @@ dependencies = [
 castle-cli = { path = "../cli", editable = true }
 
 [project.scripts]
-dashboard-api = "dashboard_api.main:run"
+castle-api = "castle_api.main:run"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/dashboard_api"]
+packages = ["src/castle_api"]
 
 [dependency-groups]
 dev = [
@@ -33,4 +33,4 @@ dev = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["dashboard_api"]
+known-first-party = ["castle_api"]

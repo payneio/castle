@@ -11,16 +11,16 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import StreamingResponse
 
-from dashboard_api.bus import bus
-from dashboard_api.config import settings
-from dashboard_api.config_editor import router as config_router
-from dashboard_api.events import router as events_router
-from dashboard_api.logs import router as logs_router
-from dashboard_api.routes import router as dashboard_router
-from dashboard_api.secrets import router as secrets_router
-from dashboard_api.services import router as services_router
-from dashboard_api.stream import close_all_subscribers, health_poll_loop, subscribe, unsubscribe
-from dashboard_api.tools import router as tools_router
+from castle_api.bus import bus
+from castle_api.config import settings
+from castle_api.config_editor import router as config_router
+from castle_api.events import router as events_router
+from castle_api.logs import router as logs_router
+from castle_api.routes import router as dashboard_router
+from castle_api.secrets import router as secrets_router
+from castle_api.services import router as services_router
+from castle_api.stream import close_all_subscribers, health_poll_loop, subscribe, unsubscribe
+from castle_api.tools import router as tools_router
 
 # Set by _watch_shutdown when uvicorn begins its shutdown sequence.
 _shutting_down = False
@@ -53,8 +53,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 
 app = FastAPI(
-    title="Castle API",
-    description="Castle dashboard API, event bus, and service management",
+    title="castle-api",
+    description="Castle API, event bus, and service management",
     version="0.1.0",
     lifespan=lifespan,
 )
@@ -109,7 +109,7 @@ async def sse_stream() -> StreamingResponse:
 def run() -> None:
     """Run the application with uvicorn."""
     config = uvicorn.Config(
-        "dashboard_api.main:app",
+        "castle_api.main:app",
         host=settings.host,
         port=settings.port,
         reload=False,
