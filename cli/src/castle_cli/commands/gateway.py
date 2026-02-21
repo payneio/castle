@@ -8,13 +8,13 @@ import subprocess
 from castle_cli.config import GENERATED_DIR, CastleConfig, ensure_dirs, load_config
 
 
-GATEWAY_COMPONENT = "gateway"
+GATEWAY_COMPONENT = "castle-gateway"
 GATEWAY_UNIT = "castle-gateway.service"
 
 
-def _find_dashboard_dist(config: CastleConfig) -> str | None:
-    """Find the dashboard dist/ directory if it exists."""
-    dist = config.root / "dashboard" / "dist"
+def _find_app_dist(config: CastleConfig) -> str | None:
+    """Find the app dist/ directory if it exists."""
+    dist = config.root / "app" / "dist"
     if dist.exists() and (dist / "index.html").exists():
         return str(dist)
     return None
@@ -42,17 +42,17 @@ def _generate_caddyfile(config: CastleConfig) -> str:
         lines.append("    }")
         lines.append("")
 
-    # Dashboard SPA at root (must come after more-specific handle_path rules)
-    dashboard_dist = _find_dashboard_dist(config)
-    if dashboard_dist:
+    # App SPA at root (must come after more-specific handle_path rules)
+    app_dist = _find_app_dist(config)
+    if app_dist:
         lines.append("    handle {")
-        lines.append(f"        root * {dashboard_dist}")
+        lines.append(f"        root * {app_dist}")
         lines.append("        try_files {path} /index.html")
         lines.append("        file_server")
         lines.append("    }")
     else:
         # Fallback: serve from generated directory
-        fallback = GENERATED_DIR / "dashboard"
+        fallback = GENERATED_DIR / "app"
         lines.append("    handle / {")
         lines.append(f"        root * {fallback}")
         lines.append("        file_server")
@@ -70,11 +70,11 @@ def _write_generated_files(config: CastleConfig) -> None:
     caddyfile_path.write_text(_generate_caddyfile(config))
     print(f"  Generated {caddyfile_path}")
 
-    dashboard_dist = _find_dashboard_dist(config)
-    if dashboard_dist:
-        print(f"  Dashboard: {dashboard_dist}")
+    app_dist = _find_app_dist(config)
+    if app_dist:
+        print(f"  App: {app_dist}")
     else:
-        print("  Dashboard: dist/ not found, using fallback")
+        print("  App: dist/ not found, using fallback")
 
 
 def run_gateway(args: argparse.Namespace) -> int:

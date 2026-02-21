@@ -1,4 +1,4 @@
-"""Test fixtures for dashboard-api."""
+"""Test fixtures for castle-api."""
 
 from collections.abc import Generator
 from pathlib import Path
@@ -7,8 +7,8 @@ import pytest
 import yaml
 from fastapi.testclient import TestClient
 
-from dashboard_api.config import settings
-from dashboard_api.main import app
+from castle_api.config import settings
+from castle_api.main import app
 
 
 @pytest.fixture

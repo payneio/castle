@@ -9,7 +9,7 @@ import httpx
 
 from castle_cli.config import CastleConfig
 
-from dashboard_api.models import HealthStatus
+from castle_api.models import HealthStatus
 
 
 async def check_all_health(config: CastleConfig) -> list[HealthStatus]:

@@ -1,23 +1,20 @@
 # Web Frontends in Castle
 
-How to build, serve, and manage web frontends as castle components. Based on
-the stack used in [wild-cloud/web](https://github.com/civilsociety-dev/wild-cloud).
+How to build, serve, and manage web frontends as castle components.
 
 ## Stack
 
-| Layer | Choice |
-|-------|--------|
-| **Build** | Vite 6 |
-| **Language** | TypeScript 5.8 (strict) |
-| **Framework** | React 19 |
-| **Routing** | React Router 7 |
-| **Styling** | Tailwind CSS 4 (`@tailwindcss/vite` plugin) |
-| **Components** | shadcn/ui (new-york style) + Radix UI primitives |
-| **Icons** | Lucide React |
-| **Server state** | TanStack React Query 5 |
-| **Forms** | React Hook Form + Zod validation |
-| **Testing** | Vitest + Testing Library |
-| **Package manager** | pnpm |
+- Build: Vite 6
+- Language: TypeScript 5.8 (strict)
+- Framework: React 19
+- Routing: React Router 7
+- Styling: Tailwind CSS 4 (`@tailwindcss/vite` plugin)
+- Components: shadcn/ui (new-york style) + Radix UI primitives
+- Icons: Lucide React
+- Server state: TanStack React Query 5
+- Forms: React Hook Form + Zod validation
+- Testing: Vitest + Testing Library
+- Package manager: pnpm
 
 ## Scaffolding a new frontend
 

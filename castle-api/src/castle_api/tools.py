@@ -10,8 +10,8 @@ from fastapi import APIRouter, HTTPException, status
 from castle_cli.config import load_config
 from castle_cli.manifest import ComponentManifest
 
-from dashboard_api.config import settings
-from dashboard_api.models import ToolCategory, ToolDetail, ToolSummary
+from castle_api.config import settings
+from castle_api.models import ToolCategory, ToolDetail, ToolSummary
 
 router = APIRouter(tags=["tools"])
 

@@ -9,9 +9,9 @@ from fastapi import APIRouter, HTTPException, status
 
 from castle_cli.config import load_config
 
-from dashboard_api.config import settings
-from dashboard_api.health import check_all_health
-from dashboard_api.models import (
+from castle_api.config import settings
+from castle_api.health import check_all_health
+from castle_api.models import (
     ComponentDetail,
     ComponentSummary,
     GatewayInfo,
