@@ -12,7 +12,7 @@ export function ToolCard({ tool }: ToolCardProps) {
     <div className="bg-[var(--card)] border border-[var(--border)] rounded-lg p-5">
       <div className="flex items-start justify-between mb-2">
         <Link
-          to={`/${tool.id}`}
+          to={`/component/${tool.id}`}
           className="text-base font-semibold hover:text-[var(--primary)] transition-colors"
         >
           {tool.id}

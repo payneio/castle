@@ -8,7 +8,6 @@ import subprocess
 from pathlib import Path
 
 from castle_cli.config import (
-    GENERATED_DIR,
     CastleConfig,
     ensure_dirs,
     load_config,
@@ -193,6 +192,13 @@ RestartSec={restart_sec}
 SuccessExitStatus=143
 """
 
+    if sd and sd.exec_reload:
+        reload_argv = sd.exec_reload.split()
+        resolved_reload = shutil.which(reload_argv[0])
+        if resolved_reload:
+            reload_argv[0] = resolved_reload
+        unit += f"ExecReload={' '.join(reload_argv)}\n"
+
     if sd and sd.no_new_privileges:
         unit += "NoNewPrivileges=true\n"
 
@@ -231,27 +237,6 @@ Description=Castle timer: {description}
 
 [Install]
 WantedBy=timers.target
-"""
-
-
-def _generate_gateway_unit(config: CastleConfig) -> str:
-    """Generate a systemd unit for the Caddy gateway."""
-    caddy_path = shutil.which("caddy") or "caddy"
-    caddyfile = GENERATED_DIR / "Caddyfile"
-
-    return f"""[Unit]
-Description=Castle Gateway (Caddy)
-After=network.target
-
-[Service]
-Type=simple
-ExecStart={caddy_path} run --config {caddyfile} --adapter caddyfile
-ExecReload={caddy_path} reload --config {caddyfile} --adapter caddyfile
-Restart=on-failure
-RestartSec=5
-
-[Install]
-WantedBy=default.target
 """
 
 
@@ -432,17 +417,6 @@ def _service_status(config: CastleConfig) -> int:
                 port_str = f":{manifest.expose.http.internal.port}"
             print(f"  {color}{status:10s}{reset}  {name}{port_str}")
 
-    # Gateway status
-    gw_unit = f"{UNIT_PREFIX}gateway.service"
-    result = subprocess.run(
-        ["systemctl", "--user", "is-active", gw_unit],
-        capture_output=True, text=True,
-    )
-    gw_status = result.stdout.strip()
-    color = "\033[92m" if gw_status == "active" else "\033[90m"
-    reset = "\033[0m"
-    print(f"  {color}{gw_status:10s}{reset}  gateway :{config.gateway.port}")
-
     print()
     return 0
 
@@ -476,20 +450,11 @@ def _services_start(config: CastleConfig) -> int:
     """Start all managed services and gateway."""
     ensure_dirs()
 
+    # Generate Caddyfile before starting gateway
     from castle_cli.commands.gateway import _write_generated_files
 
     print("Generating gateway configuration...")
     _write_generated_files(config)
-
-    if shutil.which("caddy"):
-        gw_unit_name = f"{UNIT_PREFIX}gateway.service"
-        gw_content = _generate_gateway_unit(config)
-        _install_unit(gw_unit_name, gw_content)
-        subprocess.run(["systemctl", "--user", "enable", gw_unit_name], check=False)
-        subprocess.run(["systemctl", "--user", "start", gw_unit_name], check=False)
-        print(f"Gateway: started on port {config.gateway.port}")
-    else:
-        print("Warning: caddy not installed, skipping gateway")
 
     for name, manifest in config.managed.items():
         if not manifest.run:
@@ -510,9 +475,5 @@ def _services_stop(config: CastleConfig) -> int:
         unit_name = _unit_name(name)
         subprocess.run(["systemctl", "--user", "stop", unit_name], check=False)
         print(f"  {name}: stopped")
-
-    gw_unit = f"{UNIT_PREFIX}gateway.service"
-    subprocess.run(["systemctl", "--user", "stop", gw_unit], check=False)
-    print("  gateway: stopped")
 
     return 0

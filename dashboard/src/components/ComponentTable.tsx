@@ -220,7 +220,7 @@ function ComponentRow({
     <tr className="border-b border-[var(--border)] last:border-b-0 hover:bg-[var(--card)]/50 transition-colors">
       <td className="px-3 py-2.5">
         <Link
-          to={`/${component.id}`}
+          to={`/component/${component.id}`}
           className="font-medium hover:text-[var(--primary)] transition-colors"
           title={component.systemd?.unit_path ?? undefined}
         >

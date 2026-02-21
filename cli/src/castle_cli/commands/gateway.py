@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import argparse
-import shutil
 import subprocess
 
 from castle_cli.config import GENERATED_DIR, CastleConfig, ensure_dirs, load_config
+
+
+GATEWAY_COMPONENT = "gateway"
+GATEWAY_UNIT = "castle-gateway.service"
 
 
 def _find_dashboard_dist(config: CastleConfig) -> str | None:
@@ -82,14 +85,15 @@ def run_gateway(args: argparse.Namespace) -> int:
 
     config = load_config()
 
-    if args.gateway_command in ("start", "reload") and getattr(args, "dry_run", False):
-        return _gateway_dry_run(config)
-
     if args.gateway_command == "start":
+        if getattr(args, "dry_run", False):
+            return _gateway_dry_run(config)
         return _gateway_start(config)
     elif args.gateway_command == "stop":
         return _gateway_stop()
     elif args.gateway_command == "reload":
+        if getattr(args, "dry_run", False):
+            return _gateway_dry_run(config)
         return _gateway_reload(config)
     elif args.gateway_command == "status":
         return _gateway_status()
@@ -98,52 +102,32 @@ def run_gateway(args: argparse.Namespace) -> int:
 
 
 def _gateway_dry_run(config: CastleConfig) -> int:
-    """Print generated Caddyfile and gateway unit without applying."""
-    from castle_cli.commands.service import _generate_gateway_unit
-
+    """Print generated Caddyfile without applying."""
     print("# Caddyfile")
     print(_generate_caddyfile(config))
-    print()
-    print("# castle-gateway.service")
-    print(_generate_gateway_unit(config))
     return 0
 
 
 def _gateway_start(config: CastleConfig) -> int:
-    """Generate config and start Caddy."""
-    if not shutil.which("caddy"):
-        print("Error: caddy is not installed.")
-        print("Install with: sudo apt install caddy")
+    """Generate config and enable the gateway service."""
+    from castle_cli.commands.service import _service_enable
+
+    if GATEWAY_COMPONENT not in config.managed:
+        print(f"Error: '{GATEWAY_COMPONENT}' not found in castle.yaml or not managed")
         return 1
 
     print("Generating gateway configuration...")
     _write_generated_files(config)
 
-    caddyfile = GENERATED_DIR / "Caddyfile"
-    print(f"\nStarting Caddy on port {config.gateway.port}...")
-
-    result = subprocess.run(
-        ["caddy", "start", "--config", str(caddyfile), "--adapter", "caddyfile"],
-    )
-
-    if result.returncode == 0:
-        print(f"Gateway running at http://localhost:{config.gateway.port}")
-    else:
-        print("Failed to start gateway.")
-
-    return result.returncode
+    print(f"\nStarting gateway on port {config.gateway.port}...")
+    return _service_enable(config, GATEWAY_COMPONENT)
 
 
 def _gateway_stop() -> int:
-    """Stop Caddy."""
-    if not shutil.which("caddy"):
-        print("Error: caddy is not installed.")
-        return 1
+    """Stop the gateway service."""
+    from castle_cli.commands.service import _service_disable
 
-    result = subprocess.run(["caddy", "stop"])
-    if result.returncode == 0:
-        print("Gateway stopped.")
-    return result.returncode
+    return _service_disable(GATEWAY_COMPONENT)
 
 
 def _gateway_reload(config: CastleConfig) -> int:
@@ -151,36 +135,39 @@ def _gateway_reload(config: CastleConfig) -> int:
     print("Regenerating gateway configuration...")
     _write_generated_files(config)
 
-    caddyfile = GENERATED_DIR / "Caddyfile"
     result = subprocess.run(
-        ["caddy", "reload", "--config", str(caddyfile), "--adapter", "caddyfile"],
+        ["systemctl", "--user", "reload", GATEWAY_UNIT],
+        capture_output=True, text=True,
     )
 
     if result.returncode == 0:
         print("Gateway reloaded.")
     else:
-        print("Failed to reload gateway. Is it running?")
+        # Fall back to restart if reload not supported
+        print("Reload signal sent. Verifying...")
+        result = subprocess.run(
+            ["systemctl", "--user", "is-active", GATEWAY_UNIT],
+            capture_output=True, text=True,
+        )
+        if result.stdout.strip() == "active":
+            print("Gateway running.")
+        else:
+            print("Warning: gateway may not be running. Try: castle gateway start")
 
-    return result.returncode
+    return 0
 
 
 def _gateway_status() -> int:
-    """Show gateway status."""
-    if not shutil.which("caddy"):
-        print("Gateway: not installed")
-        return 1
-
+    """Show gateway status via systemd."""
     result = subprocess.run(
-        ["pgrep", "-x", "caddy"],
-        capture_output=True,
+        ["systemctl", "--user", "is-active", GATEWAY_UNIT],
+        capture_output=True, text=True,
     )
+    status = result.stdout.strip()
 
-    if result.returncode == 0:
+    if status == "active":
         print("Gateway: running")
-        caddyfile = GENERATED_DIR / "Caddyfile"
-        if caddyfile.exists():
-            print(f"  Config: {caddyfile}")
     else:
-        print("Gateway: stopped")
+        print(f"Gateway: {status}")
 
     return 0

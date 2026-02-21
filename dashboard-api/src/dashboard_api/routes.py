@@ -132,3 +132,12 @@ def get_gateway() -> GatewayInfo:
         service_count=len(config.services),
         managed_count=len(config.managed),
     )
+
+
+@router.get("/gateway/caddyfile")
+def get_caddyfile() -> dict[str, str]:
+    """Return the generated Caddyfile content."""
+    from castle_cli.commands.gateway import _generate_caddyfile
+
+    config = load_config(settings.castle_root)
+    return {"content": _generate_caddyfile(config)}

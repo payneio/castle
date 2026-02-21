@@ -8,7 +8,7 @@ export const router = createBrowserRouter([
     element: <Dashboard />,
   },
   {
-    path: "/:name",
+    path: "/component/:name",
     element: <ComponentDetailPage />,
   },
 ])

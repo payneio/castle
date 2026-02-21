@@ -3,7 +3,7 @@ import { useParams, Link, useNavigate } from "react-router-dom"
 import { ArrowLeft, Check, Play, RefreshCw, Square } from "lucide-react"
 import { useQueryClient } from "@tanstack/react-query"
 import { apiClient } from "@/services/api/client"
-import { useComponent, useStatus, useServiceAction, useEventStream, useToolDetail } from "@/services/api/hooks"
+import { useComponent, useStatus, useServiceAction, useEventStream, useToolDetail, useCaddyfile, useSystemdUnit } from "@/services/api/hooks"
 import { runnerLabel } from "@/lib/labels"
 import { ComponentFields } from "@/components/ComponentFields"
 import { HealthBadge } from "@/components/HealthBadge"
@@ -22,6 +22,10 @@ export function ComponentDetailPage() {
   const isDown = health?.status === "down"
   const isTool = component?.roles.includes("tool") ?? false
   const { data: toolDetail } = useToolDetail(isTool ? (name ?? "") : "")
+  const isGateway = name === "gateway"
+  const { data: caddyfile } = useCaddyfile(isGateway)
+  const [showUnit, setShowUnit] = useState(false)
+  const { data: unitData } = useSystemdUnit(name ?? "", showUnit && !!component?.systemd)
   const [message, setMessage] = useState<{ type: "ok" | "error"; text: string } | null>(null)
 
   const handleSave = async (compName: string, config: Record<string, unknown>) => {
@@ -189,9 +193,17 @@ export function ComponentDetailPage() {
 
       {component.systemd && (
         <div className="bg-[var(--card)] border border-[var(--border)] rounded-lg p-5 mb-6">
-          <h2 className="text-sm font-semibold text-[var(--muted)] uppercase tracking-wider mb-1">
-            Systemd
-          </h2>
+          <div className="flex items-center justify-between mb-1">
+            <h2 className="text-sm font-semibold text-[var(--muted)] uppercase tracking-wider">
+              Systemd
+            </h2>
+            <button
+              onClick={() => setShowUnit((v) => !v)}
+              className="text-xs text-[var(--primary)] hover:underline"
+            >
+              {showUnit ? "Hide unit file" : "View unit file"}
+            </button>
+          </div>
           <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm mt-3">
             <span className="text-[var(--muted)]">Unit</span>
             <span className="font-mono">{component.systemd.unit_name}</span>
@@ -204,6 +216,40 @@ export function ComponentDetailPage() {
               </>
             )}
           </div>
+          {showUnit && unitData && (
+            <div className="mt-4 space-y-3">
+              <div>
+                <span className="text-xs text-[var(--muted)] block mb-1">{component.systemd.unit_name}</span>
+                <pre className="text-sm whitespace-pre-wrap bg-[var(--background)] rounded p-3 border border-[var(--border)] font-mono overflow-x-auto">
+                  {unitData.service}
+                </pre>
+              </div>
+              {unitData.timer && (
+                <div>
+                  <span className="text-xs text-[var(--muted)] block mb-1">
+                    {component.systemd.unit_name.replace(".service", ".timer")}
+                  </span>
+                  <pre className="text-sm whitespace-pre-wrap bg-[var(--background)] rounded p-3 border border-[var(--border)] font-mono overflow-x-auto">
+                    {unitData.timer}
+                  </pre>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {isGateway && caddyfile?.content && (
+        <div className="bg-[var(--card)] border border-[var(--border)] rounded-lg p-5 mb-6">
+          <h2 className="text-sm font-semibold text-[var(--muted)] uppercase tracking-wider mb-1">
+            Caddyfile
+          </h2>
+          <p className="text-xs text-[var(--muted)] mb-3">
+            Generated reverse proxy configuration served by the gateway.
+          </p>
+          <pre className="text-sm whitespace-pre-wrap bg-[var(--background)] rounded p-3 border border-[var(--border)] font-mono overflow-x-auto">
+            {caddyfile.content}
+          </pre>
         </div>
       )}
 
