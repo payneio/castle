@@ -221,6 +221,7 @@ class ProxySpec(BaseModel):
 
 
 class BuildSpec(BaseModel):
+    working_dir: str | None = None
     commands: list[list[str]] = Field(default_factory=list)
     outputs: list[str] = Field(default_factory=list)
 

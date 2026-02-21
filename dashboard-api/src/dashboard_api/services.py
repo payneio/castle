@@ -112,6 +112,19 @@ async def _do_action(name: str, action: str) -> JSONResponse:
     )
 
 
+@router.get("/{name}/unit")
+def get_unit(name: str) -> dict[str, str | None]:
+    """Return the generated systemd unit file(s) for a managed component."""
+    from castle_cli.commands.service import _generate_timer, _generate_unit
+
+    _validate_managed(name)
+    config = load_config(settings.castle_root)
+    manifest = config.managed[name]
+    unit = _generate_unit(config, name, manifest)
+    timer = _generate_timer(name, manifest)
+    return {"service": unit, "timer": timer}
+
+
 @router.post("/{name}/start")
 async def start_service(name: str) -> JSONResponse:
     """Start a systemd-managed service."""

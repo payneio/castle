@@ -43,6 +43,14 @@ export function useGateway() {
   })
 }
 
+export function useCaddyfile(enabled = true) {
+  return useQuery({
+    queryKey: ["gateway", "caddyfile"],
+    queryFn: () => apiClient.get<{ content: string }>("/gateway/caddyfile"),
+    enabled,
+  })
+}
+
 async function waitForApi(attempts = 20, interval = 1000): Promise<void> {
   for (let i = 0; i < attempts; i++) {
     try {
@@ -52,6 +60,14 @@ async function waitForApi(attempts = 20, interval = 1000): Promise<void> {
       await new Promise((r) => setTimeout(r, interval))
     }
   }
+}
+
+export function useSystemdUnit(name: string, enabled = true) {
+  return useQuery({
+    queryKey: ["services", name, "unit"],
+    queryFn: () => apiClient.get<{ service: string; timer: string | null }>(`/services/${name}/unit`),
+    enabled: enabled && !!name,
+  })
 }
 
 export function useServiceAction() {
