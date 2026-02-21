@@ -22,7 +22,7 @@ export function ComponentDetailPage() {
   const isDown = health?.status === "down"
   const isTool = component?.roles.includes("tool") ?? false
   const { data: toolDetail } = useToolDetail(isTool ? (name ?? "") : "")
-  const isGateway = name === "gateway"
+  const isGateway = name === "castle-gateway"
   const { data: caddyfile } = useCaddyfile(isGateway)
   const [showUnit, setShowUnit] = useState(false)
   const { data: unitData } = useSystemdUnit(name ?? "", showUnit && !!component?.systemd)
