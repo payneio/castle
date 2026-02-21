@@ -9,7 +9,7 @@ from castle_cli.config import GENERATED_DIR, CastleConfig, ensure_dirs, load_con
 
 
 GATEWAY_COMPONENT = "castle-gateway"
-GATEWAY_UNIT = "castle-gateway.service"
+GATEWAY_UNIT = "castle-castle-gateway.service"
 
 
 def _find_app_dist(config: CastleConfig) -> str | None:
