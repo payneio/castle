@@ -1,0 +1,295 @@
+gateway:
+  port: 9000
+components:
+  # ── Services ──────────────────────────────────────────────
+  central-context:
+    description: Content storage API
+    run:
+      runner: python_uv_tool
+      cwd: central-context
+      env:
+        CENTRAL_CONTEXT_DATA_DIR: /data/castle/central-context
+        CENTRAL_CONTEXT_PORT: "9001"
+      tool: central-context
+    manage:
+      systemd: {}
+    expose:
+      http:
+        internal:
+          port: 9001
+        health_path: /health
+    proxy:
+      caddy:
+        path_prefix: /central-context
+
+  notification-bridge:
+    description: Desktop notification forwarder
+    run:
+      runner: python_uv_tool
+      cwd: notification-bridge
+      env:
+        CENTRAL_CONTEXT_URL: http://localhost:9001
+        BUCKET_NAME: notifications
+        PORT: "9002"
+      tool: notification-bridge
+    manage:
+      systemd: {}
+    expose:
+      http:
+        internal:
+          port: 9002
+        health_path: /health
+    proxy:
+      caddy:
+        path_prefix: /notifications
+
+  dashboard-api:
+    description: Castle dashboard API
+    run:
+      runner: python_uv_tool
+      cwd: dashboard-api
+      env:
+        DASHBOARD_API_CASTLE_ROOT: /data/repos/castle
+      tool: dashboard-api
+    manage:
+      systemd: {}
+    expose:
+      http:
+        internal:
+          port: 9020
+        health_path: /health
+    proxy:
+      caddy:
+        path_prefix: /api
+
+  # ── Jobs ──────────────────────────────────────────────────
+  protonmail:
+    description: ProtonMail email sync via Bridge
+    run:
+      runner: command
+      argv: ["protonmail", "sync"]
+      cwd: protonmail
+      env:
+        PROTONMAIL_USERNAME: paul@payne.io
+        PROTONMAIL_API_KEY: ${secret:PROTONMAIL_API_KEY}
+    tool:
+      tool_type: python_standalone
+      category: email
+      source: protonmail/
+    triggers:
+      - type: schedule
+        cron: "*/5 * * * *"
+    manage:
+      systemd: {}
+    install:
+      path:
+        alias: protonmail
+
+  backup-collect:
+    description: Collect files from various sources into backup directory
+    run:
+      runner: command
+      argv: ["backup-collect"]
+      env:
+        DBACKUP: /data/backup
+    tool:
+      tool_type: python_standalone
+      category: system
+      source: tools/system/
+      system_dependencies: [rsync]
+    triggers:
+      - type: schedule
+        cron: "0 2 * * *"
+    manage:
+      systemd: {}
+
+  backup-data:
+    description: Nightly restic backup of /data to /storage
+    run:
+      runner: command
+      argv: ["backup-data"]
+      env:
+        RESTIC_REPOSITORY: /storage/restic-data
+        RESTIC_PASSWORD_FILE: /home/payne/.config/restic-password
+    tool:
+      tool_type: script
+      category: system
+    triggers:
+      - type: schedule
+        cron: "30 3 * * *"
+    manage:
+      systemd: {}
+
+  # ── Frontend ──────────────────────────────────────────────
+  dashboard:
+    description: Castle web dashboard
+    run:
+      runner: node
+      cwd: dashboard
+      script: dev
+    expose:
+      http:
+        internal:
+          port: 5173
+    build:
+      commands:
+        - ["pnpm", "build"]
+      outputs:
+        - dist/
+
+  # ── Standalone tools ──────────────────────────────────────
+  devbox-connect:
+    description: SSH tunnel manager with auto-reconnect
+    tool:
+      tool_type: python_standalone
+      category: system
+      source: devbox-connect/
+    install:
+      path:
+        alias: devbox-connect
+
+  mboxer:
+    description: MBOX to EML email converter
+    tool:
+      tool_type: python_standalone
+      category: email
+      source: mboxer/
+    install:
+      path:
+        alias: mboxer
+
+  # ── Category tools (per-category packages) ────────────────
+  android-backup:
+    description: Backup Android device using ADB
+    tool:
+      tool_type: python_standalone
+      category: android
+      source: tools/android/
+      system_dependencies: [adb]
+    install:
+      path:
+        alias: android-backup
+
+  browser:
+    description: Browse the web using natural language via browser-use
+    tool:
+      tool_type: python_standalone
+      category: browser
+      source: tools/browser/
+    install:
+      path:
+        alias: browser
+
+  docx-extractor:
+    description: Extract content and metadata from Word .docx files
+    tool:
+      tool_type: python_standalone
+      category: search
+      source: tools/search/
+      system_dependencies: [pandoc]
+    install:
+      path:
+        alias: docx-extractor
+
+  docx2md:
+    description: Convert Word .docx files to Markdown
+    tool:
+      tool_type: python_standalone
+      category: document
+      source: tools/document/
+      system_dependencies: [pandoc]
+    install:
+      path:
+        alias: docx2md
+
+  gpt:
+    description: OpenAI text generation utility
+    tool:
+      tool_type: python_standalone
+      category: gpt
+      source: tools/gpt/
+    install:
+      path:
+        alias: gpt
+
+  html2text:
+    description: Convert HTML content to plain text
+    tool:
+      tool_type: python_standalone
+      category: document
+      source: tools/document/
+    install:
+      path:
+        alias: html2text
+
+  md2pdf:
+    description: Convert Markdown files to PDF
+    tool:
+      tool_type: python_standalone
+      category: document
+      source: tools/document/
+      system_dependencies: [pandoc, texlive-latex-base]
+    install:
+      path:
+        alias: md2pdf
+
+  mdscraper:
+    description: Combine text files into a single markdown document
+    tool:
+      tool_type: python_standalone
+      category: mdscraper
+      source: tools/mdscraper/
+    install:
+      path:
+        alias: mdscraper
+
+  pdf-extractor:
+    description: Extract content and metadata from PDF files
+    tool:
+      tool_type: python_standalone
+      category: search
+      source: tools/search/
+    install:
+      path:
+        alias: pdf-extractor
+
+  pdf2md:
+    description: Convert PDF files to Markdown
+    tool:
+      tool_type: python_standalone
+      category: document
+      source: tools/document/
+      system_dependencies: [pandoc, poppler-utils]
+    install:
+      path:
+        alias: pdf2md
+
+  schedule:
+    description: Manage systemd user timers and scheduled tasks
+    tool:
+      tool_type: python_standalone
+      category: system
+      source: tools/system/
+    install:
+      path:
+        alias: schedule
+
+  search:
+    description: Manage self-contained searchable collections of files
+    tool:
+      tool_type: python_standalone
+      category: search
+      source: tools/search/
+    install:
+      path:
+        alias: search
+
+  text-extractor:
+    description: Extract content and metadata from text files
+    tool:
+      tool_type: python_standalone
+      category: search
+      source: tools/search/
+    install:
+      path:
+        alias: text-extractor
