@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from castle_cli.manifest import (
+from castle_core.manifest import (
     BuildSpec,
     CaddySpec,
     ComponentManifest,

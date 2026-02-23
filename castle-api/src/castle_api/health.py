@@ -7,7 +7,7 @@ import time
 
 import httpx
 
-from castle_cli.config import CastleConfig
+from castle_core.config import CastleConfig
 
 from castle_api.models import HealthStatus
 

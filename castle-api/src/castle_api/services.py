@@ -8,7 +8,7 @@ import time
 from fastapi import APIRouter, HTTPException, status
 from starlette.responses import JSONResponse
 
-from castle_cli.config import load_config
+from castle_core.config import load_config
 
 from castle_api.config import settings
 from castle_api.health import check_all_health
@@ -115,13 +115,13 @@ async def _do_action(name: str, action: str) -> JSONResponse:
 @router.get("/{name}/unit")
 def get_unit(name: str) -> dict[str, str | None]:
     """Return the generated systemd unit file(s) for a managed component."""
-    from castle_cli.commands.service import _generate_timer, _generate_unit
+    from castle_core.generators import generate_timer, generate_unit
 
     _validate_managed(name)
     config = load_config(settings.castle_root)
     manifest = config.managed[name]
-    unit = _generate_unit(config, name, manifest)
-    timer = _generate_timer(name, manifest)
+    unit = generate_unit(config, name, manifest)
+    timer = generate_timer(name, manifest)
     return {"service": unit, "timer": timer}
 
 

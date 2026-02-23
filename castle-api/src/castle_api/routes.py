@@ -7,7 +7,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, status
 
-from castle_cli.config import load_config
+from castle_core.config import load_config
 
 from castle_api.config import settings
 from castle_api.health import check_all_health
@@ -137,7 +137,7 @@ def get_gateway() -> GatewayInfo:
 @router.get("/gateway/caddyfile")
 def get_caddyfile() -> dict[str, str]:
     """Return the generated Caddyfile content."""
-    from castle_cli.commands.gateway import _generate_caddyfile
+    from castle_core.generators import generate_caddyfile
 
     config = load_config(settings.castle_root)
-    return {"content": _generate_caddyfile(config)}
+    return {"content": generate_caddyfile(config)}

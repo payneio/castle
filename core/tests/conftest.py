@@ -1,4 +1,4 @@
-"""Shared fixtures for castle CLI tests."""
+"""Shared fixtures for castle core tests."""
 
 from __future__ import annotations
 

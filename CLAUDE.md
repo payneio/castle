@@ -94,8 +94,9 @@ Services also support: `uv run <service-name>` to start.
 ## Key Files
 
 - `castle.yaml` — Component registry (single source of truth)
-- `cli/src/castle_cli/manifest.py` — Pydantic models (ComponentManifest, RunSpec, etc.)
-- `cli/src/castle_cli/config.py` — Config loader (castle.yaml → CastleConfig)
+- `core/src/castle_core/manifest.py` — Pydantic models (ComponentManifest, RunSpec, etc.)
+- `core/src/castle_core/config.py` — Config loader (castle.yaml → CastleConfig)
+- `core/src/castle_core/generators/` — Systemd unit and Caddyfile generation
 - `cli/src/castle_cli/templates/scaffold.py` — Project scaffolding templates
-- `cli/src/castle_cli/commands/service.py` — Systemd unit generation
+- `pyproject.toml` — uv workspace root (core, cli, castle-api)
 - `ruff.toml` / `pyrightconfig.json` — Shared lint/type config

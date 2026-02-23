@@ -7,7 +7,7 @@ import json
 import logging
 import time
 
-from castle_cli.config import load_config
+from castle_core.config import load_config
 
 from castle_api.config import settings
 from castle_api.health import check_all_health

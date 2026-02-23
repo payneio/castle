@@ -9,8 +9,8 @@ import yaml
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 
-from castle_cli.config import load_config, save_config
-from castle_cli.manifest import ComponentManifest
+from castle_core.config import load_config, save_config
+from castle_core.manifest import ComponentManifest
 
 from castle_api.config import settings
 from castle_api.stream import broadcast
@@ -148,12 +148,12 @@ async def apply_config() -> ApplyResponse:
             errors.append(f"Failed to restart {name}: {output}")
 
     # Reload gateway
-    from castle_cli.commands.gateway import _generate_caddyfile
-    from castle_cli.config import GENERATED_DIR, ensure_dirs
+    from castle_core.config import GENERATED_DIR, ensure_dirs
+    from castle_core.generators import generate_caddyfile
 
     ensure_dirs()
     caddyfile_path = GENERATED_DIR / "Caddyfile"
-    caddyfile_path.write_text(_generate_caddyfile(config))
+    caddyfile_path.write_text(generate_caddyfile(config))
     actions.append("Generated Caddyfile")
 
     if shutil.which("caddy"):

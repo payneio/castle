@@ -7,8 +7,8 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, status
 
-from castle_cli.config import load_config
-from castle_cli.manifest import ComponentManifest
+from castle_core.config import load_config
+from castle_core.manifest import ComponentManifest
 
 from castle_api.config import settings
 from castle_api.models import ToolDetail, ToolSummary
