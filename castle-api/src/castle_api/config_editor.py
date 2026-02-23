@@ -9,10 +9,10 @@ import yaml
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 
-from castle_core.config import load_config, save_config
+from castle_core.config import save_config
 from castle_core.manifest import ComponentManifest
 
-from castle_api.config import settings
+from castle_api.config import get_castle_root, get_config, get_registry
 from castle_api.stream import broadcast
 
 router = APIRouter(prefix="/config", tags=["config"])
@@ -42,16 +42,29 @@ class ComponentConfigRequest(BaseModel):
     config: dict
 
 
+def _require_repo() -> None:
+    """Raise 503 if repo is not available."""
+    if get_castle_root() is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Castle repo not available on this node.",
+        )
+
+
 @router.get("", response_model=ConfigResponse)
-def get_config() -> ConfigResponse:
+def get_config_yaml() -> ConfigResponse:
     """Get the raw castle.yaml content."""
-    config_path = settings.castle_root / "castle.yaml"
+    _require_repo()
+    root = get_castle_root()
+    config_path = root / "castle.yaml"
     return ConfigResponse(yaml_content=config_path.read_text())
 
 
 @router.put("", response_model=ConfigSaveResponse)
 def save_yaml(request: ConfigSaveRequest) -> ConfigSaveResponse:
     """Validate and save castle.yaml. Does NOT apply changes."""
+    _require_repo()
+    root = get_castle_root()
     errors: list[str] = []
 
     # Parse YAML
@@ -87,7 +100,7 @@ def save_yaml(request: ConfigSaveRequest) -> ConfigSaveResponse:
         )
 
     # Backup and save
-    config_path = settings.castle_root / "castle.yaml"
+    config_path = root / "castle.yaml"
     backup_path = config_path.with_suffix(".yaml.bak")
     shutil.copy2(config_path, backup_path)
     config_path.write_text(request.yaml_content)
@@ -98,6 +111,8 @@ def save_yaml(request: ConfigSaveRequest) -> ConfigSaveResponse:
 @router.put("/components/{name}")
 def save_component(name: str, request: ComponentConfigRequest) -> dict:
     """Update a single component's config in castle.yaml."""
+    _require_repo()
+
     # Validate
     try:
         comp_data = dict(request.config)
@@ -109,7 +124,7 @@ def save_component(name: str, request: ComponentConfigRequest) -> dict:
             detail=f"Invalid component config: {e}",
         )
 
-    config = load_config(settings.castle_root)
+    config = get_config()
     config.components[name] = ComponentManifest.model_validate(
         {**request.config, "id": name}
     )
@@ -120,7 +135,7 @@ def save_component(name: str, request: ComponentConfigRequest) -> dict:
 @router.delete("/components/{name}")
 def delete_component(name: str) -> dict:
     """Remove a component from castle.yaml."""
-    config = load_config(settings.castle_root)
+    config = get_config()
     if name not in config.components:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -133,13 +148,15 @@ def delete_component(name: str) -> dict:
 
 @router.post("/apply", response_model=ApplyResponse)
 async def apply_config() -> ApplyResponse:
-    """Apply config: regenerate systemd units for managed services + reload gateway."""
-    config = load_config(settings.castle_root)
+    """Apply config: restart managed services + regenerate and reload gateway."""
+    registry = get_registry()
     actions: list[str] = []
     errors: list[str] = []
 
-    # Regenerate and restart managed services
-    for name in config.managed:
+    # Restart managed services
+    for name, deployed in registry.deployed.items():
+        if not deployed.managed:
+            continue
         unit = f"castle-{name}.service"
         ok, output = await _systemctl("restart", unit)
         if ok:
@@ -149,17 +166,17 @@ async def apply_config() -> ApplyResponse:
 
     # Reload gateway
     from castle_core.config import GENERATED_DIR, ensure_dirs
-    from castle_core.generators import generate_caddyfile
+    from castle_core.generators.caddyfile import generate_caddyfile_from_registry
 
     ensure_dirs()
     caddyfile_path = GENERATED_DIR / "Caddyfile"
-    caddyfile_path.write_text(generate_caddyfile(config))
+    caddyfile_path.write_text(generate_caddyfile_from_registry(registry))
     actions.append("Generated Caddyfile")
 
     if shutil.which("caddy"):
-        ok, output = await _run("caddy", "reload",
-                                "--config", str(caddyfile_path),
-                                "--adapter", "caddyfile")
+        ok, output = await _run(
+            "caddy", "reload", "--config", str(caddyfile_path), "--adapter", "caddyfile"
+        )
         if ok:
             actions.append("Reloaded gateway")
         else:
@@ -171,7 +188,10 @@ async def apply_config() -> ApplyResponse:
 
 async def _systemctl(action: str, unit: str) -> tuple[bool, str]:
     proc = await asyncio.create_subprocess_exec(
-        "systemctl", "--user", action, unit,
+        "systemctl",
+        "--user",
+        action,
+        unit,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )

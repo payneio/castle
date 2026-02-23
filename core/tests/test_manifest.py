@@ -33,9 +33,7 @@ class TestRoleDerivation:
         m = ComponentManifest(
             id="svc",
             run=RunPythonUvTool(runner="python_uv_tool", tool="svc"),
-            expose=ExposeSpec(
-                http=HttpExposeSpec(internal=HttpInternal(port=8000))
-            ),
+            expose=ExposeSpec(http=HttpExposeSpec(internal=HttpInternal(port=8000))),
         )
         assert Role.SERVICE in m.roles
 
@@ -117,9 +115,7 @@ class TestRoleDerivation:
         m = ComponentManifest(
             id="multi",
             run=RunPythonUvTool(runner="python_uv_tool", tool="multi"),
-            expose=ExposeSpec(
-                http=HttpExposeSpec(internal=HttpInternal(port=8000))
-            ),
+            expose=ExposeSpec(http=HttpExposeSpec(internal=HttpInternal(port=8000))),
             install=InstallSpec(path=PathInstallSpec(alias="multi")),
         )
         assert Role.SERVICE in m.roles
@@ -130,9 +126,7 @@ class TestRoleDerivation:
         m = ComponentManifest(
             id="svc",
             run=RunPythonUvTool(runner="python_uv_tool", tool="svc"),
-            expose=ExposeSpec(
-                http=HttpExposeSpec(internal=HttpInternal(port=8000))
-            ),
+            expose=ExposeSpec(http=HttpExposeSpec(internal=HttpInternal(port=8000))),
             manage=ManageSpec(systemd=SystemdSpec()),
         )
         assert Role.SERVICE in m.roles
@@ -144,7 +138,9 @@ class TestConsistencyValidation:
 
     def test_remote_with_systemd_raises(self) -> None:
         """Remote runner + systemd management is invalid."""
-        with pytest.raises(ValueError, match="manage.systemd cannot be enabled for runner=remote"):
+        with pytest.raises(
+            ValueError, match="manage.systemd cannot be enabled for runner=remote"
+        ):
             ComponentManifest(
                 id="bad",
                 run=RunRemote(runner="remote", base_url="http://example.com"),

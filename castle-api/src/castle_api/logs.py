@@ -42,7 +42,13 @@ async def get_logs(
 
     # Static tail
     proc = await asyncio.create_subprocess_exec(
-        "journalctl", "--user", "-u", unit, "-n", str(n), "--no-pager",
+        "journalctl",
+        "--user",
+        "-u",
+        unit,
+        "-n",
+        str(n),
+        "--no-pager",
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
@@ -54,7 +60,14 @@ async def get_logs(
 async def _follow_logs(unit: str, n: int) -> AsyncGenerator[str, None]:
     """Stream journalctl -f output as SSE events."""
     proc = await asyncio.create_subprocess_exec(
-        "journalctl", "--user", "-u", unit, "-n", str(n), "-f", "--no-pager",
+        "journalctl",
+        "--user",
+        "-u",
+        unit,
+        "-n",
+        str(n),
+        "-f",
+        "--no-pager",
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )

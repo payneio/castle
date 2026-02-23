@@ -5,6 +5,7 @@ from castle_core.config import (  # noqa: F401 — explicit re-exports for type 
     CASTLE_HOME,
     GENERATED_DIR,
     SECRETS_DIR,
+    STATIC_DIR,
     CastleConfig,
     GatewayConfig,
     ensure_dirs,
@@ -12,4 +13,12 @@ from castle_core.config import (  # noqa: F401 — explicit re-exports for type 
     load_config,
     resolve_env_vars,
     save_config,
+)
+from castle_core.registry import (  # noqa: F401
+    REGISTRY_PATH,
+    DeployedComponent,
+    NodeConfig,
+    NodeRegistry,
+    load_registry,
+    save_registry,
 )

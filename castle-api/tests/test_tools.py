@@ -1,7 +1,5 @@
 """Tests for tools endpoints."""
 
-from pathlib import Path
-
 from fastapi.testclient import TestClient
 
 

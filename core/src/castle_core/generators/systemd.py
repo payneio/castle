@@ -6,7 +6,8 @@ import shutil
 from pathlib import Path
 
 from castle_core.config import CastleConfig, resolve_env_vars
-from castle_core.manifest import ComponentManifest, RestartPolicy
+from castle_core.manifest import ComponentManifest, RestartPolicy, SystemdSpec
+from castle_core.registry import DeployedComponent
 
 SYSTEMD_USER_DIR = Path.home() / ".config" / "systemd" / "user"
 UNIT_PREFIX = "castle-"
@@ -42,7 +43,13 @@ def cron_to_oncalendar(cron: str) -> str:
     minute, hour, dom, month, dow = parts
 
     # */N minutes → run every N minutes
-    if minute.startswith("*/") and hour == "*" and dom == "*" and month == "*" and dow == "*":
+    if (
+        minute.startswith("*/")
+        and hour == "*"
+        and dom == "*"
+        and month == "*"
+        and dow == "*"
+    ):
         return ""  # Use OnUnitActiveSec instead
 
     # Specific time daily: "0 2 * * *" → "*-*-* 02:00:00"
@@ -60,7 +67,13 @@ def cron_to_interval_sec(cron: str) -> int | None:
     if len(parts) != 5:
         return None
     minute, hour, dom, month, dow = parts
-    if minute.startswith("*/") and hour == "*" and dom == "*" and month == "*" and dow == "*":
+    if (
+        minute.startswith("*/")
+        and hour == "*"
+        and dom == "*"
+        and month == "*"
+        and dow == "*"
+    ):
         try:
             return int(minute[2:]) * 60
         except ValueError:
@@ -132,15 +145,19 @@ def build_podman_command(manifest: ComponentManifest) -> str:
 
 
 def generate_unit(config: CastleConfig, name: str, manifest: ComponentManifest) -> str:
-    """Generate a systemd user unit file for a component."""
+    """Generate a systemd user unit file for a component (legacy, uses manifest).
+
+    Prefer generate_unit_from_deployed() for registry-based generation.
+    """
     run = manifest.run
     if run is None:
         raise ValueError(f"Component '{name}' has no run spec")
 
-    working_dir = config.root / (run.working_dir or name)
     exec_start = manifest_to_exec_start(manifest, config.root)
 
-    resolved_env = resolve_env_vars(run.env, manifest)
+    # Env vars now come from manifest.defaults.env instead of run.env
+    raw_env = manifest.defaults.env if manifest.defaults else {}
+    resolved_env = resolve_env_vars(raw_env, manifest)
     env_lines = ""
     for key, value in resolved_env.items():
         env_lines += f"Environment={key}={value}\n"
@@ -166,7 +183,6 @@ After={after}
 
 [Service]
 Type=oneshot
-WorkingDirectory={working_dir}
 ExecStart={exec_start}
 {env_lines}"""
     else:
@@ -178,7 +194,68 @@ After={after}
 
 [Service]
 Type=simple
-WorkingDirectory={working_dir}
+ExecStart={exec_start}
+{env_lines}Restart={restart}
+RestartSec={restart_sec}
+SuccessExitStatus=143
+"""
+
+    if sd and sd.exec_reload:
+        reload_argv = sd.exec_reload.split()
+        resolved_reload = shutil.which(reload_argv[0])
+        if resolved_reload:
+            reload_argv[0] = resolved_reload
+        unit += f"ExecReload={' '.join(reload_argv)}\n"
+
+    if sd and sd.no_new_privileges:
+        unit += "NoNewPrivileges=true\n"
+
+    unit += f"""
+[Install]
+WantedBy={wanted_by}
+"""
+    return unit
+
+
+def generate_unit_from_deployed(
+    name: str,
+    deployed: DeployedComponent,
+    systemd_spec: SystemdSpec | None = None,
+) -> str:
+    """Generate a systemd unit from a deployed component (registry-based).
+
+    No repo-relative paths — uses only resolved run_cmd and env from the registry.
+    """
+    exec_start = " ".join(deployed.run_cmd)
+
+    env_lines = ""
+    for key, value in deployed.env.items():
+        env_lines += f"Environment={key}={value}\n"
+    env_lines += f'Environment="PATH={Path.home() / ".local/bin"}:/usr/local/bin:/usr/bin:/bin"\n'
+
+    sd = systemd_spec
+    description = deployed.description or name
+    after = " ".join(sd.after) if sd and sd.after else "network.target"
+    wanted_by = " ".join(sd.wanted_by) if sd else "default.target"
+
+    if deployed.schedule:
+        unit = f"""[Unit]
+Description=Castle: {description}
+After={after}
+
+[Service]
+Type=oneshot
+ExecStart={exec_start}
+{env_lines}"""
+    else:
+        restart = (sd.restart if sd else RestartPolicy.ON_FAILURE).value
+        restart_sec = sd.restart_sec if sd else 5
+        unit = f"""[Unit]
+Description=Castle: {description}
+After={after}
+
+[Service]
+Type=simple
 ExecStart={exec_start}
 {env_lines}Restart={restart}
 RestartSec={restart_sec}

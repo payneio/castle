@@ -8,9 +8,12 @@ import time
 from fastapi import APIRouter, HTTPException, status
 from starlette.responses import JSONResponse
 
-from castle_core.config import load_config
+from castle_core.generators.systemd import (
+    generate_timer,
+    generate_unit_from_deployed,
+)
 
-from castle_api.config import settings
+from castle_api.config import get_castle_root, get_registry
 from castle_api.health import check_all_health
 from castle_api.models import HealthStatus
 from castle_api.stream import broadcast
@@ -24,7 +27,10 @@ SELF_NAME = "castle-api"
 async def _systemctl(action: str, unit: str) -> tuple[bool, str]:
     """Run a systemctl --user command. Returns (success, output)."""
     proc = await asyncio.create_subprocess_exec(
-        "systemctl", "--user", action, unit,
+        "systemctl",
+        "--user",
+        action,
+        unit,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
@@ -36,7 +42,10 @@ async def _systemctl(action: str, unit: str) -> tuple[bool, str]:
 async def _get_unit_status(unit: str) -> str:
     """Get the active status of a systemd unit."""
     proc = await asyncio.create_subprocess_exec(
-        "systemctl", "--user", "is-active", unit,
+        "systemctl",
+        "--user",
+        "is-active",
+        unit,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
@@ -45,9 +54,9 @@ async def _get_unit_status(unit: str) -> str:
 
 
 def _validate_managed(name: str) -> None:
-    """Raise 404 if the component isn't systemd-managed."""
-    config = load_config(settings.castle_root)
-    if name not in config.managed:
+    """Raise 404 if the component isn't managed in the registry."""
+    registry = get_registry()
+    if name not in registry.deployed or not registry.deployed[name].managed:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"'{name}' is not a managed service",
@@ -58,25 +67,29 @@ async def _broadcast_health_with_override(
     override_name: str, override_status: str
 ) -> None:
     """Run health checks but override one component's status from systemd."""
-    config = load_config(settings.castle_root)
-    statuses = await check_all_health(config)
+    registry = get_registry()
+    statuses = await check_all_health(registry)
 
-    # Replace the overridden component's status with the systemd truth
     result = []
     for s in statuses:
         if s.id == override_name:
-            result.append(HealthStatus(
-                id=override_name,
-                status="down" if override_status != "active" else "up",
-                latency_ms=None,
-            ))
+            result.append(
+                HealthStatus(
+                    id=override_name,
+                    status="down" if override_status != "active" else "up",
+                    latency_ms=None,
+                )
+            )
         else:
             result.append(s)
 
-    await broadcast("health", {
-        "statuses": [s.model_dump() for s in result],
-        "timestamp": time.time(),
-    })
+    await broadcast(
+        "health",
+        {
+            "statuses": [s.model_dump() for s in result],
+            "timestamp": time.time(),
+        },
+    )
 
 
 async def _deferred_systemctl(action: str, unit: str, delay: float = 0.5) -> None:
@@ -104,7 +117,6 @@ async def _do_action(name: str, action: str) -> JSONResponse:
     if not ok:
         raise HTTPException(status_code=500, detail=output or f"Failed to {action}")
 
-    # Broadcast immediately with systemd status as the source of truth
     await _broadcast_health_with_override(name, unit_status)
 
     return JSONResponse(
@@ -115,13 +127,25 @@ async def _do_action(name: str, action: str) -> JSONResponse:
 @router.get("/{name}/unit")
 def get_unit(name: str) -> dict[str, str | None]:
     """Return the generated systemd unit file(s) for a managed component."""
-    from castle_core.generators import generate_timer, generate_unit
-
     _validate_managed(name)
-    config = load_config(settings.castle_root)
-    manifest = config.managed[name]
-    unit = generate_unit(config, name, manifest)
-    timer = generate_timer(name, manifest)
+    registry = get_registry()
+    deployed = registry.deployed[name]
+
+    # Get systemd spec from manifest if repo available
+    systemd_spec = None
+    root = get_castle_root()
+    manifest = None
+    if root:
+        from castle_core.config import load_config
+
+        config = load_config(root)
+        if name in config.components:
+            manifest = config.components[name]
+            if manifest.manage and manifest.manage.systemd:
+                systemd_spec = manifest.manage.systemd
+
+    unit = generate_unit_from_deployed(name, deployed, systemd_spec)
+    timer = generate_timer(name, manifest) if manifest else None
     return {"service": unit, "timer": timer}
 
 

@@ -64,9 +64,9 @@ def run_sync(args: argparse.Namespace) -> int:
                 continue
             print(f"\nInstalling {name}...")
             result = subprocess.run(
-                [uv_path, "tool", "install", "--editable", str(source_dir),
-                 "--force"],
-                capture_output=True, text=True,
+                [uv_path, "tool", "install", "--editable", str(source_dir), "--force"],
+                capture_output=True,
+                text=True,
             )
             if result.returncode != 0:
                 if "already installed" in result.stderr.lower():

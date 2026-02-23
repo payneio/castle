@@ -55,7 +55,7 @@ class TestComponentDetail:
         data = response.json()
         assert data["id"] == "test-svc"
         assert "manifest" in data
-        assert data["manifest"]["run"]["runner"] == "python_uv_tool"
+        assert data["manifest"]["runner"] == "python_uv_tool"
 
     def test_not_found(self, client: TestClient) -> None:
         """Returns 404 for unknown component."""
@@ -67,11 +67,12 @@ class TestGateway:
     """Gateway info endpoint tests."""
 
     def test_gateway_info(self, client: TestClient) -> None:
-        """Returns gateway configuration."""
+        """Returns gateway configuration from registry."""
         response = client.get("/gateway")
         assert response.status_code == 200
         data = response.json()
         assert data["port"] == 9000
-        assert data["component_count"] == 3
+        # Registry has 1 deployed component (test-svc)
+        assert data["component_count"] == 1
         assert data["service_count"] == 1
         assert data["managed_count"] == 1

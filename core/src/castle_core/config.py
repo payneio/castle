@@ -31,6 +31,7 @@ def find_castle_root() -> Path:
 CASTLE_HOME = Path.home() / ".castle"
 GENERATED_DIR = CASTLE_HOME / "generated"
 SECRETS_DIR = CASTLE_HOME / "secrets"
+STATIC_DIR = CASTLE_HOME / "static"
 
 
 @dataclass
@@ -51,23 +52,17 @@ class CastleConfig:
     @property
     def services(self) -> dict[str, ComponentManifest]:
         """Return components with the SERVICE role."""
-        return {
-            k: v for k, v in self.components.items() if Role.SERVICE in v.roles
-        }
+        return {k: v for k, v in self.components.items() if Role.SERVICE in v.roles}
 
     @property
     def tools(self) -> dict[str, ComponentManifest]:
         """Return components with the TOOL role."""
-        return {
-            k: v for k, v in self.components.items() if Role.TOOL in v.roles
-        }
+        return {k: v for k, v in self.components.items() if Role.TOOL in v.roles}
 
     @property
     def workers(self) -> dict[str, ComponentManifest]:
         """Return components with the WORKER role."""
-        return {
-            k: v for k, v in self.components.items() if Role.WORKER in v.roles
-        }
+        return {k: v for k, v in self.components.items() if Role.WORKER in v.roles}
 
     @property
     def managed(self) -> dict[str, ComponentManifest]:
@@ -158,7 +153,16 @@ def _clean_for_yaml(data: object, preserve_keys: set[str] | None = None) -> obje
 
 # Keys whose presence is structurally significant even with all-default values.
 # We serialize these as empty dicts `{}` so they survive a roundtrip.
-_STRUCTURAL_KEYS = {"manage", "systemd", "install", "path", "tool", "expose", "proxy", "caddy"}
+_STRUCTURAL_KEYS = {
+    "manage",
+    "systemd",
+    "install",
+    "path",
+    "tool",
+    "expose",
+    "proxy",
+    "caddy",
+}
 
 
 def _manifest_to_yaml_dict(manifest: ComponentManifest) -> dict:
@@ -214,4 +218,5 @@ def ensure_dirs() -> None:
     CASTLE_HOME.mkdir(parents=True, exist_ok=True)
     GENERATED_DIR.mkdir(parents=True, exist_ok=True)
     SECRETS_DIR.mkdir(parents=True, exist_ok=True)
+    STATIC_DIR.mkdir(parents=True, exist_ok=True)
     os.chmod(SECRETS_DIR, 0o700)

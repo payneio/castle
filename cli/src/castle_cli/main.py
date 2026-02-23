@@ -14,9 +14,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="castle",
         description="Castle platform CLI - manage projects, services, and infrastructure",
     )
-    parser.add_argument(
-        "--version", action="version", version=f"castle {__version__}"
-    )
+    parser.add_argument("--version", action="version", version=f"castle {__version__}")
 
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
@@ -27,9 +25,7 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["service", "tool", "worker", "job", "frontend", "remote", "containerized"],
         help="Filter by role",
     )
-    list_parser.add_argument(
-        "--json", action="store_true", help="Output as JSON"
-    )
+    list_parser.add_argument("--json", action="store_true", help="Output as JSON")
 
     # castle create
     create_parser = subparsers.add_parser("create", help="Create a new project")
@@ -40,18 +36,12 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
         help="Project type",
     )
-    create_parser.add_argument(
-        "--description", default="", help="Project description"
-    )
-    create_parser.add_argument(
-        "--port", type=int, help="Port number (services only)"
-    )
+    create_parser.add_argument("--description", default="", help="Project description")
+    create_parser.add_argument("--port", type=int, help="Port number (services only)")
     # castle info
     info_parser = subparsers.add_parser("info", help="Show component details")
     info_parser.add_argument("project", help="Component name")
-    info_parser.add_argument(
-        "--json", action="store_true", help="Output as JSON"
-    )
+    info_parser.add_argument("--json", action="store_true", help="Output as JSON")
 
     # castle test
     test_parser = subparsers.add_parser("test", help="Run tests")
@@ -86,16 +76,12 @@ def build_parser() -> argparse.ArgumentParser:
     enable_parser.add_argument(
         "--dry-run", action="store_true", help="Print generated unit without installing"
     )
-    disable_parser = service_sub.add_parser(
-        "disable", help="Stop and disable a service"
-    )
+    disable_parser = service_sub.add_parser("disable", help="Stop and disable a service")
     disable_parser.add_argument("name", help="Service name")
     service_sub.add_parser("status", help="Show status of all services")
 
     # castle services (plural - manage all services)
-    services_parser = subparsers.add_parser(
-        "services", help="Manage all services together"
-    )
+    services_parser = subparsers.add_parser("services", help="Manage all services together")
     services_sub = services_parser.add_subparsers(dest="services_command")
     services_sub.add_parser("start", help="Start all services and gateway")
     services_sub.add_parser("stop", help="Stop all services and gateway")
@@ -103,9 +89,7 @@ def build_parser() -> argparse.ArgumentParser:
     # castle logs
     logs_parser = subparsers.add_parser("logs", help="View component logs")
     logs_parser.add_argument("name", help="Component name")
-    logs_parser.add_argument(
-        "-f", "--follow", action="store_true", help="Follow log output"
-    )
+    logs_parser.add_argument("-f", "--follow", action="store_true", help="Follow log output")
     logs_parser.add_argument(
         "-n", "--lines", type=int, default=50, help="Number of lines to show (default: 50)"
     )
@@ -116,6 +100,12 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument(
         "extra", nargs=argparse.REMAINDER, help="Extra arguments passed to the component"
     )
+
+    # castle deploy
+    deploy_parser = subparsers.add_parser(
+        "deploy", help="Deploy components to ~/.castle/ (spec → runtime)"
+    )
+    deploy_parser.add_argument("component", nargs="?", help="Component to deploy (default: all)")
 
     # castle tool
     tool_parser = subparsers.add_parser("tool", help="Manage tools")
@@ -186,6 +176,11 @@ def main() -> int:
         from castle_cli.commands.logs import run_logs
 
         return run_logs(args)
+
+    elif args.command == "deploy":
+        from castle_cli.commands.deploy import run_deploy
+
+        return run_deploy(args)
 
     elif args.command == "run":
         from castle_cli.commands.run_cmd import run_run

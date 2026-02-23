@@ -7,8 +7,14 @@ import pytest
 import yaml
 from fastapi.testclient import TestClient
 
-from castle_api.config import settings
+import castle_api.config as api_config
 from castle_api.main import app
+from castle_core.registry import (
+    DeployedComponent,
+    NodeConfig,
+    NodeRegistry,
+    save_registry,
+)
 
 
 @pytest.fixture
@@ -20,10 +26,10 @@ def castle_root(tmp_path: Path) -> Generator[Path, None, None]:
         "components": {
             "test-svc": {
                 "description": "Test service",
+                "source": "test-svc",
                 "run": {
                     "runner": "python_uv_tool",
                     "tool": "test-svc",
-                    "cwd": "test-svc",
                 },
                 "expose": {
                     "http": {
@@ -52,15 +58,67 @@ def castle_root(tmp_path: Path) -> Generator[Path, None, None]:
         },
     }
     castle_yaml.write_text(yaml.dump(config, default_flow_style=False))
-
-    original = settings.castle_root
-    settings.castle_root = tmp_path
     yield tmp_path
-    settings.castle_root = original
 
 
 @pytest.fixture
-def client(castle_root: Path) -> Generator[TestClient, None, None]:
-    """Create a test client pointing to temporary castle root."""
+def registry_path(tmp_path: Path, castle_root: Path) -> Generator[Path, None, None]:
+    """Create a temporary registry.yaml and patch the module to use it."""
+    reg_path = tmp_path / "registry.yaml"
+    registry = NodeRegistry(
+        node=NodeConfig(
+            hostname="test-node",
+            castle_root=str(castle_root),
+            gateway_port=9000,
+        ),
+        deployed={
+            "test-svc": DeployedComponent(
+                runner="python_uv_tool",
+                run_cmd=["uv", "run", "test-svc"],
+                env={
+                    "TEST_SVC_PORT": "19000",
+                    "TEST_SVC_DATA_DIR": "/data/castle/test-svc",
+                },
+                description="Test service",
+                roles=["service"],
+                port=19000,
+                health_path="/health",
+                proxy_path="/test-svc",
+                managed=True,
+            ),
+        },
+    )
+    save_registry(registry, reg_path)
+
+    # Patch the registry path and helper functions
+    import castle_core.registry as reg_mod
+
+    original_path = reg_mod.REGISTRY_PATH
+    reg_mod.REGISTRY_PATH = reg_path
+
+    original_get_registry = api_config.get_registry
+    original_get_castle_root = api_config.get_castle_root
+
+    def _get_registry() -> NodeRegistry:
+        from castle_core.registry import load_registry
+
+        return load_registry(reg_path)
+
+    def _get_castle_root() -> Path | None:
+        return castle_root
+
+    api_config.get_registry = _get_registry
+    api_config.get_castle_root = _get_castle_root
+
+    yield reg_path
+
+    reg_mod.REGISTRY_PATH = original_path
+    api_config.get_registry = original_get_registry
+    api_config.get_castle_root = original_get_castle_root
+
+
+@pytest.fixture
+def client(registry_path: Path) -> Generator[TestClient, None, None]:
+    """Create a test client with temporary registry."""
     with TestClient(app) as client:
         yield client

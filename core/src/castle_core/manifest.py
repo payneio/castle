@@ -39,8 +39,6 @@ class Role(str, Enum):
 
 class RunBase(BaseModel):
     runner: str
-    working_dir: str | None = None
-    env: EnvMap = Field(default_factory=dict)
 
 
 class RunCommand(RunBase):
@@ -68,6 +66,7 @@ class RunContainer(RunBase):
     args: list[str] = Field(default_factory=list)
     ports: dict[int, int] = Field(default_factory=dict)
     volumes: list[str] = Field(default_factory=list)
+    env: EnvMap = Field(default_factory=dict)
     workdir: str | None = None
 
 
@@ -85,7 +84,9 @@ class RunRemote(RunBase):
 
 
 RunSpec = Annotated[
-    Union[RunCommand, RunPythonModule, RunPythonUvTool, RunContainer, RunNode, RunRemote],
+    Union[
+        RunCommand, RunPythonModule, RunPythonUvTool, RunContainer, RunNode, RunRemote
+    ],
     Field(discriminator="runner"),
 ]
 
@@ -221,7 +222,6 @@ class ProxySpec(BaseModel):
 
 
 class BuildSpec(BaseModel):
-    working_dir: str | None = None
     commands: list[list[str]] = Field(default_factory=list)
     outputs: list[str] = Field(default_factory=list)
 
@@ -238,6 +238,15 @@ class Capability(BaseModel):
 
 
 # ---------------------
+# Defaults
+# ---------------------
+
+
+class DefaultsSpec(BaseModel):
+    env: EnvMap = Field(default_factory=dict)
+
+
+# ---------------------
 # Component manifest
 # ---------------------
 
@@ -246,6 +255,8 @@ class ComponentManifest(BaseModel):
     id: str = ""
     name: str | None = None
     description: str | None = None
+
+    source: str | None = None
 
     run: RunSpec | None = None
 
@@ -257,6 +268,8 @@ class ComponentManifest(BaseModel):
     expose: ExposeSpec | None = None
     proxy: ProxySpec | None = None
     build: BuildSpec | None = None
+
+    defaults: DefaultsSpec | None = None
 
     provides: list[Capability] = Field(default_factory=list)
     consumes: list[Capability] = Field(default_factory=list)
@@ -306,13 +319,11 @@ class ComponentManifest(BaseModel):
     def source_dir(self) -> str | None:
         """Best-effort relative directory for this component's source.
 
-        Resolution order: run.working_dir → build.working_dir → tool.source (strip trailing /).
+        Resolution order: source → tool.source (strip trailing /).
         Returns None if no directory can be determined.
         """
-        if self.run and self.run.working_dir:
-            return self.run.working_dir
-        if self.build and self.build.working_dir:
-            return self.build.working_dir
+        if self.source:
+            return self.source.rstrip("/")
         if self.tool and self.tool.source:
             return self.tool.source.rstrip("/")
         return None

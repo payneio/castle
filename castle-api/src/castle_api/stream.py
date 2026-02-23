@@ -7,9 +7,7 @@ import json
 import logging
 import time
 
-from castle_core.config import load_config
-
-from castle_api.config import settings
+from castle_api.config import get_registry
 from castle_api.health import check_all_health
 
 logger = logging.getLogger(__name__)
@@ -60,12 +58,15 @@ async def health_poll_loop(interval: float = 10.0) -> None:
     """Background task that polls health and broadcasts updates."""
     while True:
         try:
-            config = load_config(settings.castle_root)
-            statuses = await check_all_health(config)
-            await broadcast("health", {
-                "statuses": [s.model_dump() for s in statuses],
-                "timestamp": time.time(),
-            })
+            registry = get_registry()
+            statuses = await check_all_health(registry)
+            await broadcast(
+                "health",
+                {
+                    "statuses": [s.model_dump() for s in statuses],
+                    "timestamp": time.time(),
+                },
+            )
         except Exception:
             logger.exception("Health poll failed")
         await asyncio.sleep(interval)

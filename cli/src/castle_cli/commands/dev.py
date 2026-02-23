@@ -23,9 +23,7 @@ def _has_pyproject(project_dir: Path) -> bool:
     return (project_dir / "pyproject.toml").exists()
 
 
-def _run_in_project(
-    project_dir: Path, cmd: list[str], label: str
-) -> bool:
+def _run_in_project(project_dir: Path, cmd: list[str], label: str) -> bool:
     """Run a command in a project directory. Returns True on success."""
     if not _has_pyproject(project_dir):
         return True  # Skip projects without pyproject.toml

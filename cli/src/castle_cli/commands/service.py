@@ -5,18 +5,20 @@ from __future__ import annotations
 import argparse
 import subprocess
 
+from castle_core.generators.systemd import (
+    SYSTEMD_USER_DIR,
+    generate_timer,
+    generate_unit_from_deployed,
+    get_schedule_trigger,
+    timer_name,
+    unit_name,
+)
+from castle_core.registry import REGISTRY_PATH, load_registry
+
 from castle_cli.config import (
     CastleConfig,
     ensure_dirs,
     load_config,
-)
-from castle_core.generators.systemd import (
-    SYSTEMD_USER_DIR,
-    generate_timer,
-    generate_unit,
-    get_schedule_trigger,
-    timer_name,
-    unit_name,
 )
 
 
@@ -74,25 +76,38 @@ def run_services(args: argparse.Namespace) -> int:
 
 def _service_enable(config: CastleConfig, name: str) -> int:
     """Enable and start a single service (or timer for scheduled jobs)."""
-    managed = config.managed
-    if name not in managed:
-        print(f"Error: '{name}' is not a managed service")
+    # Require registry
+    if not REGISTRY_PATH.exists():
+        print("Error: no registry found. Run 'castle deploy' first.")
         return 1
 
-    manifest = managed[name]
-    if not manifest.run:
-        print(f"Error: '{name}' has no run spec defined")
+    registry = load_registry()
+    if name not in registry.deployed:
+        print(f"Error: '{name}' not found in registry. Run 'castle deploy' first.")
+        return 1
+
+    deployed = registry.deployed[name]
+    if not deployed.managed:
+        print(f"Error: '{name}' is not a managed service")
         return 1
 
     ensure_dirs()
 
-    # Generate and install the service unit
+    # Get systemd spec from manifest for restart policy etc.
+    systemd_spec = None
+    if name in config.components:
+        manifest = config.components[name]
+        if manifest.manage and manifest.manage.systemd:
+            systemd_spec = manifest.manage.systemd
+
+    # Generate and install the service unit from registry
     svc_unit = unit_name(name)
-    svc_content = generate_unit(config, name, manifest)
+    svc_content = generate_unit_from_deployed(name, deployed, systemd_spec)
     _install_unit(svc_unit, svc_content)
 
-    # Check for timer
-    timer_content = generate_timer(name, manifest)
+    # Check for timer (still uses manifest for schedule config)
+    manifest = config.components.get(name)
+    timer_content = generate_timer(name, manifest) if manifest else None
     if timer_content:
         tmr_unit = timer_name(name)
         _install_unit(tmr_unit, timer_content)
@@ -103,7 +118,8 @@ def _service_enable(config: CastleConfig, name: str) -> int:
 
         result = subprocess.run(
             ["systemctl", "--user", "is-active", tmr_unit],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         )
         status = result.stdout.strip()
         if status in ("active", "waiting"):
@@ -117,12 +133,13 @@ def _service_enable(config: CastleConfig, name: str) -> int:
 
         result = subprocess.run(
             ["systemctl", "--user", "is-active", svc_unit],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         )
         status = result.stdout.strip()
         port_str = ""
-        if manifest.expose and manifest.expose.http:
-            port_str = f" (port {manifest.expose.http.internal.port})"
+        if deployed.port:
+            port_str = f" (port {deployed.port})"
         if status == "active":
             print(f"  {name}: running{port_str}")
         else:
@@ -166,7 +183,8 @@ def _service_status(config: CastleConfig) -> int:
             tmr_unit = timer_name(name)
             result = subprocess.run(
                 ["systemctl", "--user", "is-active", tmr_unit],
-                capture_output=True, text=True,
+                capture_output=True,
+                text=True,
             )
             status = result.stdout.strip()
             if status in ("active", "waiting"):
@@ -181,7 +199,8 @@ def _service_status(config: CastleConfig) -> int:
             svc_unit = unit_name(name)
             result = subprocess.run(
                 ["systemctl", "--user", "is-active", svc_unit],
-                capture_output=True, text=True,
+                capture_output=True,
+                text=True,
             )
             status = result.stdout.strip()
             if status == "active":
@@ -203,41 +222,55 @@ def _service_status(config: CastleConfig) -> int:
 
 def _service_dry_run(config: CastleConfig, name: str) -> int:
     """Print the generated systemd unit(s) without installing."""
-    managed = config.managed
-    if name not in managed:
-        print(f"Error: '{name}' is not a managed service")
-        return 1
+    # Try registry first, fall back to showing what deploy would generate
+    if REGISTRY_PATH.exists():
+        registry = load_registry()
+        if name in registry.deployed:
+            deployed = registry.deployed[name]
+            systemd_spec = None
+            if name in config.components:
+                manifest = config.components[name]
+                if manifest.manage and manifest.manage.systemd:
+                    systemd_spec = manifest.manage.systemd
 
-    manifest = managed[name]
-    if not manifest.run:
-        print(f"Error: '{name}' has no run spec defined")
-        return 1
+            svc_unit = unit_name(name)
+            svc_content = generate_unit_from_deployed(name, deployed, systemd_spec)
+            print(f"# {svc_unit}")
+            print(svc_content)
 
-    svc_unit = unit_name(name)
-    svc_content = generate_unit(config, name, manifest)
-    print(f"# {svc_unit}")
-    print(svc_content)
+            manifest = config.components.get(name)
+            if manifest:
+                timer_content = generate_timer(name, manifest)
+                if timer_content:
+                    print(f"# {timer_name(name)}")
+                    print(timer_content)
+            return 0
 
-    timer_content = generate_timer(name, manifest)
-    if timer_content:
-        print(f"# {timer_name(name)}")
-        print(timer_content)
-
-    return 0
+    print(f"Error: '{name}' not found in registry. Run 'castle deploy' first.")
+    return 1
 
 
 def _services_start(config: CastleConfig) -> int:
     """Start all managed services and gateway."""
+    # Require registry
+    if not REGISTRY_PATH.exists():
+        print("Error: no registry found. Run 'castle deploy' first.")
+        return 1
+
     ensure_dirs()
 
-    # Generate Caddyfile before starting gateway
-    from castle_cli.commands.gateway import _write_generated_files
+    # Generate Caddyfile from registry
+    from castle_core.config import GENERATED_DIR
+    from castle_core.generators.caddyfile import generate_caddyfile_from_registry
 
-    print("Generating gateway configuration...")
-    _write_generated_files(config)
+    registry = load_registry()
+    caddyfile_path = GENERATED_DIR / "Caddyfile"
+    caddyfile_path.write_text(generate_caddyfile_from_registry(registry))
+    print(f"Generated {caddyfile_path}")
 
-    for name, manifest in config.managed.items():
-        if not manifest.run:
+    for name in config.managed:
+        if name not in registry.deployed:
+            print(f"  {name}: skipped (not in registry, run 'castle deploy')")
             continue
         _service_enable(config, name)
 

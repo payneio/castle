@@ -32,9 +32,7 @@ def run_list(args: argparse.Namespace) -> int:
 
     filter_role = getattr(args, "role", None)
     if filter_role:
-        components = {
-            k: v for k, v in components.items() if filter_role in v.roles
-        }
+        components = {k: v for k, v in components.items() if filter_role in v.roles}
 
     if getattr(args, "json", False):
         output = []

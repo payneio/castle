@@ -7,23 +7,18 @@ import time
 
 import httpx
 
-from castle_core.config import CastleConfig
+from castle_core.registry import NodeRegistry
 
 from castle_api.models import HealthStatus
 
 
-async def check_all_health(config: CastleConfig) -> list[HealthStatus]:
-    """Check health of all components with expose.http and a health_path."""
+async def check_all_health(registry: NodeRegistry) -> list[HealthStatus]:
+    """Check health of all deployed components with a port and health_path."""
     targets: list[tuple[str, str]] = []
-    for name, manifest in config.components.items():
-        if not (manifest.expose and manifest.expose.http):
+    for name, deployed in registry.deployed.items():
+        if not deployed.port or not deployed.health_path:
             continue
-        http = manifest.expose.http
-        if not http.health_path:
-            continue
-        host = http.internal.host or "127.0.0.1"
-        port = http.internal.port
-        url = f"http://{host}:{port}{http.health_path}"
+        url = f"http://127.0.0.1:{deployed.port}{deployed.health_path}"
         targets.append((name, url))
 
     if not targets:

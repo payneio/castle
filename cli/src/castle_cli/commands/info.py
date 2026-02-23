@@ -42,21 +42,25 @@ def run_info(args: argparse.Namespace) -> int:
     if manifest.description:
         print(f"  {BOLD}description{RESET}: {manifest.description}")
 
+    # Source
+    if manifest.source:
+        print(f"  {BOLD}source{RESET}:      {manifest.source}")
+
     # Run spec
     if manifest.run:
         print(f"  {BOLD}runner{RESET}:      {manifest.run.runner}")
-        if manifest.run.working_dir:
-            print(f"  {BOLD}working_dir{RESET}: {manifest.run.working_dir}")
         if hasattr(manifest.run, "tool"):
             print(f"  {BOLD}tool{RESET}:        {manifest.run.tool}")
         elif hasattr(manifest.run, "argv"):
             print(f"  {BOLD}argv{RESET}:        {manifest.run.argv}")
         elif hasattr(manifest.run, "image"):
             print(f"  {BOLD}image{RESET}:       {manifest.run.image}")
-        if manifest.run.env:
-            print(f"  {BOLD}env{RESET}:")
-            for key, val in manifest.run.env.items():
-                print(f"    {key}: {val}")
+
+    # Defaults env
+    if manifest.defaults and manifest.defaults.env:
+        print(f"  {BOLD}defaults.env{RESET}:")
+        for key, val in manifest.defaults.env.items():
+            print(f"    {key}: {val}")
 
     # Expose
     if manifest.expose and manifest.expose.http:
@@ -85,7 +89,7 @@ def run_info(args: argparse.Namespace) -> int:
     if manifest.tool:
         t = manifest.tool
         if t.source:
-            print(f"  {BOLD}source{RESET}:      {t.source}")
+            print(f"  {BOLD}tool.source{RESET}: {t.source}")
         if t.system_dependencies:
             print(f"  {BOLD}requires{RESET}:    {', '.join(t.system_dependencies)}")
 
@@ -104,8 +108,8 @@ def run_info(args: argparse.Namespace) -> int:
             print(f"    - {cap.type}" + (f" ({cap.name})" if cap.name else ""))
 
     # Show CLAUDE.md if it exists
-    cwd = manifest.run.working_dir if manifest.run else None
-    claude_md = _find_claude_md(config.root, cwd or name)
+    source_dir = manifest.source_dir or name
+    claude_md = _find_claude_md(config.root, source_dir)
     if claude_md:
         print(f"\n{BOLD}{CYAN}CLAUDE.md{RESET}")
         print(f"{CYAN}{'─' * 40}{RESET}")
@@ -115,9 +119,9 @@ def run_info(args: argparse.Namespace) -> int:
     return 0
 
 
-def _find_claude_md(root: Path, working_dir: str) -> str | None:
+def _find_claude_md(root: Path, source_dir: str) -> str | None:
     """Read CLAUDE.md from project directory if it exists."""
-    claude_path = root / working_dir / "CLAUDE.md"
+    claude_path = root / source_dir / "CLAUDE.md"
     if claude_path.exists():
         return claude_path.read_text()
     return None
