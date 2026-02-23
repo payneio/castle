@@ -4,7 +4,7 @@ import { useTools } from "@/services/api/hooks"
 import { ToolCard } from "@/components/ToolCard"
 
 export function ToolsPage() {
-  const { data: categories, isLoading } = useTools()
+  const { data: tools, isLoading } = useTools()
 
   return (
     <div className="max-w-6xl mx-auto px-6 py-8">
@@ -14,24 +14,15 @@ export function ToolsPage() {
 
       <h1 className="text-3xl font-bold mb-2">Tools</h1>
       <p className="text-sm text-[var(--muted)] mb-8">
-        CLI utilities grouped by category. Each tool is installed to PATH via castle and run with uv.
+        CLI utilities installed to PATH via castle and run with uv.
       </p>
 
       {isLoading ? (
         <p className="text-[var(--muted)]">Loading tools...</p>
-      ) : categories?.length ? (
-        <div className="space-y-8">
-          {categories.map((cat) => (
-            <section key={cat.name}>
-              <h2 className="text-lg font-semibold mb-3 text-[var(--muted)]">
-                {cat.name}
-              </h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {cat.tools.map((tool) => (
-                  <ToolCard key={tool.id} tool={tool} />
-                ))}
-              </div>
-            </section>
+      ) : tools?.length ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {tools.map((tool) => (
+            <ToolCard key={tool.id} tool={tool} />
           ))}
         </div>
       ) : (

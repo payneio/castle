@@ -8,7 +8,7 @@ import type {
   GatewayInfo,
   ServiceActionResponse,
   SSEHealthEvent,
-  ToolCategory,
+  ToolSummary,
   ToolDetail,
 } from "@/types"
 
@@ -110,7 +110,7 @@ export function useToolAction() {
 export function useTools() {
   return useQuery({
     queryKey: ["tools"],
-    queryFn: () => apiClient.get<ToolCategory[]>("/tools"),
+    queryFn: () => apiClient.get<ToolSummary[]>("/tools"),
   })
 }
 

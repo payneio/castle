@@ -164,9 +164,8 @@ Each project has its own ruff rules (devbox-connect: `E,F,I,W`; mboxer: `ALL`). 
 
 Don't move toolkit in as a monolith. Instead:
 1. Add toolkit as a submodule
-2. Graduate heavy tools (`search`, `protonmail`, `browser`) into independent castle projects
-3. Keep lightweight tools (`docx2md`, `html2text`, etc.) grouped in a single `tools` package
-4. Promote toolkit's meta-tooling up into the castle CLI
+2. Graduate all tools into independent castle projects (each tool is its own standalone package)
+3. Promote toolkit's meta-tooling up into the castle CLI
 
 ## 11. What to defer
 

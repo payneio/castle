@@ -33,9 +33,6 @@ castle gateway reload
 
 # Standalone tool — CLI tool with argparse, stdin/stdout, Unix pipes
 castle create my-tool --type tool --description "Does something"
-
-# Category tool — adds to existing tools/<category>/ package
-castle create my-tool --type tool --category document --description "Converts something"
 ```
 
 ## CLI Reference
@@ -53,8 +50,8 @@ castle gateway start|stop|reload      Manage Caddy reverse proxy
 castle service enable|disable NAME    Manage a systemd service
 castle service status                 Show all service statuses
 castle services start|stop            Start/stop everything
-castle tool list                      List tools grouped by category
-castle tool info NAME                 Show tool details + docs
+castle tool list                      List all tools
+castle tool info NAME                 Show tool details
 ```
 
 ## Registry
@@ -96,7 +93,7 @@ central-context/     <- content storage API (git submodule)
 notification-bridge/ <- desktop notification forwarder (git submodule)
 protonmail/          <- email sync tool/job
 devbox-connect/      <- SSH tunnel manager
-tools/               <- category tool packages (document/, search/, system/, etc.)
+pdf2md/              <- standalone tool (each tool is its own project)
 ruff.toml            <- shared lint config
 pyrightconfig.json   <- shared type checking config
 ```
@@ -130,24 +127,23 @@ pyrightconfig.json   <- shared type checking config
 
 ### Tools
 
-| Tool | Category | Description |
-|------|----------|-------------|
-| docx2md | document | Convert Word .docx to Markdown |
-| pdf2md | document | Convert PDF to Markdown |
-| html2text | document | Convert HTML to plain text |
-| md2pdf | document | Convert Markdown to PDF |
-| mbox2eml | document | Convert MBOX mailboxes to .eml files |
-| search | search | Manage searchable file collections |
-| docx-extractor | search | Extract content from Word files |
-| pdf-extractor | search | Extract content from PDF files |
-| text-extractor | search | Extract content from text files |
-| schedule | system | Manage systemd user timers |
-| backup-collect | system | Collect files for backup |
-| android-backup | android | Backup Android devices via ADB |
-| browser | browser | Browse the web via browser-use |
-| gpt | gpt | OpenAI text generation |
-| mdscraper | mdscraper | Combine text files into markdown |
-| devbox-connect | standalone | SSH tunnel manager |
+| Tool | Description |
+|------|-------------|
+| android-backup | Backup Android devices via ADB |
+| browser | Browse the web via browser-use |
+| devbox-connect | SSH tunnel manager |
+| docx-extractor | Extract content from Word files |
+| docx2md | Convert Word .docx to Markdown |
+| gpt | OpenAI text generation |
+| html2text | Convert HTML to plain text |
+| mbox2eml | Convert MBOX mailboxes to .eml files |
+| md2pdf | Convert Markdown to PDF |
+| mdscraper | Combine text files into markdown |
+| pdf-extractor | Extract content from PDF files |
+| pdf2md | Convert PDF to Markdown |
+| schedule | Manage systemd user timers |
+| search | Manage searchable file collections |
+| text-extractor | Extract content from text files |
 
 ### Frontends
 
