@@ -55,7 +55,7 @@ class TestUnitGeneration:
         assert "Restart=on-failure" in unit
 
     def test_uses_uv_run(self, castle_root: Path) -> None:
-        """Unit file ExecStart uses uv run for python_uv_tool."""
+        """Unit file ExecStart uses uv run for python runner."""
         config = load_config(castle_root)
         manifest = config.components["test-svc"]
         unit = generate_unit(config, "test-svc", manifest)
@@ -68,7 +68,7 @@ class TestUnitFromDeployed:
     def test_basic_service(self) -> None:
         """Generate a unit from a deployed component."""
         deployed = DeployedComponent(
-            runner="python_uv_tool",
+            runner="python",
             run_cmd=["/home/user/.local/bin/uv", "run", "my-svc"],
             env={"MY_SVC_PORT": "9001", "MY_SVC_DATA_DIR": "/data/castle/my-svc"},
             description="My service",
@@ -97,7 +97,7 @@ class TestUnitFromDeployed:
     def test_no_repo_paths(self) -> None:
         """Generated units must not reference repo paths."""
         deployed = DeployedComponent(
-            runner="python_uv_tool",
+            runner="python",
             run_cmd=["/home/user/.local/bin/uv", "run", "my-svc"],
             env={"DATA_DIR": "/data/castle/my-svc"},
             description="Test",

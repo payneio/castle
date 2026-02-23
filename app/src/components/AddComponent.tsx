@@ -4,7 +4,7 @@ import { Plus, X } from "lucide-react"
 const TEMPLATES: Record<string, Record<string, unknown>> = {
   service: {
     run: {
-      runner: "python_uv_tool",
+      runner: "python",
       tool: "",
       cwd: "",
       env: {},

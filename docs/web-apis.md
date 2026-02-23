@@ -101,12 +101,10 @@ Castle passes config via env vars in castle.yaml:
 ```yaml
 components:
   my-service:
+    source: my-service
     run:
-      runner: python_uv_tool
+      runner: python
       tool: my-service
-      cwd: my-service
-      env:
-        MY_SERVICE_DATA_DIR: /data/castle/my-service
     expose:
       http:
         internal: { port: 9001 }
@@ -115,6 +113,16 @@ components:
       caddy: { path_prefix: /my-service }
     manage:
       systemd: {}
+```
+
+Convention-based env vars (`MY_SERVICE_DATA_DIR`, `MY_SERVICE_PORT`) are
+generated automatically by `castle deploy`. Only non-convention values
+need `defaults.env`:
+
+```yaml
+    defaults:
+      env:
+        CENTRAL_CONTEXT_URL: http://localhost:9001
 ```
 
 ## Application entry point

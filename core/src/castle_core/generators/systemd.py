@@ -88,17 +88,10 @@ def manifest_to_exec_start(manifest: ComponentManifest, root: Path) -> str:
         raise ValueError(f"Component '{manifest.id}' has no run spec")
 
     match run.runner:
-        case "python_uv_tool":
+        case "python":
             uv_path = shutil.which("uv") or "uv"
             args_str = " ".join(run.args) if run.args else ""
             cmd = f"{uv_path} run {run.tool}"
-            if args_str:
-                cmd += f" {args_str}"
-            return cmd
-        case "python_module":
-            python = run.python or shutil.which("python3") or "python3"
-            args_str = " ".join(run.args) if run.args else ""
-            cmd = f"{python} -m {run.module}"
             if args_str:
                 cmd += f" {args_str}"
             return cmd

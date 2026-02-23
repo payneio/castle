@@ -15,7 +15,7 @@ from castle_cli.manifest import (
     ManageSpec,
     PathInstallSpec,
     ProxySpec,
-    RunPythonUvTool,
+    RunPython,
     SystemdSpec,
     ToolSpec,
 )
@@ -78,8 +78,8 @@ def run_create(args: argparse.Namespace) -> int:
             id=name,
             description=args.description or f"A castle {proj_type}",
             source=f"components/{name}",
-            run=RunPythonUvTool(
-                runner="python_uv_tool",
+            run=RunPython(
+                runner="python",
                 tool=name,
             ),
             expose=ExposeSpec(

@@ -1,7 +1,6 @@
 export const RUNNER_LABELS: Record<string, string> = {
-  python_uv_tool: "Python (uv)",
+  python: "Python",
   command: "Command",
-  python_module: "Python module",
   container: "Container",
   node: "Node.js",
   remote: "Remote",

@@ -60,7 +60,7 @@ class TestLoadConfig:
         """Service has correct RunSpec."""
         config = load_config(castle_root)
         svc = config.components["test-svc"]
-        assert svc.run.runner == "python_uv_tool"
+        assert svc.run.runner == "python"
         assert svc.run.tool == "test-svc"
         assert svc.source == "test-svc"
 

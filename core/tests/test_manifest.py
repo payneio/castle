@@ -17,7 +17,7 @@ from castle_core.manifest import (
     Role,
     RunCommand,
     RunContainer,
-    RunPythonUvTool,
+    RunPython,
     RunRemote,
     SystemdSpec,
     ToolSpec,
@@ -32,7 +32,7 @@ class TestRoleDerivation:
         """Component with expose.http gets SERVICE role."""
         m = ComponentManifest(
             id="svc",
-            run=RunPythonUvTool(runner="python_uv_tool", tool="svc"),
+            run=RunPython(runner="python", tool="svc"),
             expose=ExposeSpec(http=HttpExposeSpec(internal=HttpInternal(port=8000))),
         )
         assert Role.SERVICE in m.roles
@@ -114,7 +114,7 @@ class TestRoleDerivation:
         """Component can have multiple roles."""
         m = ComponentManifest(
             id="multi",
-            run=RunPythonUvTool(runner="python_uv_tool", tool="multi"),
+            run=RunPython(runner="python", tool="multi"),
             expose=ExposeSpec(http=HttpExposeSpec(internal=HttpInternal(port=8000))),
             install=InstallSpec(path=PathInstallSpec(alias="multi")),
         )
@@ -125,7 +125,7 @@ class TestRoleDerivation:
         """Systemd + HTTP = SERVICE, not WORKER."""
         m = ComponentManifest(
             id="svc",
-            run=RunPythonUvTool(runner="python_uv_tool", tool="svc"),
+            run=RunPython(runner="python", tool="svc"),
             expose=ExposeSpec(http=HttpExposeSpec(internal=HttpInternal(port=8000))),
             manage=ManageSpec(systemd=SystemdSpec()),
         )
@@ -170,7 +170,7 @@ class TestModelSerialization:
         m = ComponentManifest(
             id="svc",
             description="A service",
-            run=RunPythonUvTool(runner="python_uv_tool", tool="svc", cwd="svc"),
+            run=RunPython(runner="python", tool="svc", cwd="svc"),
             expose=ExposeSpec(
                 http=HttpExposeSpec(
                     internal=HttpInternal(port=9001), health_path="/health"
@@ -180,6 +180,6 @@ class TestModelSerialization:
             manage=ManageSpec(systemd=SystemdSpec()),
         )
         data = m.model_dump(exclude_none=True, exclude={"id", "roles"})
-        assert data["run"]["runner"] == "python_uv_tool"
+        assert data["run"]["runner"] == "python"
         assert data["expose"]["http"]["internal"]["port"] == 9001
         assert data["proxy"]["caddy"]["path_prefix"] == "/svc"

@@ -174,7 +174,7 @@ def _build_deployed(
 def _build_run_cmd(run: object, env: dict[str, str]) -> list[str]:
     """Build a run command list from a RunSpec."""
     match run.runner:
-        case "python_uv_tool":
+        case "python":
             resolved = shutil.which(run.tool)
             if not resolved:
                 print(
@@ -182,12 +182,6 @@ def _build_run_cmd(run: object, env: dict[str, str]) -> list[str]:
                     f"Install with: uv tool install --editable <source>"
                 )
             cmd = [resolved or run.tool]
-            if run.args:
-                cmd.extend(run.args)
-            return cmd
-        case "python_module":
-            python = run.python or shutil.which("python3") or "python3"
-            cmd = [python, "-m", run.module]
             if run.args:
                 cmd.extend(run.args)
             return cmd

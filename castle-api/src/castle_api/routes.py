@@ -95,7 +95,7 @@ def _summary_from_manifest(name: str, manifest: object, root: Path) -> Component
     if runner is None and manifest.tool and manifest.tool.source:
         source_dir = root / manifest.tool.source
         if (source_dir / "pyproject.toml").exists():
-            runner = "python_uv_tool"
+            runner = "python"
         elif source_dir.is_file():
             runner = "command"
 

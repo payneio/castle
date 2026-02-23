@@ -26,7 +26,7 @@ components:
       on the LAN
     source: components/central-context
     run:
-      runner: python_uv_tool
+      runner: python
       tool: central-context
     manage:
       systemd: {}
@@ -44,7 +44,7 @@ components:
       server.
     source: components/notification-bridge
     run:
-      runner: python_uv_tool
+      runner: python
       tool: notification-bridge
     defaults:
       env:
@@ -65,7 +65,7 @@ components:
     description: Castle API
     source: castle-api
     run:
-      runner: python_uv_tool
+      runner: python
       tool: castle-api
     manage:
       systemd: {}
@@ -98,8 +98,6 @@ components:
     install:
       path:
         alias: protonmail
-    tool:
-      source: components/protonmail/
   backup-collect:
     description: Collect files from various sources into backup directory
     source: components/backup-collect
@@ -117,7 +115,6 @@ components:
     manage:
       systemd: {}
     tool:
-      source: components/backup-collect/
       system_dependencies:
       - rsync
   backup-data:
@@ -136,7 +133,6 @@ components:
       timezone: America/Los_Angeles
     manage:
       systemd: {}
-    tool: {}
   castle-app:
     description: Castle web app
     source: app
@@ -152,16 +148,12 @@ components:
     install:
       path:
         alias: devbox-connect
-    tool:
-      source: components/devbox-connect/
   mbox2eml:
     description: MBOX to EML email converter
     source: components/mbox2eml
     install:
       path:
         alias: mbox2eml
-    tool:
-      source: components/mbox2eml/
   android-backup:
     description: Backup Android device using ADB
     source: components/android-backup
@@ -169,7 +161,6 @@ components:
       path:
         alias: android-backup
     tool:
-      source: components/android-backup/
       system_dependencies:
       - adb
   browser:
@@ -178,8 +169,6 @@ components:
     install:
       path:
         alias: browser
-    tool:
-      source: components/browser/
   docx-extractor:
     description: Extract content and metadata from Word .docx files
     source: components/docx-extractor
@@ -187,7 +176,6 @@ components:
       path:
         alias: docx-extractor
     tool:
-      source: components/docx-extractor/
       system_dependencies:
       - pandoc
   docx2md:
@@ -197,7 +185,6 @@ components:
       path:
         alias: docx2md
     tool:
-      source: components/docx2md/
       system_dependencies:
       - pandoc
   gpt:
@@ -206,16 +193,12 @@ components:
     install:
       path:
         alias: gpt
-    tool:
-      source: components/gpt/
   html2text:
     description: Convert HTML content to plain text
     source: components/html2text
     install:
       path:
         alias: html2text
-    tool:
-      source: components/html2text/
   md2pdf:
     description: Convert Markdown files to PDF
     source: components/md2pdf
@@ -223,7 +206,6 @@ components:
       path:
         alias: md2pdf
     tool:
-      source: components/md2pdf/
       system_dependencies:
       - pandoc
       - texlive-latex-base
@@ -233,16 +215,12 @@ components:
     install:
       path:
         alias: mdscraper
-    tool:
-      source: components/mdscraper/
   pdf-extractor:
     description: Extract content and metadata from PDF files
     source: components/pdf-extractor
     install:
       path:
         alias: pdf-extractor
-    tool:
-      source: components/pdf-extractor/
   pdf2md:
     description: Convert PDF files to Markdown
     source: components/pdf2md
@@ -250,7 +228,6 @@ components:
       path:
         alias: pdf2md
     tool:
-      source: components/pdf2md/
       system_dependencies:
       - pandoc
       - poppler-utils
@@ -260,21 +237,15 @@ components:
     install:
       path:
         alias: schedule
-    tool:
-      source: components/schedule/
   search:
     description: Manage self-contained searchable collections of files
     source: components/search
     install:
       path:
         alias: search
-    tool:
-      source: components/search/
   text-extractor:
     description: Extract content and metadata from text files
     source: components/text-extractor
     install:
       path:
         alias: text-extractor
-    tool:
-      source: components/text-extractor/

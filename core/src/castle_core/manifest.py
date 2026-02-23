@@ -46,15 +46,8 @@ class RunCommand(RunBase):
     argv: list[str] = Field(min_length=1)
 
 
-class RunPythonModule(RunBase):
-    runner: Literal["python_module"]
-    module: str
-    args: list[str] = Field(default_factory=list)
-    python: str | None = None
-
-
-class RunPythonUvTool(RunBase):
-    runner: Literal["python_uv_tool"]
+class RunPython(RunBase):
+    runner: Literal["python"]
     tool: str
     args: list[str] = Field(default_factory=list)
 
@@ -84,9 +77,7 @@ class RunRemote(RunBase):
 
 
 RunSpec = Annotated[
-    Union[
-        RunCommand, RunPythonModule, RunPythonUvTool, RunContainer, RunNode, RunRemote
-    ],
+    Union[RunCommand, RunPython, RunContainer, RunNode, RunRemote],
     Field(discriminator="runner"),
 ]
 

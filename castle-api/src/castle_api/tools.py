@@ -30,7 +30,7 @@ def _tool_summary(
     if runner is None and t.source and root:
         source_dir = root / t.source
         if (source_dir / "pyproject.toml").exists():
-            runner = "python_uv_tool"
+            runner = "python"
         elif source_dir.is_file():
             runner = "command"
 

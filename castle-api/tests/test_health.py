@@ -55,7 +55,7 @@ class TestComponentDetail:
         data = response.json()
         assert data["id"] == "test-svc"
         assert "manifest" in data
-        assert data["manifest"]["runner"] == "python_uv_tool"
+        assert data["manifest"]["runner"] == "python"
 
     def test_not_found(self, client: TestClient) -> None:
         """Returns 404 for unknown component."""
