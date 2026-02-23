@@ -20,7 +20,7 @@ How to build, serve, and manage web frontends as castle components.
 
 ```bash
 # Create the project
-mkdir my-frontend && cd my-frontend
+mkdir components/my-frontend && cd components/my-frontend
 pnpm create vite . --template react-ts
 
 # Core dependencies

@@ -132,7 +132,7 @@ Creates a shim so the tool is available system-wide after
 
 ```yaml
 tool:
-  source: my-tool/                # Source directory
+  source: components/my-tool/     # Source directory
   version: "1.0.0"
   system_dependencies: [pandoc, poppler-utils]
 ```
@@ -209,7 +209,7 @@ A component can have multiple roles. For example, `protonmail` is both a
 # Service — scaffolds project, assigns port, registers in castle.yaml
 castle create my-service --type service --description "Does something"
 
-# Tool — scaffolds at repo root
+# Tool — scaffolds under components/
 castle create my-tool --type tool --description "Does something"
 ```
 
@@ -222,7 +222,7 @@ components:
   my-tool:
     description: Does something useful
     tool:
-      source: my-tool/
+      source: components/my-tool/
     install:
       path:
         alias: my-tool
@@ -234,7 +234,7 @@ components:
 
 ```bash
 castle create my-service --type service   # 1. Scaffold + register
-cd my-service && uv sync                  # 2. Install deps
+cd components/my-service && uv sync       # 2. Install deps
 # ... implement ...
 castle test my-service                    # 3. Run tests
 castle service enable my-service          # 4. Generate systemd unit, start
@@ -254,10 +254,10 @@ castle service disable my-service # Stop and remove systemd unit
 
 ```bash
 castle create my-tool --type tool        # 1. Scaffold + register
-cd my-tool && uv sync                    # 2. Install deps
+cd components/my-tool && uv sync         # 2. Install deps
 # ... implement ...
 castle test my-tool                      # 3. Run tests
-uv tool install --editable my-tool/      # 4. Install to PATH
+uv tool install --editable components/my-tool/  # 4. Install to PATH
 ```
 
 ### Job lifecycle
@@ -295,7 +295,7 @@ and a `.timer` file.
 
 ## Manifest models
 
-The Pydantic models live in `cli/src/castle_cli/manifest.py`. Key classes:
+The Pydantic models live in `core/src/castle_core/manifest.py`. Key classes:
 
 - `ComponentManifest` — top-level model, has `roles` computed property
 - `RunSpec` — discriminated union (RunPythonUvTool, RunCommand, etc.)
@@ -303,5 +303,8 @@ The Pydantic models live in `cli/src/castle_cli/manifest.py`. Key classes:
 - `ExposeSpec`, `ProxySpec`, `ManageSpec`, `InstallSpec`, `ToolSpec`, `BuildSpec`
 - `CaddySpec`, `SystemdSpec`, `HttpExposeSpec`, `HttpInternal`
 
-Config loading: `cli/src/castle_cli/config.py` — `load_config()` parses
+Config loading: `core/src/castle_core/config.py` — `load_config()` parses
 castle.yaml into `CastleConfig` with typed `components` dict.
+
+Infrastructure generators: `core/src/castle_core/generators/` — systemd unit/timer
+generation (`systemd.py`) and Caddyfile generation (`caddyfile.py`).
