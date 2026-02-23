@@ -77,6 +77,50 @@ castle services start|stop               # Start/stop everything
 - **Data**: Service data lives in `/data/castle/<service-name>/`, passed via env var.
 - **Secrets**: `~/.castle/secrets/` — never in project directories.
 
+## API Endpoints (castle-api, port 9020)
+
+Core:
+- `GET /health` — Health check
+- `GET /stream` — SSE stream (health, service-action, mesh events)
+
+Components:
+- `GET /components` — List all (add `?include_remote=true` for cross-node)
+- `GET /components/{name}` — Component detail
+- `GET /status` — Live health for all services
+
+Gateway:
+- `GET /gateway` — Gateway info with route table and hostname
+- `GET /gateway/caddyfile` — Generated Caddyfile content
+- `POST /gateway/reload` — Regenerate Caddyfile and reload Caddy
+
+Nodes (mesh):
+- `GET /nodes` — All known nodes (local + discovered remote)
+- `GET /nodes/{hostname}` — Node detail with deployed components
+
+Services:
+- `POST /services/{name}/{action}` — start/stop/restart
+- `GET /services/{name}/unit` — Systemd unit content
+
+Tools:
+- `GET /tools` — List all tools
+- `GET /tools/{name}` — Tool detail
+- `POST /tools/{name}/install` — Install tool to PATH
+- `POST /tools/{name}/uninstall` — Uninstall tool
+
+## Mesh Coordination (opt-in)
+
+Multi-node discovery is disabled by default. Enable via env vars:
+
+```bash
+CASTLE_API_MQTT_ENABLED=true    # Connect to MQTT broker
+CASTLE_API_MQTT_HOST=localhost   # Broker address
+CASTLE_API_MQTT_PORT=1883        # Broker port
+CASTLE_API_MDNS_ENABLED=true    # Advertise/discover via mDNS
+```
+
+Key modules: `castle_api.mesh` (MeshStateManager), `castle_api.mqtt_client`
+(paho-mqtt wrapper), `castle_api.mdns` (python-zeroconf wrapper).
+
 ## Per-Project Commands
 
 All projects use **uv**. Commands run from each project's directory:

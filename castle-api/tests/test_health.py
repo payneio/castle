@@ -80,7 +80,27 @@ class TestGateway:
         assert response.status_code == 200
         data = response.json()
         assert data["port"] == 9000
+        assert data["hostname"] == "test-node"
         # Registry has 1 deployed component (test-svc)
         assert data["component_count"] == 1
         assert data["service_count"] == 1
         assert data["managed_count"] == 1
+
+    def test_gateway_routes(self, client: TestClient) -> None:
+        """Returns proxy routes from deployed components."""
+        response = client.get("/gateway")
+        data = response.json()
+        routes = data["routes"]
+        assert len(routes) == 1
+        route = routes[0]
+        assert route["path"] == "/test-svc"
+        assert route["target_port"] == 19000
+        assert route["component"] == "test-svc"
+        assert route["node"] == "test-node"
+
+    def test_gateway_routes_sorted(self, client: TestClient) -> None:
+        """Routes are sorted by path."""
+        response = client.get("/gateway")
+        data = response.json()
+        paths = [r["path"] for r in data["routes"]]
+        assert paths == sorted(paths)

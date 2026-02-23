@@ -1,6 +1,9 @@
 import { useMemo } from "react"
 import { Link } from "react-router-dom"
-import { useComponents, useStatus, useGateway, useEventStream } from "@/services/api/hooks"
+import { useComponents, useStatus, useGateway, useNodes, useMeshStatus, useEventStream } from "@/services/api/hooks"
+import { GatewayPanel } from "@/components/GatewayPanel"
+import { MeshPanel } from "@/components/MeshPanel"
+import { NodeBar } from "@/components/NodeBar"
 import { ServiceSection } from "@/components/ServiceSection"
 import { JobSection } from "@/components/JobSection"
 import { ToolSection } from "@/components/ToolSection"
@@ -11,6 +14,8 @@ export function Dashboard() {
   const { data: components, isLoading } = useComponents()
   const { data: statusResp } = useStatus()
   const { data: gateway } = useGateway()
+  const { data: nodes } = useNodes()
+  const { data: mesh } = useMeshStatus()
 
   const { services, jobs, tools, frontends, other } = useMemo(() => {
     const s = { services: [] as typeof components, jobs: [] as typeof components, tools: [] as typeof components, frontends: [] as typeof components, other: [] as typeof components }
@@ -30,16 +35,22 @@ export function Dashboard() {
     <div className="max-w-6xl mx-auto px-6 py-8">
       <div className="mb-8">
         <h1 className="text-3xl font-bold">Castle</h1>
-        <p className="text-[var(--muted)] mt-1">
-          Personal software platform
-          {gateway && (
-            <span className="ml-2 text-sm">
-              &middot; {services.length} services &middot; {jobs.length} jobs
-              &middot; {tools.length} tools &middot; port {gateway.port}
-            </span>
-          )}
-        </p>
+        <p className="text-[var(--muted)] mt-1">Personal software platform</p>
       </div>
+
+      {nodes && <NodeBar nodes={nodes} />}
+
+      {gateway && (
+        <div className="mb-6">
+          <GatewayPanel gateway={gateway} statuses={statuses} />
+        </div>
+      )}
+
+      {mesh && (
+        <div className="mb-10">
+          <MeshPanel mesh={mesh} />
+        </div>
+      )}
 
       {isLoading ? (
         <p className="text-[var(--muted)]">Loading...</p>
