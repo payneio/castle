@@ -7,7 +7,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, status
 
-from castle_core.manifest import ComponentManifest
+from castle_core.manifest import ComponentSpec
 
 from castle_api.config import get_config
 from castle_api.models import ToolDetail, ToolSummary
@@ -15,20 +15,25 @@ from castle_api.models import ToolDetail, ToolSummary
 router = APIRouter(tags=["tools"])
 
 
+def _is_tool(comp: ComponentSpec) -> bool:
+    """Check if a component is a tool (has install.path or tool spec)."""
+    return bool((comp.install and comp.install.path) or comp.tool)
+
+
 def _tool_summary(
-    name: str, manifest: ComponentManifest, root: Path | None = None
+    name: str, comp: ComponentSpec, root: Path | None = None
 ) -> ToolSummary:
-    """Build a ToolSummary from a manifest that has a tool spec."""
-    t = manifest.tool
-    assert t is not None
+    """Build a ToolSummary from a ComponentSpec that is a tool."""
+    t = comp.tool
     installed = bool(
-        manifest.install and manifest.install.path and manifest.install.path.enable
+        comp.install and comp.install.path and comp.install.path.enable
     )
 
-    # Infer runner from run block or source directory
-    runner = manifest.run.runner if manifest.run else None
-    if runner is None and t.source and root:
-        source_dir = root / t.source
+    # Infer runner from source directory
+    runner = None
+    source = comp.source
+    if source and root:
+        source_dir = root / source
         if (source_dir / "pyproject.toml").exists():
             runner = "python"
         elif source_dir.is_file():
@@ -36,11 +41,11 @@ def _tool_summary(
 
     return ToolSummary(
         id=name,
-        description=manifest.description,
-        source=t.source,
-        version=t.version,
+        description=comp.description,
+        source=source,
+        version=t.version if t else None,
         runner=runner,
-        system_dependencies=t.system_dependencies,
+        system_dependencies=t.system_dependencies if t else [],
         installed=installed,
     )
 
@@ -49,12 +54,12 @@ def _tool_summary(
 def list_tools() -> list[ToolSummary]:
     """List all registered tools (requires repo access)."""
     config = get_config()
-    tools = {k: v for k, v in config.components.items() if v.tool}
+    tools = {k: v for k, v in config.components.items() if _is_tool(v)}
 
     return sorted(
         [
-            _tool_summary(name, manifest, config.root)
-            for name, manifest in tools.items()
+            _tool_summary(name, comp, config.root)
+            for name, comp in tools.items()
         ],
         key=lambda t: t.id,
     )
@@ -71,14 +76,14 @@ def get_tool(name: str) -> ToolDetail:
             detail=f"Component '{name}' not found",
         )
 
-    manifest = config.components[name]
-    if not manifest.tool:
+    comp = config.components[name]
+    if not _is_tool(comp):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"'{name}' is not a tool",
         )
 
-    summary = _tool_summary(name, manifest, config.root)
+    summary = _tool_summary(name, comp, config.root)
     return ToolDetail(**summary.model_dump())
 
 
@@ -91,16 +96,16 @@ async def install_tool(name: str) -> dict:
             status_code=status.HTTP_404_NOT_FOUND, detail=f"'{name}' not found"
         )
 
-    manifest = config.components[name]
-    if not manifest.tool or not manifest.tool.source:
+    comp = config.components[name]
+    if not comp.source:
         raise HTTPException(
-            status_code=400, detail=f"'{name}' has no tool source to install"
+            status_code=400, detail=f"'{name}' has no source to install"
         )
 
-    source_dir = config.root / manifest.tool.source
+    source_dir = config.root / comp.source
     if not (source_dir / "pyproject.toml").exists():
         raise HTTPException(
-            status_code=400, detail=f"No pyproject.toml in {manifest.tool.source}"
+            status_code=400, detail=f"No pyproject.toml in {comp.source}"
         )
 
     proc = await asyncio.create_subprocess_exec(
@@ -131,12 +136,12 @@ async def uninstall_tool(name: str) -> dict:
             status_code=status.HTTP_404_NOT_FOUND, detail=f"'{name}' not found"
         )
 
-    manifest = config.components[name]
-    if not manifest.tool or not manifest.tool.source:
-        raise HTTPException(status_code=400, detail=f"'{name}' has no tool source")
+    comp = config.components[name]
+    if not comp.source:
+        raise HTTPException(status_code=400, detail=f"'{name}' has no source")
 
     # uv tool uninstall uses the package name from pyproject.toml
-    source_dir = config.root / manifest.tool.source
+    source_dir = config.root / comp.source
     pkg_name = source_dir.name
     pyproject = source_dir / "pyproject.toml"
     if pyproject.exists():

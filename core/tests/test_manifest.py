@@ -1,4 +1,4 @@
-"""Tests for castle manifest — role derivation, validation."""
+"""Tests for castle manifest models."""
 
 from __future__ import annotations
 
@@ -6,171 +6,183 @@ import pytest
 from castle_core.manifest import (
     BuildSpec,
     CaddySpec,
-    ComponentManifest,
+    ComponentSpec,
     ExposeSpec,
     HttpExposeSpec,
     HttpInternal,
     InstallSpec,
+    JobSpec,
     ManageSpec,
     PathInstallSpec,
     ProxySpec,
-    Role,
     RunCommand,
-    RunContainer,
     RunPython,
     RunRemote,
+    ServiceSpec,
     SystemdSpec,
     ToolSpec,
-    TriggerSchedule,
 )
 
 
-class TestRoleDerivation:
-    """Tests for computed role derivation."""
+class TestComponentSpec:
+    """Tests for component (software catalog) model."""
 
-    def test_service_from_expose_http(self) -> None:
-        """Component with expose.http gets SERVICE role."""
-        m = ComponentManifest(
-            id="svc",
-            run=RunPython(runner="python", tool="svc"),
-            expose=ExposeSpec(http=HttpExposeSpec(internal=HttpInternal(port=8000))),
+    def test_minimal(self) -> None:
+        """Minimal component just needs an id."""
+        c = ComponentSpec(id="bare")
+        assert c.description is None
+        assert c.source is None
+        assert c.install is None
+        assert c.tool is None
+        assert c.build is None
+
+    def test_tool_component(self) -> None:
+        """Component with tool and install specs."""
+        c = ComponentSpec(
+            id="my-tool",
+            description="A tool",
+            source="my-tool/",
+            tool=ToolSpec(),
+            install=InstallSpec(path=PathInstallSpec(alias="my-tool")),
         )
-        assert Role.SERVICE in m.roles
+        assert c.source == "my-tool/"
+        assert c.install.path.alias == "my-tool"
 
-    def test_tool_from_install_path(self) -> None:
-        """Component with install.path gets TOOL role."""
-        m = ComponentManifest(
-            id="mytool",
-            install=InstallSpec(path=PathInstallSpec(alias="mytool")),
-        )
-        assert Role.TOOL in m.roles
-
-    def test_worker_from_systemd_without_http(self) -> None:
-        """Component managed by systemd but no HTTP gets WORKER role."""
-        m = ComponentManifest(
-            id="worker",
-            run=RunCommand(runner="command", argv=["worker-bin"]),
-            manage=ManageSpec(systemd=SystemdSpec()),
-        )
-        assert Role.WORKER in m.roles
-        assert Role.SERVICE not in m.roles
-
-    def test_container_role(self) -> None:
-        """Container runner gets CONTAINERIZED role."""
-        m = ComponentManifest(
-            id="container",
-            run=RunContainer(runner="container", image="redis:7"),
-        )
-        assert Role.CONTAINERIZED in m.roles
-
-    def test_remote_role(self) -> None:
-        """Remote runner gets REMOTE role."""
-        m = ComponentManifest(
-            id="remote",
-            run=RunRemote(runner="remote", base_url="http://example.com"),
-        )
-        assert Role.REMOTE in m.roles
-
-    def test_job_from_schedule_trigger(self) -> None:
-        """Component with schedule trigger gets JOB role."""
-        m = ComponentManifest(
-            id="job",
-            run=RunCommand(runner="command", argv=["backup"]),
-            triggers=[TriggerSchedule(cron="0 * * * *")],
-        )
-        assert Role.JOB in m.roles
-
-    def test_frontend_from_build(self) -> None:
-        """Component with build outputs gets FRONTEND role."""
-        m = ComponentManifest(
-            id="frontend",
-            run=RunCommand(runner="command", argv=["serve"]),
+    def test_frontend_component(self) -> None:
+        """Component with build spec."""
+        c = ComponentSpec(
+            id="my-app",
             build=BuildSpec(commands=[["pnpm", "build"]], outputs=["dist/"]),
         )
-        assert Role.FRONTEND in m.roles
+        assert c.build.outputs == ["dist/"]
 
-    def test_tool_from_tool_spec(self) -> None:
-        """Component with tool spec gets TOOL role."""
-        m = ComponentManifest(
-            id="docx2md",
-            tool=ToolSpec(source="docx2md/"),
-        )
-        assert Role.TOOL in m.roles
+    def test_source_dir_from_source(self) -> None:
+        """source_dir uses source field."""
+        c = ComponentSpec(id="x", source="components/x/")
+        assert c.source_dir == "components/x"
 
-    def test_tool_spec_without_install(self) -> None:
-        """Tool spec alone is enough for TOOL role, no install.path needed."""
-        m = ComponentManifest(
-            id="my-tool",
-            tool=ToolSpec(),
-        )
-        assert Role.TOOL in m.roles
+    def test_source_dir_none(self) -> None:
+        """source_dir returns None when no source available."""
+        c = ComponentSpec(id="x")
+        assert c.source_dir is None
 
-    def test_fallback_to_tool(self) -> None:
-        """Component with no indicators defaults to TOOL."""
-        m = ComponentManifest(id="bare")
-        assert m.roles == [Role.TOOL]
 
-    def test_multiple_roles(self) -> None:
-        """Component can have multiple roles."""
-        m = ComponentManifest(
-            id="multi",
-            run=RunPython(runner="python", tool="multi"),
-            expose=ExposeSpec(http=HttpExposeSpec(internal=HttpInternal(port=8000))),
-            install=InstallSpec(path=PathInstallSpec(alias="multi")),
-        )
-        assert Role.SERVICE in m.roles
-        assert Role.TOOL in m.roles
+class TestServiceSpec:
+    """Tests for service (long-running daemon) model."""
 
-    def test_systemd_with_http_is_service_not_worker(self) -> None:
-        """Systemd + HTTP = SERVICE, not WORKER."""
-        m = ComponentManifest(
+    def test_basic_service(self) -> None:
+        """Service with run and expose."""
+        s = ServiceSpec(
             id="svc",
             run=RunPython(runner="python", tool="svc"),
             expose=ExposeSpec(http=HttpExposeSpec(internal=HttpInternal(port=8000))),
+        )
+        assert s.run.runner == "python"
+        assert s.expose.http.internal.port == 8000
+
+    def test_service_with_component_ref(self) -> None:
+        """Service can reference a component."""
+        s = ServiceSpec(
+            id="svc",
+            component="my-component",
+            run=RunPython(runner="python", tool="svc"),
+        )
+        assert s.component == "my-component"
+
+    def test_service_with_proxy(self) -> None:
+        """Service with proxy spec."""
+        s = ServiceSpec(
+            id="svc",
+            run=RunPython(runner="python", tool="svc"),
+            proxy=ProxySpec(caddy=CaddySpec(path_prefix="/svc")),
+        )
+        assert s.proxy.caddy.path_prefix == "/svc"
+
+    def test_service_with_manage(self) -> None:
+        """Service with systemd management."""
+        s = ServiceSpec(
+            id="svc",
+            run=RunCommand(runner="command", argv=["bin"]),
             manage=ManageSpec(systemd=SystemdSpec()),
         )
-        assert Role.SERVICE in m.roles
-        assert Role.WORKER not in m.roles
-
-
-class TestConsistencyValidation:
-    """Tests for model validation."""
+        assert s.manage.systemd.enable is True
 
     def test_remote_with_systemd_raises(self) -> None:
         """Remote runner + systemd management is invalid."""
         with pytest.raises(
             ValueError, match="manage.systemd cannot be enabled for runner=remote"
         ):
-            ComponentManifest(
+            ServiceSpec(
                 id="bad",
                 run=RunRemote(runner="remote", base_url="http://example.com"),
                 manage=ManageSpec(systemd=SystemdSpec()),
             )
 
-    def test_no_run_is_valid(self) -> None:
-        """Component with no run spec is valid (registration-only)."""
-        m = ComponentManifest(id="reg-only", description="Just registered")
-        assert m.run is None
-        assert m.roles == [Role.TOOL]
+    def test_no_run_is_invalid(self) -> None:
+        """Service requires a run spec."""
+        with pytest.raises(Exception):
+            ServiceSpec(id="bad")
+
+
+class TestJobSpec:
+    """Tests for job (scheduled task) model."""
+
+    def test_basic_job(self) -> None:
+        """Job with run and schedule."""
+        j = JobSpec(
+            id="my-job",
+            run=RunCommand(runner="command", argv=["backup"]),
+            schedule="0 2 * * *",
+        )
+        assert j.schedule == "0 2 * * *"
+        assert j.timezone == "America/Los_Angeles"
+
+    def test_job_with_component_ref(self) -> None:
+        """Job can reference a component."""
+        j = JobSpec(
+            id="sync",
+            component="protonmail",
+            run=RunCommand(runner="command", argv=["protonmail", "sync"]),
+            schedule="*/5 * * * *",
+        )
+        assert j.component == "protonmail"
+
+    def test_job_requires_schedule(self) -> None:
+        """Job without schedule is invalid."""
+        with pytest.raises(Exception):
+            JobSpec(
+                id="bad",
+                run=RunCommand(runner="command", argv=["x"]),
+            )
+
+    def test_job_custom_timezone(self) -> None:
+        """Job with custom timezone."""
+        j = JobSpec(
+            id="job",
+            run=RunCommand(runner="command", argv=["x"]),
+            schedule="0 0 * * *",
+            timezone="UTC",
+        )
+        assert j.timezone == "UTC"
 
 
 class TestModelSerialization:
     """Tests for model_dump behavior."""
 
-    def test_dump_excludes_none(self) -> None:
+    def test_dump_component_excludes_none(self) -> None:
         """model_dump with exclude_none drops None fields."""
-        m = ComponentManifest(id="test", description="Test")
-        data = m.model_dump(exclude_none=True, exclude={"id", "roles"})
+        c = ComponentSpec(id="test", description="Test")
+        data = c.model_dump(exclude_none=True, exclude={"id"})
         assert "description" in data
-        assert "run" not in data
-        assert "manage" not in data
+        assert "install" not in data
+        assert "tool" not in data
 
     def test_dump_service(self) -> None:
-        """Full service manifest serializes correctly."""
-        m = ComponentManifest(
+        """Full service serializes correctly."""
+        s = ServiceSpec(
             id="svc",
             description="A service",
-            run=RunPython(runner="python", tool="svc", cwd="svc"),
+            run=RunPython(runner="python", tool="svc"),
             expose=ExposeSpec(
                 http=HttpExposeSpec(
                     internal=HttpInternal(port=9001), health_path="/health"
@@ -179,7 +191,7 @@ class TestModelSerialization:
             proxy=ProxySpec(caddy=CaddySpec(path_prefix="/svc")),
             manage=ManageSpec(systemd=SystemdSpec()),
         )
-        data = m.model_dump(exclude_none=True, exclude={"id", "roles"})
+        data = s.model_dump(exclude_none=True, exclude={"id"})
         assert data["run"]["runner"] == "python"
         assert data["expose"]["http"]["internal"]["port"] == 9001
         assert data["proxy"]["caddy"]["path_prefix"] == "/svc"

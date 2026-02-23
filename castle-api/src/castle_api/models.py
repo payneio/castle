@@ -16,7 +16,7 @@ class ComponentSummary(BaseModel):
 
     id: str
     description: str | None = None
-    roles: list[str]
+    category: str
     runner: str | None = None
     port: int | None = None
     health_path: str | None = None

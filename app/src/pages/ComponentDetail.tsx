@@ -20,7 +20,7 @@ export function ComponentDetailPage() {
   const { mutate, isPending } = useServiceAction()
   const health = statusResp?.statuses.find((s) => s.id === name)
   const isDown = health?.status === "down"
-  const isTool = component?.roles.includes("tool") ?? false
+  const isTool = component?.category === "tool"
   const { data: toolDetail } = useToolDetail(isTool ? (name ?? "") : "")
   const isGateway = name === "castle-gateway"
   const { data: caddyfile } = useCaddyfile(isGateway)
@@ -28,10 +28,14 @@ export function ComponentDetailPage() {
   const { data: unitData } = useSystemdUnit(name ?? "", showUnit && !!component?.systemd)
   const [message, setMessage] = useState<{ type: "ok" | "error"; text: string } | null>(null)
 
+  const configSection = component?.category === "service" ? "services"
+    : component?.category === "job" ? "jobs"
+    : "components"
+
   const handleSave = async (compName: string, config: Record<string, unknown>) => {
     setMessage(null)
     try {
-      await apiClient.put(`/config/components/${compName}`, { config })
+      await apiClient.put(`/config/${configSection}/${compName}`, { config })
       setMessage({ type: "ok", text: "Saved to castle.yaml" })
       refetch()
       qc.invalidateQueries({ queryKey: ["components"] })
@@ -43,7 +47,7 @@ export function ComponentDetailPage() {
 
   const handleDelete = async (compName: string) => {
     try {
-      await apiClient.delete(`/config/components/${compName}`)
+      await apiClient.delete(`/config/${configSection}/${compName}`)
       qc.invalidateQueries({ queryKey: ["components"] })
       navigate("/")
     } catch (e: unknown) {
@@ -116,10 +120,11 @@ export function ComponentDetailPage() {
         </div>
       </div>
 
-      <div className="flex gap-1.5 mb-6">
-        {component.roles.map((role) => (
-          <RoleBadge key={role} role={role} />
-        ))}
+      <div className="flex items-center gap-3 mb-6">
+        <RoleBadge role={component.category} />
+        {component.source && (
+          <span className="text-sm text-[var(--muted)] font-mono">{component.source}</span>
+        )}
       </div>
 
       {message && (

@@ -59,8 +59,8 @@ class TestInfoCommand:
         output = capsys.readouterr().out
         assert "not found" in output
 
-    def test_info_json(self, castle_root: Path, capsys) -> None:
-        """--json produces valid JSON with manifest fields."""
+    def test_info_json_service(self, castle_root: Path, capsys) -> None:
+        """--json produces valid JSON with service fields."""
         from castle_cli.config import load_config
 
         with patch("castle_cli.commands.info.load_config") as mock_load:
@@ -73,48 +73,8 @@ class TestInfoCommand:
         assert result == 0
         output = capsys.readouterr().out
         data = json.loads(output)
-        assert data["id"] == "test-svc"
-        assert "service" in data["roles"]
-        assert data["expose"]["http"]["internal"]["port"] == 19000
-
-    def test_info_shows_claude_md(self, castle_root: Path, capsys) -> None:
-        """Info shows CLAUDE.md content when present."""
-        project_dir = castle_root / "test-svc"
-        project_dir.mkdir(exist_ok=True)
-        (project_dir / "CLAUDE.md").write_text("# Test Service\n\nSome docs here.")
-
-        from castle_cli.config import load_config
-
-        with patch("castle_cli.commands.info.load_config") as mock_load:
-            mock_load.return_value = load_config(castle_root)
-
-            from castle_cli.commands.info import run_info
-
-            result = run_info(Namespace(project="test-svc", json=False))
-
-        assert result == 0
-        output = capsys.readouterr().out
-        assert "Some docs here" in output
-
-    def test_info_json_includes_claude_md(self, castle_root: Path, capsys) -> None:
-        """--json includes claude_md field when CLAUDE.md exists."""
-        project_dir = castle_root / "test-svc"
-        project_dir.mkdir(exist_ok=True)
-        (project_dir / "CLAUDE.md").write_text("# Docs\n")
-
-        from castle_cli.config import load_config
-
-        with patch("castle_cli.commands.info.load_config") as mock_load:
-            mock_load.return_value = load_config(castle_root)
-
-            from castle_cli.commands.info import run_info
-
-            result = run_info(Namespace(project="test-svc", json=True))
-
-        assert result == 0
-        data = json.loads(capsys.readouterr().out)
-        assert "claude_md" in data
-        assert "# Docs" in data["claude_md"]
+        assert data["category"] == "service"
+        assert data["service"]["expose"]["http"]["internal"]["port"] == 19000
 
     def test_info_shows_env(self, castle_root: Path, capsys) -> None:
         """Info displays environment variables."""
@@ -131,8 +91,8 @@ class TestInfoCommand:
         output = capsys.readouterr().out
         assert "TEST_SVC_DATA_DIR" in output
 
-    def test_info_shows_roles(self, castle_root: Path, capsys) -> None:
-        """Info displays derived roles."""
+    def test_info_shows_category(self, castle_root: Path, capsys) -> None:
+        """Info displays category instead of roles."""
         from castle_cli.config import load_config
 
         with patch("castle_cli.commands.info.load_config") as mock_load:
@@ -144,5 +104,5 @@ class TestInfoCommand:
 
         assert result == 0
         output = capsys.readouterr().out
-        assert "roles" in output
+        assert "category" in output
         assert "service" in output

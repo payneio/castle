@@ -21,9 +21,9 @@ def build_parser() -> argparse.ArgumentParser:
     # castle list
     list_parser = subparsers.add_parser("list", help="List all components")
     list_parser.add_argument(
-        "--role",
-        choices=["service", "tool", "worker", "job", "frontend", "remote", "containerized"],
-        help="Filter by role",
+        "--type",
+        choices=["service", "job", "tool", "frontend"],
+        help="Filter by type",
     )
     list_parser.add_argument("--json", action="store_true", help="Output as JSON")
 

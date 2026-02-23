@@ -12,7 +12,7 @@ interface ComponentTableProps {
   statuses: HealthStatus[]
 }
 
-type SortKey = "id" | "role" | "runner" | "schedule" | "port" | "status"
+type SortKey = "id" | "category" | "runner" | "schedule" | "port" | "status"
 type SortDir = "asc" | "desc"
 
 function statusRank(s: HealthStatus | undefined, installed: boolean | null): number {
@@ -30,13 +30,13 @@ function statusRank(s: HealthStatus | undefined, installed: boolean | null): num
 
 export function ComponentTable({ components, statuses }: ComponentTableProps) {
   const statusMap = useMemo(() => new Map(statuses.map((s) => [s.id, s])), [statuses])
-  const allRoles = useMemo(() => {
+  const allCategories = useMemo(() => {
     const set = new Set<string>()
-    for (const c of components) for (const r of c.roles) set.add(r)
+    for (const c of components) set.add(c.category)
     return Array.from(set).sort()
   }, [components])
 
-  const [roleFilter, setRoleFilter] = useState<string | null>(null)
+  const [categoryFilter, setCategoryFilter] = useState<string | null>(null)
   const [search, setSearch] = useState("")
   const [sortKey, setSortKey] = useState<SortKey>("id")
   const [sortDir, setSortDir] = useState<SortDir>("asc")
@@ -52,8 +52,8 @@ export function ComponentTable({ components, statuses }: ComponentTableProps) {
 
   const filtered = useMemo(() => {
     let list = components
-    if (roleFilter) {
-      list = list.filter((c) => c.roles.includes(roleFilter))
+    if (categoryFilter) {
+      list = list.filter((c) => c.category === categoryFilter)
     }
     if (search) {
       const q = search.toLowerCase()
@@ -64,7 +64,7 @@ export function ComponentTable({ components, statuses }: ComponentTableProps) {
       )
     }
     return list
-  }, [components, roleFilter, search])
+  }, [components, categoryFilter, search])
 
   const sorted = useMemo(() => {
     const dir = sortDir === "asc" ? 1 : -1
@@ -72,8 +72,8 @@ export function ComponentTable({ components, statuses }: ComponentTableProps) {
       switch (sortKey) {
         case "id":
           return dir * a.id.localeCompare(b.id)
-        case "role":
-          return dir * (a.roles[0] ?? "").localeCompare(b.roles[0] ?? "")
+        case "category":
+          return dir * a.category.localeCompare(b.category)
         case "runner":
           return dir * (a.runner ?? "").localeCompare(b.runner ?? "")
         case "schedule":
@@ -100,26 +100,26 @@ export function ComponentTable({ components, statuses }: ComponentTableProps) {
         />
         <div className="flex items-center gap-1.5">
           <button
-            onClick={() => setRoleFilter(null)}
+            onClick={() => setCategoryFilter(null)}
             className={`text-xs px-2 py-1 rounded transition-colors ${
-              roleFilter === null
+              categoryFilter === null
                 ? "bg-[var(--primary)] text-white"
                 : "bg-[var(--border)] text-[var(--muted)] hover:text-[var(--foreground)]"
             }`}
           >
             All
           </button>
-          {allRoles.map((role) => (
+          {allCategories.map((cat) => (
             <button
-              key={role}
-              onClick={() => setRoleFilter(roleFilter === role ? null : role)}
+              key={cat}
+              onClick={() => setCategoryFilter(categoryFilter === cat ? null : cat)}
               className={`text-xs px-2 py-1 rounded transition-colors ${
-                roleFilter === role
+                categoryFilter === cat
                   ? "bg-[var(--primary)] text-white"
                   : "bg-[var(--border)] text-[var(--muted)] hover:text-[var(--foreground)]"
               }`}
             >
-              {role}
+              {cat}
             </button>
           ))}
         </div>
@@ -131,7 +131,7 @@ export function ComponentTable({ components, statuses }: ComponentTableProps) {
           <thead>
             <tr className="bg-[var(--card)] border-b border-[var(--border)] text-left">
               <SortHeader label="Name" sortKey="id" current={sortKey} dir={sortDir} onSort={toggleSort} />
-              <SortHeader label="Roles" sortKey="role" current={sortKey} dir={sortDir} onSort={toggleSort} />
+              <SortHeader label="Category" sortKey="category" current={sortKey} dir={sortDir} onSort={toggleSort} />
               <SortHeader label="Runner" sortKey="runner" current={sortKey} dir={sortDir} onSort={toggleSort} />
               <SortHeader label="Schedule" sortKey="schedule" current={sortKey} dir={sortDir} onSort={toggleSort} />
               <SortHeader label="Port" sortKey="port" current={sortKey} dir={sortDir} onSort={toggleSort} />
@@ -233,11 +233,7 @@ function ComponentRow({
         )}
       </td>
       <td className="px-3 py-2.5">
-        <div className="flex gap-1 flex-wrap">
-          {component.roles.map((role) => (
-            <RoleBadge key={role} role={role} />
-          ))}
-        </div>
+        <RoleBadge role={component.category} />
       </td>
       <td className="px-3 py-2.5 text-[var(--muted)]">
         {component.runner ? runnerLabel(component.runner) : "—"}

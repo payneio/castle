@@ -67,8 +67,8 @@ def _tool_info(name: str) -> int:
     if manifest.description:
         print(f"  {manifest.description}")
     print(f"  {BOLD}version{RESET}:  {t.version}")
-    if t.source:
-        print(f"  {BOLD}source{RESET}:   {t.source}")
+    if manifest.source:
+        print(f"  {BOLD}source{RESET}:   {manifest.source}")
     if t.system_dependencies:
         print(f"  {BOLD}requires{RESET}: {', '.join(t.system_dependencies)}")
 

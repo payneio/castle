@@ -19,11 +19,10 @@ from castle_core.generators.caddyfile import generate_caddyfile_from_registry
 from castle_core.generators.systemd import (
     generate_timer,
     generate_unit_from_deployed,
-    get_schedule_trigger,
     timer_name,
     unit_name,
 )
-from castle_core.manifest import ComponentManifest
+from castle_core.manifest import JobSpec, ServiceSpec
 from castle_core.registry import (
     REGISTRY_PATH,
     DeployedComponent,
@@ -40,15 +39,7 @@ SYSTEMD_USER_DIR = Path.home() / ".config" / "systemd" / "user"
 def run_deploy(args: argparse.Namespace) -> int:
     """Deploy components from castle.yaml to ~/.castle/."""
     config = load_config()
-    component_name = getattr(args, "component", None)
-
-    if component_name:
-        if component_name not in config.components:
-            print(f"Error: component '{component_name}' not found in castle.yaml")
-            return 1
-        names = [component_name]
-    else:
-        names = list(config.components.keys())
+    target_name = getattr(args, "component", None)
 
     ensure_dirs()
 
@@ -57,7 +48,7 @@ def run_deploy(args: argparse.Namespace) -> int:
 
     # Load existing registry to preserve components not being redeployed,
     # or start fresh if deploying all
-    if component_name and REGISTRY_PATH.exists():
+    if target_name and REGISTRY_PATH.exists():
         try:
             existing = load_registry()
             registry = NodeRegistry(node=node, deployed=dict(existing.deployed))
@@ -67,14 +58,21 @@ def run_deploy(args: argparse.Namespace) -> int:
         registry = NodeRegistry(node=node)
 
     deployed_count = 0
-    for name in names:
-        manifest = config.components[name]
 
-        # Only deploy components with a run spec
-        if not manifest.run:
+    # Deploy services
+    for name, svc in config.services.items():
+        if target_name and name != target_name:
             continue
+        deployed = _build_deployed_service(config, name, svc)
+        registry.deployed[name] = deployed
+        deployed_count += 1
+        _print_deployed(name, deployed)
 
-        deployed = _build_deployed(config, name, manifest)
+    # Deploy jobs
+    for name, job in config.jobs.items():
+        if target_name and name != target_name:
+            continue
+        deployed = _build_deployed_job(config, name, job)
         registry.deployed[name] = deployed
         deployed_count += 1
         _print_deployed(name, deployed)
@@ -108,66 +106,97 @@ def _env_prefix(name: str) -> str:
     return name.replace("-", "_").upper()
 
 
-def _build_deployed(
-    config: CastleConfig, name: str, manifest: ComponentManifest
-) -> DeployedComponent:
-    """Build a DeployedComponent from a manifest spec."""
-    run = manifest.run
-    assert run is not None
+def _resolve_description(
+    config: CastleConfig, spec: ServiceSpec | JobSpec
+) -> str | None:
+    """Get description, falling through to component if referenced."""
+    if spec.description:
+        return spec.description
+    if spec.component and spec.component in config.components:
+        return config.components[spec.component].description
+    return None
 
-    # 1. Convention-based env vars
+
+def _build_deployed_service(
+    config: CastleConfig, name: str, svc: ServiceSpec
+) -> DeployedComponent:
+    """Build a DeployedComponent from a ServiceSpec."""
+    run = svc.run
     prefix = _env_prefix(name)
     env: dict[str, str] = {}
 
-    # Data dir convention (for all managed components)
-    if manifest.manage and manifest.manage.systemd:
+    # Data dir convention (for managed services)
+    managed = True  # Services are always managed by default
+    if svc.manage and svc.manage.systemd and not svc.manage.systemd.enable:
+        managed = False
+    if managed:
         env[f"{prefix}_DATA_DIR"] = str(DATA_ROOT / name)
 
     # Port convention (if exposed)
-    if manifest.expose and manifest.expose.http:
-        env[f"{prefix}_PORT"] = str(manifest.expose.http.internal.port)
-
-    # 2. Merge defaults.env (overrides conventions)
-    if manifest.defaults and manifest.defaults.env:
-        env.update(manifest.defaults.env)
-
-    # 3. Resolve secrets
-    env = resolve_env_vars(env, manifest)
-
-    # 4. Build run_cmd
-    run_cmd = _build_run_cmd(run, env)
-
-    # 5. Extract metadata
     port = None
     health_path = None
-    if manifest.expose and manifest.expose.http:
-        port = manifest.expose.http.internal.port
-        health_path = manifest.expose.http.health_path
+    if svc.expose and svc.expose.http:
+        port = svc.expose.http.internal.port
+        env[f"{prefix}_PORT"] = str(port)
+        health_path = svc.expose.http.health_path
 
+    # Merge defaults.env (overrides conventions)
+    if svc.defaults and svc.defaults.env:
+        env.update(svc.defaults.env)
+
+    # Resolve secrets
+    env = resolve_env_vars(env)
+
+    # Build run_cmd
+    run_cmd = _build_run_cmd(run, env)
+
+    # Proxy path
     proxy_path = None
-    if manifest.proxy and manifest.proxy.caddy and manifest.proxy.caddy.enable:
-        proxy_path = manifest.proxy.caddy.path_prefix or f"/{name}"
-
-    schedule = None
-    sched_trigger = get_schedule_trigger(manifest)
-    if sched_trigger:
-        schedule = sched_trigger.cron
-
-    managed = bool(manifest.manage and manifest.manage.systemd and manifest.manage.systemd.enable)
-
-    roles = [r.value for r in manifest.roles]
+    if svc.proxy and svc.proxy.caddy and svc.proxy.caddy.enable:
+        proxy_path = svc.proxy.caddy.path_prefix or f"/{name}"
 
     return DeployedComponent(
         runner=run.runner,
         run_cmd=run_cmd,
         env=env,
-        description=manifest.description,
-        roles=roles,
+        description=_resolve_description(config, svc),
+        category="service",
         port=port,
         health_path=health_path,
         proxy_path=proxy_path,
-        schedule=schedule,
         managed=managed,
+    )
+
+
+def _build_deployed_job(
+    config: CastleConfig, name: str, job: JobSpec
+) -> DeployedComponent:
+    """Build a DeployedComponent from a JobSpec."""
+    run = job.run
+    prefix = _env_prefix(name)
+    env: dict[str, str] = {}
+
+    # Data dir convention
+    env[f"{prefix}_DATA_DIR"] = str(DATA_ROOT / name)
+
+    # Merge defaults.env (overrides conventions)
+    if job.defaults and job.defaults.env:
+        env.update(job.defaults.env)
+
+    # Resolve secrets
+    env = resolve_env_vars(env)
+
+    # Build run_cmd
+    run_cmd = _build_run_cmd(run, env)
+
+    return DeployedComponent(
+        runner=run.runner,
+        run_cmd=run_cmd,
+        env=env,
+        description=_resolve_description(config, job),
+        category="job",
+        schedule=job.schedule,
+        managed=True,
     )
 
 
@@ -199,7 +228,6 @@ def _build_run_cmd(run: object, env: dict[str, str]) -> list[str]:
                 cmd.extend(["-p", f"{host_port}:{container_port}"])
             for vol in run.volumes:
                 cmd.extend(["-v", vol])
-            # Container env comes from both run.env (container-specific) and deployed env
             for key, val in run.env.items():
                 cmd.extend(["-e", f"{key}={val}"])
             for key, val in env.items():
@@ -238,13 +266,12 @@ def _copy_app_static(config: CastleConfig) -> None:
     if "castle-app" not in config.components:
         return
 
-    manifest = config.components["castle-app"]
-    if not (manifest.build and manifest.build.outputs):
+    comp = config.components["castle-app"]
+    if not (comp.build and comp.build.outputs):
         return
 
-    # Find the source dist directory
-    source_dir = manifest.source_dir or "app"
-    for output in manifest.build.outputs:
+    source_dir = comp.source_dir or "app"
+    for output in comp.build.outputs:
         src = config.root / source_dir / output
         if src.exists():
             dest = STATIC_DIR / "castle-app"
@@ -262,23 +289,30 @@ def _generate_systemd_units(config: CastleConfig, registry: NodeRegistry) -> Non
         if not deployed.managed:
             continue
 
-        # Get systemd spec from manifest (for restart policy, exec_reload, etc.)
+        # Get systemd spec from config (services or jobs)
         systemd_spec = None
-        if name in config.components:
-            manifest = config.components[name]
-            if manifest.manage and manifest.manage.systemd:
-                systemd_spec = manifest.manage.systemd
+        if name in config.services:
+            svc = config.services[name]
+            if svc.manage and svc.manage.systemd:
+                systemd_spec = svc.manage.systemd
+        elif name in config.jobs:
+            job = config.jobs[name]
+            if job.manage and job.manage.systemd:
+                systemd_spec = job.manage.systemd
 
         # Generate and write service unit
         svc_name = unit_name(name)
         svc_content = generate_unit_from_deployed(name, deployed, systemd_spec)
         (SYSTEMD_USER_DIR / svc_name).write_text(svc_content)
 
-        # Generate timer if scheduled
-        if name in config.components:
-            timer_content = generate_timer(name, config.components[name])
-            if timer_content:
-                tmr_name = timer_name(name)
-                (SYSTEMD_USER_DIR / tmr_name).write_text(timer_content)
+        # Generate timer for jobs
+        if deployed.schedule:
+            timer_content = generate_timer(
+                name,
+                schedule=deployed.schedule,
+                description=deployed.description,
+            )
+            tmr_name = timer_name(name)
+            (SYSTEMD_USER_DIR / tmr_name).write_text(timer_content)
 
     print(f"Systemd units written: {SYSTEMD_USER_DIR}")

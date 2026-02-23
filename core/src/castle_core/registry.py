@@ -35,7 +35,7 @@ class DeployedComponent:
     run_cmd: list[str]
     env: dict[str, str] = field(default_factory=dict)
     description: str | None = None
-    roles: list[str] = field(default_factory=list)
+    category: str = "service"
     port: int | None = None
     health_path: str | None = None
     proxy_path: str | None = None
@@ -82,7 +82,7 @@ def load_registry(path: Path | None = None) -> NodeRegistry:
             run_cmd=comp_data.get("run_cmd", []),
             env=comp_data.get("env", {}),
             description=comp_data.get("description"),
-            roles=comp_data.get("roles", []),
+            category=comp_data.get("category", "service"),
             port=comp_data.get("port"),
             health_path=comp_data.get("health_path"),
             proxy_path=comp_data.get("proxy_path"),
@@ -120,8 +120,7 @@ def save_registry(registry: NodeRegistry, path: Path | None = None) -> None:
             entry["env"] = comp.env
         if comp.description:
             entry["description"] = comp.description
-        if comp.roles:
-            entry["roles"] = comp.roles
+        entry["category"] = comp.category
         if comp.port is not None:
             entry["port"] = comp.port
         if comp.health_path:

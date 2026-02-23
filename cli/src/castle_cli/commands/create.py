@@ -7,7 +7,7 @@ import argparse
 from castle_cli.config import load_config, save_config
 from castle_cli.manifest import (
     CaddySpec,
-    ComponentManifest,
+    ComponentSpec,
     ExposeSpec,
     HttpExposeSpec,
     HttpInternal,
@@ -16,6 +16,7 @@ from castle_cli.manifest import (
     PathInstallSpec,
     ProxySpec,
     RunPython,
+    ServiceSpec,
     SystemdSpec,
     ToolSpec,
 )
@@ -25,9 +26,9 @@ from castle_cli.templates.scaffold import scaffold_project
 def next_available_port(config: object) -> int:
     """Find the next available port starting from 9001 (9000 is reserved for gateway)."""
     used_ports = set()
-    for manifest in config.components.values():
-        if manifest.expose and manifest.expose.http:
-            used_ports.add(manifest.expose.http.internal.port)
+    for svc in config.services.values():
+        if svc.expose and svc.expose.http:
+            used_ports.add(svc.expose.http.internal.port)
     # Also reserve gateway port
     used_ports.add(config.gateway.port)
 
@@ -43,8 +44,8 @@ def run_create(args: argparse.Namespace) -> int:
     name = args.name
     proj_type = args.type
 
-    if name in config.components:
-        print(f"Error: component '{name}' already exists in castle.yaml")
+    if name in config.components or name in config.services or name in config.jobs:
+        print(f"Error: '{name}' already exists in castle.yaml")
         return 1
 
     components_dir = config.root / "components"
@@ -72,16 +73,19 @@ def run_create(args: argparse.Namespace) -> int:
         port=port,
     )
 
-    # Build manifest entry
+    # Build entries
     if proj_type == "service":
-        manifest = ComponentManifest(
+        # Component for software identity
+        config.components[name] = ComponentSpec(
             id=name,
             description=args.description or f"A castle {proj_type}",
             source=f"components/{name}",
-            run=RunPython(
-                runner="python",
-                tool=name,
-            ),
+        )
+        # Service for deployment
+        config.services[name] = ServiceSpec(
+            id=name,
+            component=name,
+            run=RunPython(runner="python", tool=name),
             expose=ExposeSpec(
                 http=HttpExposeSpec(
                     internal=HttpInternal(port=port),
@@ -92,22 +96,21 @@ def run_create(args: argparse.Namespace) -> int:
             manage=ManageSpec(systemd=SystemdSpec()),
         )
     elif proj_type == "tool":
-        manifest = ComponentManifest(
+        config.components[name] = ComponentSpec(
             id=name,
             description=args.description or f"A castle {proj_type}",
             source=f"components/{name}",
-            tool=ToolSpec(source=f"components/{name}/"),
+            tool=ToolSpec(),
             install=InstallSpec(path=PathInstallSpec(alias=name)),
         )
     else:
         # library or other
-        manifest = ComponentManifest(
+        config.components[name] = ComponentSpec(
             id=name,
             description=args.description or f"A castle {proj_type}",
             source=f"components/{name}",
         )
 
-    config.components[name] = manifest
     save_config(config)
 
     print(f"Created {proj_type} '{name}' at {project_dir}")

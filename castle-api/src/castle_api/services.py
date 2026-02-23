@@ -131,21 +131,29 @@ def get_unit(name: str) -> dict[str, str | None]:
     registry = get_registry()
     deployed = registry.deployed[name]
 
-    # Get systemd spec from manifest if repo available
+    # Get systemd spec from config if repo available
     systemd_spec = None
+    schedule = None
+    description = None
     root = get_castle_root()
-    manifest = None
     if root:
         from castle_core.config import load_config
 
         config = load_config(root)
-        if name in config.components:
-            manifest = config.components[name]
-            if manifest.manage and manifest.manage.systemd:
-                systemd_spec = manifest.manage.systemd
+        if name in config.services:
+            svc = config.services[name]
+            if svc.manage and svc.manage.systemd:
+                systemd_spec = svc.manage.systemd
+            description = svc.description
+        elif name in config.jobs:
+            job = config.jobs[name]
+            if job.manage and job.manage.systemd:
+                systemd_spec = job.manage.systemd
+            schedule = job.schedule
+            description = job.description
 
     unit = generate_unit_from_deployed(name, deployed, systemd_spec)
-    timer = generate_timer(name, manifest) if manifest else None
+    timer = generate_timer(name, schedule, description) if schedule else None
     return {"service": unit, "timer": timer}
 
 

@@ -6,14 +6,28 @@ export const RUNNER_LABELS: Record<string, string> = {
   remote: "Remote",
 }
 
-export const ROLE_DESCRIPTIONS: Record<string, string> = {
-  service: "Exposes HTTP endpoints",
+export const CATEGORY_LABELS: Record<string, string> = {
+  service: "Services",
+  job: "Jobs",
+  tool: "Tools",
+  frontend: "Frontends",
+  component: "Components",
+}
+
+export const CATEGORY_DESCRIPTIONS: Record<string, string> = {
+  service: "Long-running daemon",
+  job: "Scheduled task",
   tool: "CLI utility installed to PATH",
-  worker: "Background process (no HTTP)",
-  job: "Runs on a schedule",
   frontend: "Built static assets",
-  remote: "Hosted externally",
-  containerized: "Runs in a container",
+  component: "Software component",
+}
+
+export const SECTION_HEADERS: Record<string, { title: string; subtitle: string }> = {
+  service: { title: "Services", subtitle: "Long-running daemons managed by systemd" },
+  job: { title: "Jobs", subtitle: "Scheduled tasks with cron timers" },
+  tool: { title: "Tools", subtitle: "CLI utilities installed to PATH" },
+  frontend: { title: "Frontends", subtitle: "Built web applications" },
+  component: { title: "Other", subtitle: "Software catalog entries" },
 }
 
 export function runnerLabel(runner: string): string {

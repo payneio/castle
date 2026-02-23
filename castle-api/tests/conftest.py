@@ -24,9 +24,26 @@ def castle_root(tmp_path: Path) -> Generator[Path, None, None]:
     config = {
         "gateway": {"port": 9000},
         "components": {
+            "test-tool": {
+                "description": "Test tool",
+                "source": "test-tool",
+                "install": {"path": {"alias": "test-tool"}},
+                "tool": {
+                    "system_dependencies": ["pandoc"],
+                },
+            },
+            "test-tool-2": {
+                "description": "Another test tool",
+                "source": "test-tool-2",
+                "tool": {
+                    "version": "2.0.0",
+                },
+            },
+        },
+        "services": {
             "test-svc": {
+                "component": "test-svc-comp",
                 "description": "Test service",
-                "source": "test-svc",
                 "run": {
                     "runner": "python",
                     "tool": "test-svc",
@@ -40,20 +57,15 @@ def castle_root(tmp_path: Path) -> Generator[Path, None, None]:
                 "proxy": {"caddy": {"path_prefix": "/test-svc"}},
                 "manage": {"systemd": {}},
             },
-            "test-tool": {
-                "description": "Test tool",
-                "install": {"path": {"alias": "test-tool"}},
-                "tool": {
-                    "source": "test-tool",
-                    "system_dependencies": ["pandoc"],
+        },
+        "jobs": {
+            "test-job": {
+                "description": "Test job",
+                "run": {
+                    "runner": "command",
+                    "argv": ["test-job"],
                 },
-            },
-            "test-tool-2": {
-                "description": "Another test tool",
-                "tool": {
-                    "source": "test-tool-2",
-                    "version": "2.0.0",
-                },
+                "schedule": "0 2 * * *",
             },
         },
     }
@@ -80,7 +92,7 @@ def registry_path(tmp_path: Path, castle_root: Path) -> Generator[Path, None, No
                     "TEST_SVC_DATA_DIR": "/data/castle/test-svc",
                 },
                 description="Test service",
-                roles=["service"],
+                category="service",
                 port=19000,
                 health_path="/health",
                 proxy_path="/test-svc",

@@ -38,9 +38,7 @@ export function ComponentCard({ component, health }: ComponentCardProps) {
       </div>
 
       <div className="flex gap-1 mb-2">
-        {component.roles.map((role) => (
-          <RoleBadge key={role} role={role} />
-        ))}
+        <RoleBadge role={component.category} />
       </div>
 
       {component.description && (
