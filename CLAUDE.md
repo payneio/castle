@@ -33,13 +33,9 @@ uv run my-service               # starts on auto-assigned port
 castle service enable my-service # register with systemd
 castle gateway reload            # update reverse proxy routes
 
-# Standalone tool
+# Tool
 castle create my-tool --type tool --description "Does something"
 cd my-tool && uv sync
-
-# Category tool (adds to existing tools/<category>/ package)
-castle create my-tool --type tool --category document --description "Does something"
-cd tools/document && uv sync
 ```
 
 The `castle create` command scaffolds the project, generates a CLAUDE.md,
@@ -59,8 +55,8 @@ castle lint [project]                    # Run linter (one or all)
 castle sync                              # Update submodules + uv sync all
 castle run <component>                   # Run component in foreground
 castle logs <component> [-f] [-n 50]     # View component logs
-castle tool list                         # List tools grouped by category
-castle tool info <name>                  # Show tool details + docs
+castle tool list                         # List all tools
+castle tool info <name>                  # Show tool details
 castle gateway start|stop|reload|status  # Manage Caddy reverse proxy
 castle service enable|disable <name>     # Manage individual systemd service
 castle service status                    # Show all service statuses

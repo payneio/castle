@@ -95,7 +95,7 @@ class TestRoleDerivation:
         """Component with tool spec gets TOOL role."""
         m = ComponentManifest(
             id="docx2md",
-            tool=ToolSpec(source="tools/document/"),
+            tool=ToolSpec(source="docx2md/"),
         )
         assert Role.TOOL in m.roles
 

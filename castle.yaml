@@ -120,7 +120,7 @@ components:
     manage:
       systemd: {}
     tool:
-      source: tools/system/
+      source: backup-collect/
       system_dependencies:
       - rsync
   backup-data:
@@ -162,14 +162,14 @@ components:
       path:
         alias: mbox2eml
     tool:
-      source: tools/document/
+      source: mbox2eml/
   android-backup:
     description: Backup Android device using ADB
     install:
       path:
         alias: android-backup
     tool:
-      source: tools/android/
+      source: android-backup/
       system_dependencies:
       - adb
   browser:
@@ -178,14 +178,14 @@ components:
       path:
         alias: browser
     tool:
-      source: tools/browser/
+      source: browser/
   docx-extractor:
     description: Extract content and metadata from Word .docx files
     install:
       path:
         alias: docx-extractor
     tool:
-      source: tools/search/
+      source: docx-extractor/
       system_dependencies:
       - pandoc
   docx2md:
@@ -194,7 +194,7 @@ components:
       path:
         alias: docx2md
     tool:
-      source: tools/document/
+      source: docx2md/
       system_dependencies:
       - pandoc
   gpt:
@@ -203,21 +203,21 @@ components:
       path:
         alias: gpt
     tool:
-      source: tools/gpt/
+      source: gpt/
   html2text:
     description: Convert HTML content to plain text
     install:
       path:
         alias: html2text
     tool:
-      source: tools/document/
+      source: html2text/
   md2pdf:
     description: Convert Markdown files to PDF
     install:
       path:
         alias: md2pdf
     tool:
-      source: tools/document/
+      source: md2pdf/
       system_dependencies:
       - pandoc
       - texlive-latex-base
@@ -227,21 +227,21 @@ components:
       path:
         alias: mdscraper
     tool:
-      source: tools/mdscraper/
+      source: mdscraper/
   pdf-extractor:
     description: Extract content and metadata from PDF files
     install:
       path:
         alias: pdf-extractor
     tool:
-      source: tools/search/
+      source: pdf-extractor/
   pdf2md:
     description: Convert PDF files to Markdown
     install:
       path:
         alias: pdf2md
     tool:
-      source: tools/document/
+      source: pdf2md/
       system_dependencies:
       - pandoc
       - poppler-utils
@@ -251,18 +251,18 @@ components:
       path:
         alias: schedule
     tool:
-      source: tools/system/
+      source: schedule/
   search:
     description: Manage self-contained searchable collections of files
     install:
       path:
         alias: search
     tool:
-      source: tools/search/
+      source: search/
   text-extractor:
     description: Extract content and metadata from text files
     install:
       path:
         alias: text-extractor
     tool:
-      source: tools/search/
+      source: text-extractor/
