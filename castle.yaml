@@ -5,7 +5,6 @@ components:
     description: Caddy reverse proxy gateway
     run:
       runner: command
-      working_dir: .
       argv:
       - caddy
       - run
@@ -25,12 +24,9 @@ components:
   central-context:
     description: Content storage API useful to get context into my data dir from anywhere
       on the LAN
+    source: components/central-context
     run:
       runner: python_uv_tool
-      working_dir: components/central-context
-      env:
-        CENTRAL_CONTEXT_DATA_DIR: /data/castle/central-context
-        CENTRAL_CONTEXT_PORT: '9001'
       tool: central-context
     manage:
       systemd: {}
@@ -46,14 +42,15 @@ components:
     description: Desktop notification forwarder. This taps into your notifications
       system on the desktop and will forward all notifications the the central context
       server.
+    source: components/notification-bridge
     run:
       runner: python_uv_tool
-      working_dir: components/notification-bridge
+      tool: notification-bridge
+    defaults:
       env:
         CENTRAL_CONTEXT_URL: http://localhost:9001
         BUCKET_NAME: notifications
         PORT: '9002'
-      tool: notification-bridge
     manage:
       systemd: {}
     expose:
@@ -66,11 +63,9 @@ components:
         path_prefix: /notifications
   castle-api:
     description: Castle API
+    source: castle-api
     run:
       runner: python_uv_tool
-      working_dir: castle-api
-      env:
-        CASTLE_API_CASTLE_ROOT: /data/repos/castle
       tool: castle-api
     manage:
       systemd: {}
@@ -84,15 +79,16 @@ components:
         path_prefix: /api
   protonmail:
     description: ProtonMail email sync via Bridge
+    source: components/protonmail
     run:
       runner: command
-      working_dir: components/protonmail
-      env:
-        PROTONMAIL_USERNAME: paul@payne.io
-        PROTONMAIL_API_KEY: ${secret:PROTONMAIL_API_KEY}
       argv:
       - protonmail
       - sync
+    defaults:
+      env:
+        PROTONMAIL_USERNAME: paul@payne.io
+        PROTONMAIL_API_KEY: ${secret:PROTONMAIL_API_KEY}
     triggers:
     - type: schedule
       cron: '*/5 * * * *'
@@ -106,13 +102,14 @@ components:
       source: components/protonmail/
   backup-collect:
     description: Collect files from various sources into backup directory
+    source: components/backup-collect
     run:
       runner: command
-      working_dir: .
-      env:
-        DBACKUP: /data/backup
       argv:
       - backup-collect
+    defaults:
+      env:
+        DBACKUP: /data/backup
     triggers:
     - type: schedule
       cron: 0 2 * * *
@@ -127,12 +124,12 @@ components:
     description: Nightly restic backup of /data to /storage
     run:
       runner: command
-      working_dir: .
+      argv:
+      - backup-data
+    defaults:
       env:
         RESTIC_REPOSITORY: /storage/restic-data
         RESTIC_PASSWORD_FILE: /home/payne/.config/restic-password
-      argv:
-      - backup-data
     triggers:
     - type: schedule
       cron: 30 3 * * *
@@ -142,8 +139,8 @@ components:
     tool: {}
   castle-app:
     description: Castle web app
+    source: app
     build:
-      working_dir: app
       commands:
       - - pnpm
         - build
@@ -151,6 +148,7 @@ components:
       - dist/
   devbox-connect:
     description: SSH tunnel manager with auto-reconnect
+    source: components/devbox-connect
     install:
       path:
         alias: devbox-connect
@@ -158,6 +156,7 @@ components:
       source: components/devbox-connect/
   mbox2eml:
     description: MBOX to EML email converter
+    source: components/mbox2eml
     install:
       path:
         alias: mbox2eml
@@ -165,6 +164,7 @@ components:
       source: components/mbox2eml/
   android-backup:
     description: Backup Android device using ADB
+    source: components/android-backup
     install:
       path:
         alias: android-backup
@@ -174,6 +174,7 @@ components:
       - adb
   browser:
     description: Browse the web using natural language via browser-use
+    source: components/browser
     install:
       path:
         alias: browser
@@ -181,6 +182,7 @@ components:
       source: components/browser/
   docx-extractor:
     description: Extract content and metadata from Word .docx files
+    source: components/docx-extractor
     install:
       path:
         alias: docx-extractor
@@ -190,6 +192,7 @@ components:
       - pandoc
   docx2md:
     description: Convert Word .docx files to Markdown
+    source: components/docx2md
     install:
       path:
         alias: docx2md
@@ -199,6 +202,7 @@ components:
       - pandoc
   gpt:
     description: OpenAI text generation utility
+    source: components/gpt
     install:
       path:
         alias: gpt
@@ -206,6 +210,7 @@ components:
       source: components/gpt/
   html2text:
     description: Convert HTML content to plain text
+    source: components/html2text
     install:
       path:
         alias: html2text
@@ -213,6 +218,7 @@ components:
       source: components/html2text/
   md2pdf:
     description: Convert Markdown files to PDF
+    source: components/md2pdf
     install:
       path:
         alias: md2pdf
@@ -223,6 +229,7 @@ components:
       - texlive-latex-base
   mdscraper:
     description: Combine text files into a single markdown document
+    source: components/mdscraper
     install:
       path:
         alias: mdscraper
@@ -230,6 +237,7 @@ components:
       source: components/mdscraper/
   pdf-extractor:
     description: Extract content and metadata from PDF files
+    source: components/pdf-extractor
     install:
       path:
         alias: pdf-extractor
@@ -237,6 +245,7 @@ components:
       source: components/pdf-extractor/
   pdf2md:
     description: Convert PDF files to Markdown
+    source: components/pdf2md
     install:
       path:
         alias: pdf2md
@@ -247,6 +256,7 @@ components:
       - poppler-utils
   schedule:
     description: Manage systemd user timers and scheduled tasks
+    source: components/schedule
     install:
       path:
         alias: schedule
@@ -254,6 +264,7 @@ components:
       source: components/schedule/
   search:
     description: Manage self-contained searchable collections of files
+    source: components/search
     install:
       path:
         alias: search
@@ -261,6 +272,7 @@ components:
       source: components/search/
   text-extractor:
     description: Extract content and metadata from text files
+    source: components/text-extractor
     install:
       path:
         alias: text-extractor

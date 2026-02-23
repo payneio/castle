@@ -73,17 +73,14 @@ def run_create(args: argparse.Namespace) -> int:
     )
 
     # Build manifest entry
-    env_prefix = package_name.upper()
-
     if proj_type == "service":
         manifest = ComponentManifest(
             id=name,
             description=args.description or f"A castle {proj_type}",
+            source=f"components/{name}",
             run=RunPythonUvTool(
                 runner="python_uv_tool",
                 tool=name,
-                cwd=f"components/{name}",
-                env={f"{env_prefix}_DATA_DIR": f"/data/castle/{name}"},
             ),
             expose=ExposeSpec(
                 http=HttpExposeSpec(
@@ -98,6 +95,7 @@ def run_create(args: argparse.Namespace) -> int:
         manifest = ComponentManifest(
             id=name,
             description=args.description or f"A castle {proj_type}",
+            source=f"components/{name}",
             tool=ToolSpec(source=f"components/{name}/"),
             install=InstallSpec(path=PathInstallSpec(alias=name)),
         )
@@ -106,6 +104,7 @@ def run_create(args: argparse.Namespace) -> int:
         manifest = ComponentManifest(
             id=name,
             description=args.description or f"A castle {proj_type}",
+            source=f"components/{name}",
         )
 
     config.components[name] = manifest
@@ -120,8 +119,7 @@ def run_create(args: argparse.Namespace) -> int:
     print("  uv sync")
     if proj_type == "service":
         print(f"  uv run {name}  # starts on port {port}")
+        print(f"  castle deploy {name}  # deploy to ~/.castle/")
     print(f"  castle test {name}")
 
     return 0
-
-

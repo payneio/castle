@@ -15,9 +15,10 @@ class TestCreateCommand:
 
     def test_create_service(self, castle_root: Path) -> None:
         """Create a new service project."""
-        with patch("castle_cli.commands.create.load_config") as mock_load, patch(
-            "castle_cli.commands.create.save_config"
-        ) as mock_save:
+        with (
+            patch("castle_cli.commands.create.load_config") as mock_load,
+            patch("castle_cli.commands.create.save_config") as mock_save,
+        ):
             config = load_config(castle_root)
             mock_load.return_value = config
 
@@ -50,17 +51,16 @@ class TestCreateCommand:
 
     def test_create_tool(self, castle_root: Path) -> None:
         """Create a new tool project."""
-        with patch("castle_cli.commands.create.load_config") as mock_load, patch(
-            "castle_cli.commands.create.save_config"
+        with (
+            patch("castle_cli.commands.create.load_config") as mock_load,
+            patch("castle_cli.commands.create.save_config"),
         ):
             config = load_config(castle_root)
             mock_load.return_value = config
 
             from castle_cli.commands.create import run_create
 
-            args = Namespace(
-                name="my-tool", type="tool", description="My tool", port=None
-            )
+            args = Namespace(name="my-tool", type="tool", description="My tool", port=None)
             result = run_create(args)
 
         assert result == 0
@@ -74,17 +74,16 @@ class TestCreateCommand:
 
     def test_create_library(self, castle_root: Path) -> None:
         """Create a new library project."""
-        with patch("castle_cli.commands.create.load_config") as mock_load, patch(
-            "castle_cli.commands.create.save_config"
+        with (
+            patch("castle_cli.commands.create.load_config") as mock_load,
+            patch("castle_cli.commands.create.save_config"),
         ):
             config = load_config(castle_root)
             mock_load.return_value = config
 
             from castle_cli.commands.create import run_create
 
-            args = Namespace(
-                name="my-lib", type="library", description="My library", port=None
-            )
+            args = Namespace(name="my-lib", type="library", description="My library", port=None)
             result = run_create(args)
 
         assert result == 0
@@ -114,8 +113,9 @@ class TestCreateCommand:
 
     def test_create_auto_port(self, castle_root: Path) -> None:
         """Service creation auto-assigns next available port."""
-        with patch("castle_cli.commands.create.load_config") as mock_load, patch(
-            "castle_cli.commands.create.save_config"
+        with (
+            patch("castle_cli.commands.create.load_config") as mock_load,
+            patch("castle_cli.commands.create.save_config"),
         ):
             config = load_config(castle_root)
             mock_load.return_value = config

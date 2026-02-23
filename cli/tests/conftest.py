@@ -18,10 +18,12 @@ def castle_root(tmp_path: Path) -> Generator[Path, None, None]:
         "components": {
             "test-svc": {
                 "description": "Test service",
+                "source": "test-svc",
                 "run": {
                     "runner": "python_uv_tool",
                     "tool": "test-svc",
-                    "working_dir": "test-svc",
+                },
+                "defaults": {
                     "env": {"TEST_SVC_DATA_DIR": str(tmp_path / "data" / "test-svc")},
                 },
                 "expose": {

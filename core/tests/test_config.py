@@ -62,7 +62,7 @@ class TestLoadConfig:
         svc = config.components["test-svc"]
         assert svc.run.runner == "python_uv_tool"
         assert svc.run.tool == "test-svc"
-        assert svc.run.working_dir == "test-svc"
+        assert svc.source == "test-svc"
 
     def test_tool_no_run(self, castle_root: Path) -> None:
         """Tool without run block has no run spec."""

@@ -17,7 +17,12 @@ from castle_api.logs import router as logs_router
 from castle_api.routes import router as dashboard_router
 from castle_api.secrets import router as secrets_router
 from castle_api.services import router as services_router
-from castle_api.stream import close_all_subscribers, health_poll_loop, subscribe, unsubscribe
+from castle_api.stream import (
+    close_all_subscribers,
+    health_poll_loop,
+    subscribe,
+    unsubscribe,
+)
 from castle_api.tools import router as tools_router
 
 # Set by _watch_shutdown when uvicorn begins its shutdown sequence.
