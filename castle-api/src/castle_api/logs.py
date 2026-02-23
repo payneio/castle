@@ -8,7 +8,7 @@ from collections.abc import AsyncGenerator
 from fastapi import APIRouter, HTTPException, Query, status
 from starlette.responses import StreamingResponse
 
-from castle_cli.config import load_config
+from castle_core.config import load_config
 
 from castle_api.config import settings
 

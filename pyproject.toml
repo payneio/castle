@@ -1,0 +1,12 @@
+[project]
+name = "castle-workspace"
+version = "0.0.0"
+description = "Castle platform workspace root"
+requires-python = ">=3.11"
+
+[tool.uv.workspace]
+members = ["core", "cli", "castle-api"]
+
+[tool.uv.sources]
+castle-core = { workspace = true }
+castle-cli = { workspace = true }

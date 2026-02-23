@@ -8,11 +8,11 @@ dependencies = [
     "uvicorn>=0.34.0",
     "pydantic-settings>=2.0.0",
     "httpx>=0.27.0",
-    "castle-cli",
+    "castle-core",
 ]
 
 [tool.uv.sources]
-castle-cli = { path = "../cli", editable = true }
+castle-core = { workspace = true }
 
 [project.scripts]
 castle-api = "castle_api.main:run"

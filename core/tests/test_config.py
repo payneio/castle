@@ -5,13 +5,13 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from castle_cli.config import (
+from castle_core.config import (
     CastleConfig,
     load_config,
     resolve_env_vars,
     save_config,
 )
-from castle_cli.manifest import ComponentManifest, Role
+from castle_core.manifest import ComponentManifest, Role
 
 
 class TestLoadConfig:
@@ -62,7 +62,7 @@ class TestLoadConfig:
         svc = config.components["test-svc"]
         assert svc.run.runner == "python_uv_tool"
         assert svc.run.tool == "test-svc"
-        assert svc.run.cwd == "test-svc"
+        assert svc.run.working_dir == "test-svc"
 
     def test_tool_no_run(self, castle_root: Path) -> None:
         """Tool without run block has no run spec."""
@@ -150,7 +150,7 @@ class TestResolveEnvVars:
         secrets_dir = tmp_path / "secrets"
         secrets_dir.mkdir()
         (secrets_dir / "API_KEY").write_text("my-secret-key\n")
-        monkeypatch.setattr("castle_cli.config.SECRETS_DIR", secrets_dir)
+        monkeypatch.setattr("castle_core.config.SECRETS_DIR", secrets_dir)
 
         manifest = ComponentManifest(id="test")
         env = {"API_KEY": "${secret:API_KEY}"}
@@ -163,7 +163,7 @@ class TestResolveEnvVars:
         """Missing secret returns placeholder."""
         secrets_dir = tmp_path / "secrets"
         secrets_dir.mkdir()
-        monkeypatch.setattr("castle_cli.config.SECRETS_DIR", secrets_dir)
+        monkeypatch.setattr("castle_core.config.SECRETS_DIR", secrets_dir)
 
         manifest = ComponentManifest(id="test")
         env = {"API_KEY": "${secret:NONEXISTENT}"}

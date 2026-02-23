@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 
-from castle_cli.config import SECRETS_DIR
+from castle_core.config import SECRETS_DIR
 
 router = APIRouter(prefix="/secrets", tags=["secrets"])
 
