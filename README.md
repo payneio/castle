@@ -65,13 +65,10 @@ gateway:
 components:
   central-context:
     description: Content storage API
+    source: components/central-context
     run:
-      runner: python_uv_tool
+      runner: python
       tool: central-context
-      working_dir: components/central-context
-      env:
-        CENTRAL_CONTEXT_DATA_DIR: /data/castle/central-context
-        CENTRAL_CONTEXT_PORT: "9001"
     expose:
       http:
         internal: { port: 9001 }
@@ -80,7 +77,29 @@ components:
       caddy: { path_prefix: /central-context }
     manage:
       systemd: {}
+
+  notification-bridge:
+    description: Desktop notification forwarder
+    source: components/notification-bridge
+    run:
+      runner: python
+      tool: notification-bridge
+    defaults:
+      env:
+        CENTRAL_CONTEXT_URL: http://localhost:9001
+        BUCKET_NAME: notifications
+    expose:
+      http:
+        internal: { port: 9002 }
+        health_path: /health
+    proxy:
+      caddy: { path_prefix: /notifications }
+    manage:
+      systemd: {}
 ```
+
+Convention-based env vars (`<PREFIX>_DATA_DIR`, `<PREFIX>_PORT`) are generated
+automatically by `castle deploy`. Only non-convention values need `defaults.env`.
 
 ## Architecture
 

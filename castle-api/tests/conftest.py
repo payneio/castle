@@ -28,7 +28,7 @@ def castle_root(tmp_path: Path) -> Generator[Path, None, None]:
                 "description": "Test service",
                 "source": "test-svc",
                 "run": {
-                    "runner": "python_uv_tool",
+                    "runner": "python",
                     "tool": "test-svc",
                 },
                 "expose": {
@@ -73,7 +73,7 @@ def registry_path(tmp_path: Path, castle_root: Path) -> Generator[Path, None, No
         ),
         deployed={
             "test-svc": DeployedComponent(
-                runner="python_uv_tool",
+                runner="python",
                 run_cmd=["uv", "run", "test-svc"],
                 env={
                     "TEST_SVC_PORT": "19000",

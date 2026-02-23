@@ -15,12 +15,8 @@ components:
   my-service:
     description: Does something useful
     run:
-      runner: python_uv_tool
+      runner: python
       tool: my-service
-      cwd: my-service
-      env:
-        MY_SERVICE_DATA_DIR: /data/castle/my-service
-        MY_SERVICE_PORT: "9001"
     expose:
       http:
         internal: { port: 9001 }
@@ -37,26 +33,22 @@ Each component declares **what it does** through these optional blocks:
 
 ### `run` — How to start it
 
-Discriminated union on `runner`:
+Discriminated union on `runner`. The runner encodes both the language/toolchain
+(used by `castle sync`) and the deployment resolution (used by `castle deploy`):
 
-| Runner | Use case | Key fields |
-|--------|----------|------------|
-| `python_uv_tool` | Python service/tool via uv | `tool`, `cwd`, `env` |
-| `command` | Shell command | `argv`, `cwd`, `env` |
-| `python_module` | Python -m invocation | `module`, `args`, `python` |
-| `container` | Docker/Podman | `image`, `command`, `ports`, `volumes` |
-| `node` | Node.js script | `script`, `package_manager` (npm/pnpm/yarn) |
-| `remote` | External service | `base_url`, `health_url` |
+| Runner | Sync | Deploy | Key fields |
+|--------|------|--------|------------|
+| `python` | `uv sync` | `which(tool)` → installed binary | `tool`, `args` |
+| `command` | *(none)* | `which(argv[0])` → resolved path | `argv` |
+| `container` | *(none)* | `podman run` | `image`, `command`, `ports`, `volumes` |
+| `node` | `package_manager install` | `package_manager run script` | `script`, `package_manager` |
+| `remote` | *(none)* | *(none — no local process)* | `base_url`, `health_url` |
 
-**Services** use `python_uv_tool`:
+**Services** use `python`:
 ```yaml
 run:
-  runner: python_uv_tool
+  runner: python
   tool: my-service        # name in [project.scripts]
-  cwd: my-service         # working directory relative to repo root
-  env:
-    MY_SERVICE_DATA_DIR: /data/castle/my-service
-    MY_SERVICE_PORT: "9001"
 ```
 
 **Tools invoked by castle** (jobs, scheduled tasks) use `command`:
@@ -298,7 +290,7 @@ and a `.timer` file.
 The Pydantic models live in `core/src/castle_core/manifest.py`. Key classes:
 
 - `ComponentManifest` — top-level model, has `roles` computed property
-- `RunSpec` — discriminated union (RunPythonUvTool, RunCommand, etc.)
+- `RunSpec` — discriminated union (RunPython, RunCommand, RunContainer, RunNode, RunRemote)
 - `TriggerSpec` — union (TriggerSchedule, TriggerManual, TriggerEvent, TriggerRequest)
 - `ExposeSpec`, `ProxySpec`, `ManageSpec`, `InstallSpec`, `ToolSpec`, `BuildSpec`
 - `CaddySpec`, `SystemdSpec`, `HttpExposeSpec`, `HttpInternal`

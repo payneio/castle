@@ -22,7 +22,7 @@ def _sync_cmd(manifest: ComponentManifest) -> list[str] | None:
         return None
 
     match run.runner:
-        case "python_uv_tool" | "python_module":
+        case "python":
             return ["uv", "sync"]
         case "node":
             return [run.package_manager, "install"]
@@ -80,13 +80,14 @@ def run_sync(args: argparse.Namespace) -> int:
     installed_dirs: set[Path] = set()
 
     for name, manifest in config.components.items():
-        # Determine source directory — from tool.source or manifest.source
-        source = None
-        if manifest.tool and manifest.tool.source:
-            source = manifest.tool.source
-        elif manifest.run and manifest.run.runner == "python_uv_tool" and manifest.source_dir:
-            source = manifest.source_dir
+        # Install if: has install.path, or is a python runner service
+        if not (
+            (manifest.install and manifest.install.path)
+            or (manifest.run and manifest.run.runner == "python")
+        ):
+            continue
 
+        source = manifest.source_dir
         if not source:
             continue
 
