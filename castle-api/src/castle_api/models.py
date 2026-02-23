@@ -79,13 +79,6 @@ class ToolSummary(BaseModel):
     installed: bool = False
 
 
-class ToolCategory(BaseModel):
-    """Tools grouped by category."""
-
-    name: str
-    tools: list[ToolSummary]
-
-
 class ToolDetail(ToolSummary):
     """Full detail for a single tool, including documentation."""
 

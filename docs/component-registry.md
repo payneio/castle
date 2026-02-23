@@ -132,7 +132,7 @@ Creates a shim so the tool is available system-wide after
 
 ```yaml
 tool:
-  source: tools/document/         # Source directory
+  source: my-tool/                # Source directory
   version: "1.0.0"
   system_dependencies: [pandoc, poppler-utils]
 ```
@@ -143,8 +143,7 @@ It's separate from `install` (which handles PATH registration) and `run`
 
 The install method (uv tool install vs symlink) is inferred from the source
 directory: if `pyproject.toml` exists, it's a Python package; if the source
-is a file, it's symlinked. Grouping for `castle tool list` and the dashboard
-is derived from the source directory name (e.g., `tools/document/` → "document").
+is a file, it's symlinked.
 
 ### `build` — How to build it
 
@@ -210,11 +209,8 @@ A component can have multiple roles. For example, `protonmail` is both a
 # Service — scaffolds project, assigns port, registers in castle.yaml
 castle create my-service --type service --description "Does something"
 
-# Standalone tool — scaffolds at repo root
+# Tool — scaffolds at repo root
 castle create my-tool --type tool --description "Does something"
-
-# Category tool — adds to existing tools/<category>/ package
-castle create my-tool --type tool --category document --description "Does something"
 ```
 
 ### Manually

@@ -22,11 +22,9 @@ How to build CLI tools following Unix philosophy.
 | **Type checking** | pyright (shared `pyrightconfig.json` at repo root) |
 | **Python** | 3.11+ minimum |
 
-## Two kinds of tools
+## Project layout
 
-### Standalone tools
-
-Independent projects at the repo root with their own `pyproject.toml`:
+Each tool is an independent project at the repo root with its own `pyproject.toml`:
 
 ```
 my-tool/
@@ -39,30 +37,9 @@ my-tool/
 └── CLAUDE.md
 ```
 
-Examples: `devbox-connect/`, `mboxer/`, `protonmail/`
-
-### Category tools
-
-Multiple tools sharing a single package under `tools/<category>/`:
-
-```
-tools/document/
-├── src/document/
-│   ├── __init__.py
-│   ├── pdf2md.py      # Each tool is a module
-│   ├── docx2md.py
-│   ├── html2text.py
-│   └── md2pdf.py
-├── tests/
-├── pyproject.toml     # One pyproject with multiple [project.scripts]
-└── CLAUDE.md
-```
-
-Examples: `tools/document/`, `tools/search/`, `tools/system/`
+Examples: `pdf2md/`, `gpt/`, `protonmail/`
 
 ## Creating a new tool
-
-### Standalone
 
 ```bash
 castle create my-tool --type tool --description "Does something"
@@ -71,19 +48,7 @@ cd my-tool && uv sync
 
 This scaffolds the project and registers it in `castle.yaml`.
 
-### Category tool
-
-```bash
-castle create my-tool --type tool --category document --description "Does something"
-cd tools/document && uv sync
-```
-
-This adds a `.py` file to the existing category package and updates its
-`pyproject.toml` entry points.
-
 ## pyproject.toml
-
-### Standalone tool
 
 ```toml
 [project]
@@ -110,27 +75,7 @@ dev = ["pytest>=7.0.0"]
 known-first-party = ["my_tool"]
 ```
 
-### Category package
-
-```toml
-[project]
-name = "castle-document"
-version = "0.1.0"
-description = "Castle document conversion tools"
-requires-python = ">=3.11"
-dependencies = []
-
-[project.scripts]
-docx2md = "document.docx2md:main"
-pdf2md = "document.pdf2md:main"
-html2text = "document.html2text:main"
-md2pdf = "document.md2pdf:main"
-
-[tool.hatch.build.targets.wheel]
-packages = ["src/document"]
-```
-
-After `uv tool install --editable .`, all commands are in PATH.
+After `uv tool install --editable .`, the command is in PATH.
 
 ## Tool implementation patterns
 
@@ -368,8 +313,6 @@ uv run ruff format .        # Format
 
 ## Registering in castle.yaml
 
-Standalone tools:
-
 ```yaml
 components:
   my-tool:
@@ -381,14 +324,14 @@ components:
         alias: my-tool
 ```
 
-Category tools get one entry per tool, all pointing to the same source:
+Tools with system dependencies declare them in the manifest:
 
 ```yaml
 components:
   pdf2md:
     description: Convert PDF files to Markdown
     tool:
-      source: tools/document/
+      source: pdf2md/
       system_dependencies: [pandoc, poppler-utils]
     install:
       path:

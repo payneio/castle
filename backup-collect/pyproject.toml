@@ -1,0 +1,16 @@
+[project]
+name = "backup-collect"
+version = "0.1.0"
+description = "Collect files from various sources into backup directory"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+backup-collect = "backup_collect.main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/backup_collect"]

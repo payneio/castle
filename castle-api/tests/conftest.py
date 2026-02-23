@@ -38,14 +38,14 @@ def castle_root(tmp_path: Path) -> Generator[Path, None, None]:
                 "description": "Test tool",
                 "install": {"path": {"alias": "test-tool"}},
                 "tool": {
-                    "source": "tools/document",
+                    "source": "test-tool",
                     "system_dependencies": ["pandoc"],
                 },
             },
             "test-tool-2": {
                 "description": "Another test tool",
                 "tool": {
-                    "source": "tools/utility",
+                    "source": "test-tool-2",
                     "version": "2.0.0",
                 },
             },

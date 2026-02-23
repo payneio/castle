@@ -46,11 +46,6 @@ def build_parser() -> argparse.ArgumentParser:
     create_parser.add_argument(
         "--port", type=int, help="Port number (services only)"
     )
-    create_parser.add_argument(
-        "--category", default=None,
-        help="Tool category (e.g. document, search, system)",
-    )
-
     # castle info
     info_parser = subparsers.add_parser("info", help="Show component details")
     info_parser.add_argument("project", help="Component name")
