@@ -2,11 +2,7 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
-from castle_core.config import load_config
 from castle_core.generators.systemd import (
-    generate_unit,
     generate_unit_from_deployed,
     unit_name,
 )
@@ -22,48 +18,63 @@ class TestUnitName:
         assert unit_name("my-svc") == "castle-my-svc.service"
 
 
-class TestUnitGeneration:
-    """Tests for systemd unit file generation."""
-
-    def test_contains_description(self, castle_root: Path) -> None:
-        """Unit file has service description."""
-        config = load_config(castle_root)
-        manifest = config.components["test-svc"]
-        unit = generate_unit(config, "test-svc", manifest)
-        assert "Description=Castle: Test service" in unit
-
-    def test_no_working_directory(self, castle_root: Path) -> None:
-        """Unit file has no WorkingDirectory (source/runtime separation)."""
-        config = load_config(castle_root)
-        manifest = config.components["test-svc"]
-        unit = generate_unit(config, "test-svc", manifest)
-        assert "WorkingDirectory" not in unit
-
-    def test_contains_environment(self, castle_root: Path) -> None:
-        """Unit file has environment variables from defaults.env."""
-        config = load_config(castle_root)
-        manifest = config.components["test-svc"]
-        unit = generate_unit(config, "test-svc", manifest)
-        expected_data_dir = str(castle_root / "data" / "test-svc")
-        assert f"Environment=TEST_SVC_DATA_DIR={expected_data_dir}" in unit
-
-    def test_contains_restart_policy(self, castle_root: Path) -> None:
-        """Unit file has restart configuration."""
-        config = load_config(castle_root)
-        manifest = config.components["test-svc"]
-        unit = generate_unit(config, "test-svc", manifest)
-        assert "Restart=on-failure" in unit
-
-    def test_uses_uv_run(self, castle_root: Path) -> None:
-        """Unit file ExecStart uses uv run for python runner."""
-        config = load_config(castle_root)
-        manifest = config.components["test-svc"]
-        unit = generate_unit(config, "test-svc", manifest)
-        assert "run test-svc" in unit
-
-
 class TestUnitFromDeployed:
     """Tests for registry-based systemd unit generation."""
+
+    def test_contains_description(self) -> None:
+        """Unit file has service description."""
+        deployed = DeployedComponent(
+            runner="python",
+            run_cmd=["/home/user/.local/bin/uv", "run", "test-svc"],
+            env={"TEST_SVC_PORT": "19000"},
+            description="Test service",
+        )
+        unit = generate_unit_from_deployed("test-svc", deployed)
+        assert "Description=Castle: Test service" in unit
+
+    def test_no_working_directory(self) -> None:
+        """Unit file has no WorkingDirectory (source/runtime separation)."""
+        deployed = DeployedComponent(
+            runner="python",
+            run_cmd=["/home/user/.local/bin/uv", "run", "test-svc"],
+            env={},
+            description="Test service",
+        )
+        unit = generate_unit_from_deployed("test-svc", deployed)
+        assert "WorkingDirectory" not in unit
+
+    def test_contains_environment(self) -> None:
+        """Unit file has environment variables from deployed config."""
+        deployed = DeployedComponent(
+            runner="python",
+            run_cmd=["/home/user/.local/bin/uv", "run", "test-svc"],
+            env={"TEST_SVC_DATA_DIR": "/data/castle/test-svc"},
+            description="Test service",
+        )
+        unit = generate_unit_from_deployed("test-svc", deployed)
+        assert "Environment=TEST_SVC_DATA_DIR=/data/castle/test-svc" in unit
+
+    def test_contains_restart_policy(self) -> None:
+        """Unit file has restart configuration."""
+        deployed = DeployedComponent(
+            runner="python",
+            run_cmd=["/home/user/.local/bin/uv", "run", "test-svc"],
+            env={},
+            description="Test service",
+        )
+        unit = generate_unit_from_deployed("test-svc", deployed)
+        assert "Restart=on-failure" in unit
+
+    def test_exec_start_from_run_cmd(self) -> None:
+        """Unit file ExecStart uses resolved run_cmd."""
+        deployed = DeployedComponent(
+            runner="python",
+            run_cmd=["/home/user/.local/bin/uv", "run", "test-svc"],
+            env={},
+            description="Test service",
+        )
+        unit = generate_unit_from_deployed("test-svc", deployed)
+        assert "ExecStart=/home/user/.local/bin/uv run test-svc" in unit
 
     def test_basic_service(self) -> None:
         """Generate a unit from a deployed component."""

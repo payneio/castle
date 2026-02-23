@@ -1,60 +1,115 @@
-"""Tests for Caddyfile generation."""
+"""Tests for Caddyfile generation from registry."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from castle_core.config import load_config
-from castle_core.generators.caddyfile import generate_caddyfile
+import pytest
+
+import castle_core.generators.caddyfile as caddyfile_mod
+from castle_core.generators.caddyfile import generate_caddyfile_from_registry
+from castle_core.registry import DeployedComponent, NodeConfig, NodeRegistry
 
 
-class TestCaddyfileGeneration:
-    """Tests for Caddyfile generation."""
+@pytest.fixture(autouse=True)
+def _isolate_static_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Use a temp dir for STATIC_DIR so tests don't depend on real ~/.castle."""
+    monkeypatch.setattr(caddyfile_mod, "STATIC_DIR", tmp_path / "static")
 
-    def test_contains_gateway_port(self, castle_root: Path) -> None:
+
+def _make_registry(
+    deployed: dict[str, DeployedComponent] | None = None,
+    gateway_port: int = 9000,
+) -> NodeRegistry:
+    """Create a test registry."""
+    return NodeRegistry(
+        node=NodeConfig(hostname="test", gateway_port=gateway_port),
+        deployed=deployed or {},
+    )
+
+
+class TestCaddyfileFromRegistry:
+    """Tests for registry-based Caddyfile generation."""
+
+    def test_contains_gateway_port(self) -> None:
         """Caddyfile uses the configured gateway port."""
-        config = load_config(castle_root)
-        caddyfile = generate_caddyfile(config)
+        registry = _make_registry(gateway_port=18000)
+        caddyfile = generate_caddyfile_from_registry(registry)
         assert ":18000 {" in caddyfile
 
-    def test_contains_service_routes(self, castle_root: Path) -> None:
-        """Caddyfile has reverse proxy routes for services with proxy.caddy."""
-        config = load_config(castle_root)
-        caddyfile = generate_caddyfile(config)
+    def test_contains_service_routes(self) -> None:
+        """Caddyfile has reverse proxy routes for deployed services."""
+        registry = _make_registry(
+            deployed={
+                "test-svc": DeployedComponent(
+                    runner="python",
+                    run_cmd=["uv", "run", "test-svc"],
+                    port=19000,
+                    proxy_path="/test-svc",
+                ),
+            }
+        )
+        caddyfile = generate_caddyfile_from_registry(registry)
         assert "handle_path /test-svc/*" in caddyfile
-        assert "reverse_proxy" in caddyfile
-        assert "19000" in caddyfile
+        assert "reverse_proxy localhost:19000" in caddyfile
 
-    def test_skips_tools(self, castle_root: Path) -> None:
-        """Tools without proxy are not in Caddyfile."""
-        config = load_config(castle_root)
-        caddyfile = generate_caddyfile(config)
+    def test_skips_non_proxied(self) -> None:
+        """Components without proxy_path are not in Caddyfile."""
+        registry = _make_registry(
+            deployed={
+                "test-tool": DeployedComponent(
+                    runner="command",
+                    run_cmd=["test-tool"],
+                ),
+            }
+        )
+        caddyfile = generate_caddyfile_from_registry(registry)
         assert "test-tool" not in caddyfile
 
-    def test_fallback_when_no_dist(self, castle_root: Path) -> None:
-        """Uses fallback dashboard path when dist/ doesn't exist."""
-        config = load_config(castle_root)
-        caddyfile = generate_caddyfile(config)
-        # No dashboard/dist exists in tmp, so should use fallback
+    def test_fallback_when_no_static(self) -> None:
+        """Uses fallback dashboard path when static dir doesn't exist."""
+        registry = _make_registry()
+        caddyfile = generate_caddyfile_from_registry(registry)
         assert "handle / {" in caddyfile
         assert "file_server" in caddyfile
 
-    def test_spa_serving_when_dist_exists(self, castle_root: Path) -> None:
-        """Serves SPA with try_files when dashboard/dist exists."""
-        # Create a dashboard/dist with index.html
-        dist = castle_root / "app" / "dist"
-        dist.mkdir(parents=True)
-        (dist / "index.html").write_text("<html></html>")
-
-        config = load_config(castle_root)
-        caddyfile = generate_caddyfile(config)
-        assert "try_files {path} /index.html" in caddyfile
-        assert str(dist) in caddyfile
-
-    def test_proxy_routes_before_dashboard(self, castle_root: Path) -> None:
+    def test_proxy_routes_before_dashboard(self) -> None:
         """Service proxy routes appear before the dashboard catch-all."""
-        config = load_config(castle_root)
-        caddyfile = generate_caddyfile(config)
+        registry = _make_registry(
+            deployed={
+                "test-svc": DeployedComponent(
+                    runner="python",
+                    run_cmd=["uv", "run", "test-svc"],
+                    port=19000,
+                    proxy_path="/test-svc",
+                ),
+            }
+        )
+        caddyfile = generate_caddyfile_from_registry(registry)
         proxy_pos = caddyfile.index("handle_path")
         handle_pos = caddyfile.index("handle /")
         assert proxy_pos < handle_pos
+
+    def test_multiple_services(self) -> None:
+        """Multiple services get separate proxy routes."""
+        registry = _make_registry(
+            deployed={
+                "svc-a": DeployedComponent(
+                    runner="python",
+                    run_cmd=["uv", "run", "svc-a"],
+                    port=9001,
+                    proxy_path="/svc-a",
+                ),
+                "svc-b": DeployedComponent(
+                    runner="python",
+                    run_cmd=["uv", "run", "svc-b"],
+                    port=9002,
+                    proxy_path="/svc-b",
+                ),
+            }
+        )
+        caddyfile = generate_caddyfile_from_registry(registry)
+        assert "handle_path /svc-a/*" in caddyfile
+        assert "reverse_proxy localhost:9001" in caddyfile
+        assert "handle_path /svc-b/*" in caddyfile
+        assert "reverse_proxy localhost:9002" in caddyfile

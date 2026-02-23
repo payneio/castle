@@ -13,6 +13,19 @@ BOLD = "\033[1m"
 RESET = "\033[0m"
 CYAN = "\033[96m"
 DIM = "\033[2m"
+GREEN = "\033[92m"
+RED = "\033[91m"
+
+
+def _load_deployed_component(name: str) -> object | None:
+    """Try to load a specific deployed component from registry."""
+    try:
+        from castle_core.registry import load_registry
+
+        registry = load_registry()
+        return registry.deployed.get(name)
+    except (FileNotFoundError, ValueError):
+        return None
 
 
 def run_info(args: argparse.Namespace) -> int:
@@ -25,6 +38,7 @@ def run_info(args: argparse.Namespace) -> int:
         return 1
 
     manifest = config.components[name]
+    deployed = _load_deployed_component(name)
 
     if getattr(args, "json", False):
         data = manifest.model_dump(exclude_none=True)
@@ -32,6 +46,14 @@ def run_info(args: argparse.Namespace) -> int:
         claude_md = _find_claude_md(config.root, manifest.source_dir or name)
         if claude_md:
             data["claude_md"] = claude_md
+        if deployed:
+            data["deployed"] = {
+                "runner": deployed.runner,
+                "run_cmd": deployed.run_cmd,
+                "env": deployed.env,
+                "port": deployed.port,
+                "managed": deployed.managed,
+            }
         print(json.dumps(data, indent=2))
         return 0
 
@@ -106,6 +128,21 @@ def run_info(args: argparse.Namespace) -> int:
         print(f"  {BOLD}consumes{RESET}:")
         for cap in manifest.consumes:
             print(f"    - {cap.type}" + (f" ({cap.name})" if cap.name else ""))
+
+    # Deployed state from registry
+    if deployed:
+        print(f"\n  {GREEN}{BOLD}deployed{RESET}")
+        print(f"  {'─' * 36}")
+        print(f"  {BOLD}run_cmd{RESET}:     {' '.join(deployed.run_cmd)}")
+        if deployed.port is not None:
+            print(f"  {BOLD}port{RESET}:        {deployed.port}")
+        print(f"  {BOLD}managed{RESET}:     {deployed.managed}")
+        if deployed.env:
+            print(f"  {BOLD}env{RESET}:")
+            for key, val in deployed.env.items():
+                print(f"    {key}={val}")
+    else:
+        print(f"\n  {DIM}not deployed (run 'castle deploy {name}'){RESET}")
 
     # Show CLAUDE.md if it exists
     source_dir = manifest.source_dir or name
