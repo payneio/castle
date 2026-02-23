@@ -215,6 +215,23 @@ services:
       caddy:
         path_prefix: /api
 
+  castle-mqtt:
+    description: MQTT broker for inter-node mesh coordination
+    run:
+      runner: container
+      image: eclipse-mosquitto:2
+      ports:
+        1883: 1883
+      volumes:
+      - /data/castle/castle-mqtt/config:/mosquitto/config
+      - /data/castle/castle-mqtt/data:/mosquitto/data
+    manage:
+      systemd: {}
+    expose:
+      http:
+        internal:
+          port: 1883
+
 jobs:
   protonmail-sync:
     component: protonmail

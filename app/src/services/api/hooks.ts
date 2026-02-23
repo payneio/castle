@@ -8,6 +8,9 @@ import type {
   GatewayInfo,
   ServiceActionResponse,
   SSEHealthEvent,
+  MeshStatus,
+  NodeSummary,
+  NodeDetail,
   ToolSummary,
   ToolDetail,
 } from "@/types"
@@ -107,6 +110,39 @@ export function useToolAction() {
   })
 }
 
+export function useGatewayReload() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => apiClient.post<{ status: string }>("/gateway/reload"),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["gateway"] })
+    },
+  })
+}
+
+export function useNodes() {
+  return useQuery({
+    queryKey: ["nodes"],
+    queryFn: () => apiClient.get<NodeSummary[]>("/nodes"),
+  })
+}
+
+export function useNode(hostname: string) {
+  return useQuery({
+    queryKey: ["nodes", hostname],
+    queryFn: () => apiClient.get<NodeDetail>(`/nodes/${hostname}`),
+    enabled: !!hostname,
+  })
+}
+
+export function useMeshStatus() {
+  return useQuery({
+    queryKey: ["mesh"],
+    queryFn: () => apiClient.get<MeshStatus>("/mesh/status"),
+    refetchInterval: 30_000,
+  })
+}
+
 export function useTools() {
   return useQuery({
     queryKey: ["tools"],
@@ -138,6 +174,13 @@ export function useEventStream() {
       // Health event already pushes correct status; just refetch components
       // in case the action changed what's available
       qc.invalidateQueries({ queryKey: ["components"] })
+    })
+
+    es.addEventListener("mesh", () => {
+      // A remote node updated or went offline — refresh mesh, nodes, and gateway
+      qc.invalidateQueries({ queryKey: ["mesh"] })
+      qc.invalidateQueries({ queryKey: ["nodes"] })
+      qc.invalidateQueries({ queryKey: ["gateway"] })
     })
 
     es.onerror = () => {

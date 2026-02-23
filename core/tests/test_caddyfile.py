@@ -113,3 +113,64 @@ class TestCaddyfileFromRegistry:
         assert "reverse_proxy localhost:9001" in caddyfile
         assert "handle_path /svc-b/*" in caddyfile
         assert "reverse_proxy localhost:9002" in caddyfile
+
+
+class TestCaddyfileRemoteRegistries:
+    """Tests for cross-node routing in Caddyfile."""
+
+    def test_remote_routes_included(self) -> None:
+        """Remote services get reverse_proxy entries to their hostname."""
+        local = _make_registry(
+            deployed={
+                "local-svc": DeployedComponent(
+                    runner="python", run_cmd=["svc"], port=9001, proxy_path="/local"
+                ),
+            }
+        )
+        remote = _make_registry(
+            deployed={
+                "remote-svc": DeployedComponent(
+                    runner="python", run_cmd=["svc"], port=9050, proxy_path="/remote"
+                ),
+            }
+        )
+        remote.node.hostname = "devbox"
+        caddyfile = generate_caddyfile_from_registry(local, remote_registries={"devbox": remote})
+        assert "reverse_proxy localhost:9001" in caddyfile
+        assert "reverse_proxy devbox:9050" in caddyfile
+        assert "handle_path /remote/*" in caddyfile
+
+    def test_local_takes_precedence(self) -> None:
+        """If local and remote use the same path, local wins."""
+        local = _make_registry(
+            deployed={
+                "svc": DeployedComponent(
+                    runner="python", run_cmd=["svc"], port=9001, proxy_path="/api"
+                ),
+            }
+        )
+        remote = _make_registry(
+            deployed={
+                "svc": DeployedComponent(
+                    runner="python", run_cmd=["svc"], port=9001, proxy_path="/api"
+                ),
+            }
+        )
+        remote.node.hostname = "devbox"
+        caddyfile = generate_caddyfile_from_registry(local, remote_registries={"devbox": remote})
+        assert "reverse_proxy localhost:9001" in caddyfile
+        assert "devbox" not in caddyfile
+
+    def test_no_remote_when_none(self) -> None:
+        """No remote routes when remote_registries is None."""
+        local = _make_registry(
+            deployed={
+                "svc": DeployedComponent(
+                    runner="python", run_cmd=["svc"], port=9001, proxy_path="/api"
+                ),
+            }
+        )
+        caddyfile = generate_caddyfile_from_registry(local, remote_registries=None)
+        assert "reverse_proxy localhost:9001" in caddyfile
+        # Only one reverse_proxy line
+        assert caddyfile.count("reverse_proxy") == 1

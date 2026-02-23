@@ -14,6 +14,12 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 9020
 
+    # Mesh coordination (all off by default — single-node works without them)
+    mqtt_enabled: bool = False
+    mqtt_host: str = "localhost"
+    mqtt_port: int = 1883
+    mdns_enabled: bool = False
+
     model_config = {
         "env_prefix": "CASTLE_API_",
         "env_file": ".env",

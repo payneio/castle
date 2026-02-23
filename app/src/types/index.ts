@@ -19,6 +19,7 @@ export interface ComponentSummary {
   system_dependencies: string[]
   schedule: string | null
   installed: boolean | null
+  node: string | null
 }
 
 export interface ComponentDetail extends ComponentSummary {
@@ -35,11 +36,20 @@ export interface StatusResponse {
   statuses: HealthStatus[]
 }
 
+export interface GatewayRoute {
+  path: string
+  target_port: number
+  component: string
+  node: string
+}
+
 export interface GatewayInfo {
   port: number
+  hostname: string
   component_count: number
   service_count: number
   managed_count: number
+  routes: GatewayRoute[]
 }
 
 export interface ServiceActionResponse {
@@ -57,6 +67,31 @@ export interface SSEServiceActionEvent {
   action: string
   component: string
   status: string
+}
+
+export interface NodeSummary {
+  hostname: string
+  gateway_port: number
+  deployed_count: number
+  service_count: number
+  is_local: boolean
+  online: boolean
+  is_stale: boolean
+  last_seen: number | null
+}
+
+export interface NodeDetail extends NodeSummary {
+  deployed: ComponentSummary[]
+}
+
+export interface MeshStatus {
+  enabled: boolean
+  mqtt_connected: boolean
+  mqtt_broker_host: string | null
+  mqtt_broker_port: number | null
+  mdns_enabled: boolean
+  peer_count: number
+  peers: string[]
 }
 
 export interface ToolSummary {

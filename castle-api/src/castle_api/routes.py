@@ -2,20 +2,24 @@
 
 from __future__ import annotations
 
+import asyncio
 import shutil
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, status
 
+from castle_core.config import GENERATED_DIR
 from castle_core.generators.caddyfile import generate_caddyfile_from_registry
 from castle_core.manifest import ComponentSpec, JobSpec, ServiceSpec
 
 from castle_api.config import get_castle_root, get_registry
+from castle_api.mesh import mesh_state
 from castle_api.health import check_all_health
 from castle_api.models import (
     ComponentDetail,
     ComponentSummary,
     GatewayInfo,
+    GatewayRoute,
     StatusResponse,
     SystemdInfo,
 )
@@ -173,15 +177,21 @@ def _summary_from_component(name: str, comp: ComponentSpec, root: Path) -> Compo
 
 
 @router.get("/components", response_model=list[ComponentSummary])
-def list_components() -> list[ComponentSummary]:
-    """List all components — deployed from registry, non-deployed from castle.yaml."""
+def list_components(include_remote: bool = False) -> list[ComponentSummary]:
+    """List all components — deployed from registry, non-deployed from castle.yaml.
+
+    Pass ?include_remote=true to include components from remote mesh nodes.
+    """
     registry = get_registry()
+    local_hostname = registry.node.hostname
     summaries: list[ComponentSummary] = []
     seen: set[str] = set()
 
     # Deployed components from registry
     for name, deployed in registry.deployed.items():
-        summaries.append(_summary_from_deployed(name, deployed))
+        s = _summary_from_deployed(name, deployed)
+        s.node = local_hostname
+        summaries.append(s)
         seen.add(name)
 
     # Non-deployed from castle.yaml (if repo available)
@@ -195,13 +205,17 @@ def list_components() -> list[ComponentSummary]:
             # Services not in registry
             for name, svc in config.services.items():
                 if name not in seen:
-                    summaries.append(_summary_from_service(name, svc, config))
+                    s = _summary_from_service(name, svc, config)
+                    s.node = local_hostname
+                    summaries.append(s)
                     seen.add(name)
 
             # Jobs not in registry
             for name, job in config.jobs.items():
                 if name not in seen:
-                    summaries.append(_summary_from_job(name, job, config))
+                    s = _summary_from_job(name, job, config)
+                    s.node = local_hostname
+                    summaries.append(s)
                     seen.add(name)
 
             # Backfill source from component refs for deployed items
@@ -223,12 +237,34 @@ def list_components() -> list[ComponentSummary]:
             # "what software exists", services/jobs are "how it runs".
             for name, comp in config.components.items():
                 summary = _summary_from_component(name, comp, root)
+                summary.node = local_hostname
                 # Skip if this exact category is already represented
                 # (e.g. a deployed tool already in the list)
                 if not any(s.id == name and s.category == summary.category for s in summaries):
                     summaries.append(summary)
         except FileNotFoundError:
             pass
+
+    # Remote components from mesh (local wins on name conflicts)
+    if include_remote:
+        for hostname, remote in mesh_state.all_nodes().items():
+            for name, d in remote.registry.deployed.items():
+                if name not in seen:
+                    summaries.append(
+                        ComponentSummary(
+                            id=name,
+                            description=d.description,
+                            category=d.category,
+                            runner=d.runner,
+                            port=d.port,
+                            health_path=d.health_path,
+                            proxy_path=d.proxy_path,
+                            managed=d.managed,
+                            schedule=d.schedule,
+                            node=hostname,
+                        )
+                    )
+                    seen.add(name)
 
     return summaries
 
@@ -320,11 +356,42 @@ def get_gateway() -> GatewayInfo:
     deployed_count = len(registry.deployed)
     service_count = sum(1 for d in registry.deployed.values() if d.port is not None)
     managed_count = sum(1 for d in registry.deployed.values() if d.managed)
+
+    # Local routes
+    routes: list[GatewayRoute] = [
+        GatewayRoute(
+            path=d.proxy_path,
+            target_port=d.port,
+            component=name,
+            node=registry.node.hostname,
+        )
+        for name, d in registry.deployed.items()
+        if d.proxy_path and d.port
+    ]
+
+    # Remote routes from mesh (local paths take precedence)
+    local_paths = {r.path for r in routes}
+    for hostname, remote in mesh_state.all_nodes().items():
+        for name, d in remote.registry.deployed.items():
+            if d.proxy_path and d.port and d.proxy_path not in local_paths:
+                routes.append(
+                    GatewayRoute(
+                        path=d.proxy_path,
+                        target_port=d.port,
+                        component=name,
+                        node=hostname,
+                    )
+                )
+
+    routes.sort(key=lambda r: r.path)
+
     return GatewayInfo(
         port=registry.node.gateway_port,
+        hostname=registry.node.hostname,
         component_count=deployed_count,
         service_count=service_count,
         managed_count=managed_count,
+        routes=routes,
     )
 
 
@@ -333,3 +400,32 @@ def get_caddyfile() -> dict[str, str]:
     """Return the generated Caddyfile content."""
     registry = get_registry()
     return {"content": generate_caddyfile_from_registry(registry)}
+
+
+@router.post("/gateway/reload")
+async def reload_gateway() -> dict[str, str]:
+    """Regenerate Caddyfile and reload Caddy."""
+    registry = get_registry()
+    GENERATED_DIR.mkdir(parents=True, exist_ok=True)
+    caddyfile_path = GENERATED_DIR / "Caddyfile"
+
+    # Include remote registries for cross-node routing
+    remote_regs = {h: n.registry for h, n in mesh_state.all_nodes().items()}
+    caddyfile_path.write_text(
+        generate_caddyfile_from_registry(registry, remote_registries=remote_regs or None)
+    )
+
+    proc = await asyncio.create_subprocess_exec(
+        "systemctl", "--user", "reload", "castle-castle-gateway.service",
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    _, stderr = await proc.communicate()
+
+    if proc.returncode != 0:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Reload failed: {(stderr or b'').decode().strip()}",
+        )
+
+    return {"status": "ok"}

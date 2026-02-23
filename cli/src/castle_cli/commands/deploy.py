@@ -221,7 +221,7 @@ def _build_run_cmd(run: object, env: dict[str, str]) -> list[str]:
                 cmd[0] = resolved
             return cmd
         case "container":
-            runtime = shutil.which("podman") or shutil.which("docker") or "podman"
+            runtime = shutil.which("docker") or shutil.which("podman") or "docker"
             image_name = run.image.split("/")[-1].split(":")[0]
             cmd = [runtime, "run", "--rm", f"--name=castle-{image_name}"]
             for container_port, host_port in run.ports.items():

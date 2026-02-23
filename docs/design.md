@@ -243,26 +243,45 @@ Three interfaces expose the registry:
 
 ### Coordination Layer
 
-*Partially built. This section describes the target architecture.*
-
 Coordination handles discovery and communication — both between
 components on a single node and across multiple Castle nodes.
 
-**Intra-node coordination** (current):
+**Intra-node coordination:**
 - Components find each other through the gateway (path-based routing)
   or direct port access via env vars.
 - The registry (CLI/API) provides discoverability.
 - No service mesh or message broker required for basic operation.
 
-**Inter-node coordination** (future):
+**Inter-node coordination:**
 - Each Castle node runs the API, which exposes its component registry.
-- Nodes discover each other via MQTT retained messages or mDNS/DNS-SD
-  (Avahi) for LAN environments.
+- Nodes discover each other via MQTT retained messages and mDNS/DNS-SD
+  (python-zeroconf) for LAN environments.
 - The gateway on each node can proxy to services on other nodes,
   preserving path-based routing. Components don't know which node
   they're talking to.
 - MQTT provides pub/sub messaging for events, status, and coordination
   across nodes.
+- All mesh features are opt-in: `CASTLE_API_MQTT_ENABLED=true` and
+  `CASTLE_API_MDNS_ENABLED=true`. Single-node works without them.
+
+**MQTT topics:**
+- `castle/{hostname}/registry` — retained JSON, full NodeRegistry.
+  Published on connect and after `castle deploy`.
+- `castle/{hostname}/status` — `"online"` (retained) / `"offline"` (LWT).
+  LWT ensures nodes are marked offline if they disconnect unexpectedly.
+
+**MeshStateManager** (`castle_api.mesh`) holds remote NodeRegistry
+instances in memory, indexed by hostname. 5-minute staleness TTL.
+Updated by the MQTT client on incoming messages. Read by API endpoints
+to serve cross-node data.
+
+**mDNS** (`castle_api.mdns`) advertises `_castle._tcp` and browses
+for peers and `_mqtt._tcp` broker. Uses python-zeroconf. Properties
+include hostname, gateway_port, api_port.
+
+**Caddyfile generation** supports `remote_registries` — cross-node
+routes are added with `reverse_proxy {hostname}:{port}` entries.
+Local paths always take precedence.
 
 **Why MQTT over custom gossip:**
 - Standard protocol, every language has a client library.
@@ -272,11 +291,73 @@ components on a single node and across multiple Castle nodes.
 - Mosquitto is a single binary, simple to run as a Castle component.
 
 **Why mDNS/DNS-SD as a complement:**
-- Zero-config LAN discovery via Avahi (already on most Linux systems).
+- Zero-config LAN discovery via python-zeroconf.
 - Each node advertises `_castle._tcp` — standard tooling works
-  (`avahi-browse`).
+  (`avahi-browse`, `dns-sd`).
 - Good for bootstrapping: find the MQTT broker without hardcoding
   its address.
+
+### Dashboard
+
+The web dashboard (`castle-app`) is a React SPA served by Caddy from
+`~/.castle/static/castle-app/`. It talks to `castle-api` via the
+gateway proxy at `/api`.
+
+**Layout:**
+
+```
+Castle
+Personal software platform
+
+[tower] [devbox (3)]               ← NodeBar (hidden in single-node)
+
+┌─────────────────────────────────────────────────────────┐
+│ Gateway · tower · port 9000 · 4 routes    [Reload] [Caddyfile] │
+│                                                         │
+│ Path              Component           Port  Node  Health│
+│ /api              castle-api          9020  tower  ● up │
+│ /central-context  central-context     9001  tower  ● up │
+│ /notifications    notification-bridge 9002  tower  ● up │
+│ /devbox-api       devbox-api          9020  devbox ● up │
+└─────────────────────────────────────────────────────────┘
+
+Services · Long-running daemons managed by systemd
+┌──────────────┐ ┌──────────────┐ ┌──────────────┐
+│ castle-api   │ │ central-ctx  │ │ notif-bridge │
+│ ● up 5ms     │ │ ● up 12ms    │ │ ● up 8ms     │
+│ :9020        │ │ :9001        │ │ :9002        │
+└──────────────┘ └──────────────┘ └──────────────┘
+
+Jobs · Scheduled tasks with cron timers
+  Name               Schedule        Timer
+  protonmail-sync    */5 * * * *     active
+  backup-collect     0 2 * * *       active
+
+Tools · CLI utilities installed to PATH
+  Name               Status
+  pdf2md             ● installed
+  gpt                ● installed
+```
+
+**Key components:**
+- **GatewayPanel** — Route table with live health badges, reload button,
+  collapsible Caddyfile viewer. Node column appears when multi-node.
+- **NodeBar** — Horizontal list of discovered nodes. Hidden in single-node
+  mode. Each node links to `/node/{hostname}`.
+- **ServiceSection** — Service cards in a responsive grid.
+- **JobSection** — Sortable table of scheduled tasks.
+- **ToolSection** — Sortable table of CLI tools with install/uninstall.
+
+**Real-time updates:**
+- SSE stream at `/stream` pushes `health`, `service-action`, and `mesh`
+  events. React Query caches are updated or invalidated on each event.
+- Health polling runs every 10s server-side; SSE delivers updates to all
+  connected dashboard clients.
+
+**Multi-node behavior:**
+- NodeBar appears when `GET /nodes` returns >1 node.
+- GatewayPanel shows a "Node" column when routes span multiple nodes.
+- `/node/{hostname}` page shows a specific node's deployed components.
 
 ## Component Contract
 
@@ -439,14 +520,27 @@ What exists today:
 - **Tools** — ~15 CLI utilities (pdf2md, docx2md, search, gpt, etc.)
 - **Manifest** — `castle.yaml` with typed Pydantic models
 
+- **Mesh infrastructure** — MQTT client (paho-mqtt), mDNS discovery
+  (python-zeroconf), MeshStateManager, all wired into API lifespan.
+  Opt-in via `CASTLE_API_MQTT_ENABLED` / `CASTLE_API_MDNS_ENABLED`.
+- **Node API** — `GET /nodes`, `GET /nodes/{hostname}` endpoints.
+  `GET /components?include_remote=true` for cross-node component listing.
+- **Gateway panel** — Dedicated UI showing route table, health per route,
+  reload button, Caddyfile viewer. Cross-node routes shown when multi-node.
+- **Node-aware UI** — NodeBar (hidden single-node), node detail page,
+  mesh SSE events for live node discovery updates.
+- **Cross-node routing** — Caddyfile generator accepts remote registries,
+  generates `reverse_proxy {hostname}:{port}` entries.
+
 What doesn't exist yet:
 
 - **Multi-language support** — Rust and Go components (the abstractions
   support them via `command` runner, but no examples exist yet)
-- **Inter-node coordination** — MQTT broker, node discovery, cross-node
-  routing
 - **Build automation** — Castle records build specs but doesn't
   orchestrate builds (each project builds independently)
+- **Mosquitto deployment** — Registered in castle.yaml as `castle-mqtt`
+  container service, but not yet deployed (needs `castle deploy` +
+  container runtime)
 
 ## Technology Map
 
@@ -466,7 +560,7 @@ What doesn't exist yet:
 | Testing | pytest (Python), Vitest (TS) | Active |
 | Secrets | `~/.castle/secrets/` file-based | Active |
 | Data storage | Filesystem (`/data/castle/`) | Active |
-| Messaging | MQTT (Mosquitto) | Planned |
-| Node discovery | mDNS/Avahi + MQTT | Planned |
+| Messaging | MQTT (paho-mqtt client, Mosquitto broker) | Active (opt-in) |
+| Node discovery | mDNS (python-zeroconf) + MQTT | Active (opt-in) |
 | Rust packaging | cargo | Planned |
 | Go packaging | go build | Planned |
