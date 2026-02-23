@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from castle_core.generators.systemd import (
+    generate_timer,
     generate_unit_from_deployed,
     unit_name,
 )
@@ -115,3 +116,25 @@ class TestUnitFromDeployed:
         )
         unit = generate_unit_from_deployed("my-svc", deployed)
         assert "/data/repos/" not in unit
+
+
+class TestGenerateTimer:
+    """Tests for timer generation from schedule strings."""
+
+    def test_daily_timer(self) -> None:
+        """Daily cron produces OnCalendar timer."""
+        timer = generate_timer("my-job", schedule="0 2 * * *", description="Nightly")
+        assert "Description=Castle timer: Nightly" in timer
+        assert "OnCalendar=*-*-* 02:00:00" in timer
+        assert "WantedBy=timers.target" in timer
+
+    def test_interval_timer(self) -> None:
+        """*/N minute cron produces OnUnitActiveSec timer."""
+        timer = generate_timer("sync", schedule="*/5 * * * *")
+        assert "OnUnitActiveSec=300s" in timer
+        assert "OnBootSec=60" in timer
+
+    def test_fallback_description(self) -> None:
+        """Timer uses name when no description given."""
+        timer = generate_timer("my-job", schedule="0 0 * * *")
+        assert "Description=Castle timer: my-job" in timer

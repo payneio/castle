@@ -107,8 +107,8 @@ The `build` output is a static SPA in `dist/` — just HTML, JS, and CSS files.
 
 ## Registering as a castle component
 
-A frontend component has a `build` spec (produces static output) and optionally
-a `proxy` spec (Caddy serves the built files). No `run` block needed if Caddy
+A frontend component has a `build` spec (produces static output). Register it
+in the `components:` section of `castle.yaml`. No `run` block needed if Caddy
 handles serving directly from the build output.
 
 ```yaml
@@ -116,45 +116,33 @@ handles serving directly from the build output.
 components:
   my-frontend:
     description: Web dashboard
+    source: my-frontend
     build:
       commands:
         - ["pnpm", "build"]
       outputs:
         - dist/
-    proxy:
-      caddy:
-        path_prefix: /app
 ```
 
-For development with Vite's dev server, add a `run` block:
+For production, Caddy serves the static files — add a service entry with a
+proxy spec:
 
 ```yaml
-components:
+services:
   my-frontend:
-    description: Web dashboard
+    component: my-frontend
     run:
       runner: node
       script: dev
       package_manager: pnpm
-      cwd: my-frontend
-    build:
-      commands:
-        - ["pnpm", "build"]
-      outputs:
-        - dist/
     expose:
       http:
         internal: { port: 5173 }
     proxy:
-      caddy:
-        path_prefix: /app
+      caddy: { path_prefix: /app }
 ```
 
-This gives the component both the `frontend` role (from `build`) and the
-`service` role (from `expose.http`) during development.
-
-See @docs/component-registry.md for the full manifest reference and role
-derivation rules.
+See @docs/component-registry.md for the full registry reference.
 
 ## Serving with Caddy
 

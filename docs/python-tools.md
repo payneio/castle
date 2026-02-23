@@ -317,28 +317,27 @@ uv run ruff format .        # Format
 components:
   my-tool:
     description: Does something useful
-    tool:
-      source: components/my-tool/
+    source: components/my-tool
     install:
       path:
         alias: my-tool
 ```
 
-Tools with system dependencies declare them in the manifest:
+Tools with system dependencies declare them in the component:
 
 ```yaml
 components:
   pdf2md:
     description: Convert PDF files to Markdown
-    tool:
-      source: components/pdf2md/
-      system_dependencies: [pandoc, poppler-utils]
+    source: components/pdf2md
     install:
       path:
         alias: pdf2md
+    tool:
+      system_dependencies: [pandoc, poppler-utils]
 ```
 
-Tools with `install.path` get the **tool** role. They don't need `expose`,
-`proxy`, or `manage` blocks unless castle also runs them (e.g., scheduled jobs).
+Tools live in the `components:` section. If a tool also runs on a schedule,
+add a separate entry in the `jobs:` section referencing the component.
 
-See @docs/component-registry.md for the full manifest reference.
+See @docs/component-registry.md for the full registry reference.

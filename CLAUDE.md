@@ -6,19 +6,25 @@ with code in this repository.
 ## Overview
 
 Castle is a personal software platform — a monorepo of independent projects
-(services, tools, libraries) managed by the `castle` CLI. Components declare
-**what they do** (expose HTTP, manage via systemd, install to PATH) and roles
-are **derived**, not labeled.
+(services, tools, libraries) managed by the `castle` CLI. The registry
+(`castle.yaml`) has three top-level sections:
+
+- **`components:`** — Software catalog (source, install, tool metadata, build)
+- **`services:`** — Long-running daemons (run, expose, proxy, systemd)
+- **`jobs:`** — Scheduled tasks (run, cron schedule, systemd timer)
+
+The section determines the category — no role derivation. Services and jobs
+can reference a component via `component:` for description fallthrough.
 
 **Key principle:** Regular projects must never depend on castle. They accept standard
-configuration (data dir, port, URLs) via env vars. Only castle-components (CLI, gateway,
-event bus) know about castle internals.
+configuration (data dir, port, URLs) via env vars. Only castle-components (CLI, gateway)
+know about castle internals.
 
 ## Creating Components
 
 When creating a new service, tool, or frontend, follow the detailed guides:
 
-- @docs/component-registry.md — Manifest architecture, castle.yaml structure, role derivation, lifecycle
+- @docs/component-registry.md — Registry architecture, castle.yaml structure, lifecycle
 - @docs/web-apis.md — FastAPI service patterns (config, routes, models, testing)
 - @docs/python-tools.md — CLI tool patterns (argparse, stdin/stdout, piping, testing)
 - @docs/web-frontends.md — React/Vite/TypeScript frontend patterns
@@ -39,7 +45,7 @@ cd components/my-tool && uv sync
 ```
 
 The `castle create` command scaffolds the project under `components/`,
-generates a CLAUDE.md, and registers it in `castle.yaml` as a `ComponentManifest`.
+generates a CLAUDE.md, and registers it in `castle.yaml`.
 
 ## Castle CLI
 
@@ -47,8 +53,8 @@ The CLI lives in `cli/` and is installed via `uv tool install --editable cli/`.
 
 ```bash
 castle list                              # List all components
-castle list --role service               # Filter by derived role
-castle info <component>                  # Show manifest details (--json for machine-readable)
+castle list --type service               # Filter by category
+castle info <component>                  # Show details (--json for machine-readable)
 castle create <name> --type service      # Scaffold new project
 castle test [project]                    # Run tests (one or all)
 castle lint [project]                    # Run linter (one or all)
@@ -93,8 +99,8 @@ Services also support: `uv run <service-name>` to start.
 
 ## Key Files
 
-- `castle.yaml` — Component registry (single source of truth)
-- `core/src/castle_core/manifest.py` — Pydantic models (ComponentManifest, RunSpec, etc.)
+- `castle.yaml` — Component registry (three sections: components, services, jobs)
+- `core/src/castle_core/manifest.py` — Pydantic models (ComponentSpec, ServiceSpec, JobSpec, RunSpec)
 - `core/src/castle_core/config.py` — Config loader (castle.yaml → CastleConfig)
 - `core/src/castle_core/generators/` — Systemd unit and Caddyfile generation
 - `cli/src/castle_cli/templates/scaffold.py` — Project scaffolding templates

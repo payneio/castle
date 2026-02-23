@@ -7,7 +7,6 @@ from pathlib import Path
 from unittest.mock import patch
 
 from castle_cli.config import load_config
-from castle_cli.manifest import Role
 
 
 class TestCreateCommand:
@@ -42,11 +41,12 @@ class TestCreateCommand:
         assert (project_dir / "tests" / "test_health.py").exists()
         assert (project_dir / "CLAUDE.md").exists()
 
-        # Verify registered as ComponentManifest
+        # Verify registered as ComponentSpec + ServiceSpec
         assert "my-api" in config.components
-        manifest = config.components["my-api"]
-        assert Role.SERVICE in manifest.roles
-        assert manifest.expose.http.internal.port == 9050
+        assert "my-api" in config.services
+        svc = config.services["my-api"]
+        assert svc.expose.http.internal.port == 9050
+        assert svc.component == "my-api"
         mock_save.assert_called_once()
 
     def test_create_tool(self, castle_root: Path) -> None:
@@ -60,17 +60,18 @@ class TestCreateCommand:
 
             from castle_cli.commands.create import run_create
 
-            args = Namespace(name="my-tool", type="tool", description="My tool", port=None)
+            args = Namespace(name="my-tool2", type="tool", description="My tool", port=None)
             result = run_create(args)
 
         assert result == 0
-        project_dir = castle_root / "components" / "my-tool"
+        project_dir = castle_root / "components" / "my-tool2"
         assert project_dir.exists()
-        assert (project_dir / "src" / "my_tool" / "main.py").exists()
+        assert (project_dir / "src" / "my_tool2" / "main.py").exists()
         assert (project_dir / "CLAUDE.md").exists()
-        assert "my-tool" in config.components
-        manifest = config.components["my-tool"]
-        assert Role.TOOL in manifest.roles
+        assert "my-tool2" in config.components
+        comp = config.components["my-tool2"]
+        assert comp.tool is not None
+        assert comp.install is not None
 
     def test_create_library(self, castle_root: Path) -> None:
         """Create a new library project."""
@@ -101,6 +102,7 @@ class TestCreateCommand:
 
             from castle_cli.commands.create import run_create
 
+            # test-svc exists in the services section
             args = Namespace(
                 name="test-svc",
                 type="service",
@@ -130,8 +132,8 @@ class TestCreateCommand:
             )
             run_create(args)
 
-        manifest = config.components["auto-port-svc"]
-        port = manifest.expose.http.internal.port
+        svc = config.services["auto-port-svc"]
+        port = svc.expose.http.internal.port
         # Port 18000 is gateway, 19000 is test-svc, so next should be 9001+
         assert port is not None
         assert port not in (18000, 19000)

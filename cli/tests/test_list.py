@@ -19,27 +19,13 @@ class TestListCommand:
             from castle_cli.config import load_config
 
             mock_load.return_value = load_config(castle_root)
-            args = Namespace(role=None, json=False)
+            args = Namespace(type=None, json=False)
             result = run_list(args)
 
         assert result == 0
         captured = capsys.readouterr()  # type: ignore[attr-defined]
         assert "test-svc" in captured.out
         assert "test-tool" in captured.out
-
-    def test_list_filter_role(self, castle_root: Path, capsys: object) -> None:
-        """List filtered by role."""
-        with patch("castle_cli.commands.list_cmd.load_config") as mock_load:
-            from castle_cli.config import load_config
-
-            mock_load.return_value = load_config(castle_root)
-            args = Namespace(role="tool", json=False)
-            result = run_list(args)
-
-        assert result == 0
-        captured = capsys.readouterr()  # type: ignore[attr-defined]
-        assert "test-tool" in captured.out
-        assert "test-svc" not in captured.out
 
     def test_list_filter_service(self, castle_root: Path, capsys: object) -> None:
         """List filtered to services."""
@@ -47,7 +33,7 @@ class TestListCommand:
             from castle_cli.config import load_config
 
             mock_load.return_value = load_config(castle_root)
-            args = Namespace(role="service", json=False)
+            args = Namespace(type="service", json=False)
             result = run_list(args)
 
         assert result == 0
@@ -55,13 +41,41 @@ class TestListCommand:
         assert "test-svc" in captured.out
         assert "test-tool" not in captured.out
 
+    def test_list_filter_tool(self, castle_root: Path, capsys: object) -> None:
+        """List filtered to tools."""
+        with patch("castle_cli.commands.list_cmd.load_config") as mock_load:
+            from castle_cli.config import load_config
+
+            mock_load.return_value = load_config(castle_root)
+            args = Namespace(type="tool", json=False)
+            result = run_list(args)
+
+        assert result == 0
+        captured = capsys.readouterr()  # type: ignore[attr-defined]
+        assert "test-tool" in captured.out
+        assert "test-svc" not in captured.out
+
+    def test_list_filter_job(self, castle_root: Path, capsys: object) -> None:
+        """List filtered to jobs."""
+        with patch("castle_cli.commands.list_cmd.load_config") as mock_load:
+            from castle_cli.config import load_config
+
+            mock_load.return_value = load_config(castle_root)
+            args = Namespace(type="job", json=False)
+            result = run_list(args)
+
+        assert result == 0
+        captured = capsys.readouterr()  # type: ignore[attr-defined]
+        assert "test-job" in captured.out
+        assert "test-svc" not in captured.out
+
     def test_list_json(self, castle_root: Path, capsys: object) -> None:
         """List output as JSON."""
         with patch("castle_cli.commands.list_cmd.load_config") as mock_load:
             from castle_cli.config import load_config
 
             mock_load.return_value = load_config(castle_root)
-            args = Namespace(role=None, json=True)
+            args = Namespace(type=None, json=True)
             result = run_list(args)
 
         assert result == 0
@@ -71,5 +85,4 @@ class TestListCommand:
         assert "test-svc" in names
         assert "test-tool" in names
         svc = next(p for p in data if p["name"] == "test-svc")
-        assert "roles" in svc
-        assert "service" in svc["roles"]
+        assert svc["category"] == "service"

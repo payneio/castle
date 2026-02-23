@@ -10,25 +10,22 @@ from castle_cli.config import load_config
 
 
 def run_logs(args: argparse.Namespace) -> int:
-    """View logs for a component."""
+    """View logs for a service or job."""
     config = load_config()
     name = args.name
 
-    if name not in config.components:
-        print(f"Error: component '{name}' not found in castle.yaml")
-        return 1
-
-    manifest = config.components[name]
-
-    # Container logs
-    if manifest.run and manifest.run.runner == "container":
-        return _container_logs(name, args)
-
-    # Systemd logs (default for managed services)
-    if manifest.manage and manifest.manage.systemd:
+    # Check services
+    if name in config.services:
+        svc = config.services[name]
+        if svc.run.runner == "container":
+            return _container_logs(name, args)
         return _systemd_logs(name, args)
 
-    print(f"Error: '{name}' has no log source (not systemd-managed or containerized)")
+    # Check jobs
+    if name in config.jobs:
+        return _systemd_logs(name, args)
+
+    print(f"Error: '{name}' not found in services or jobs")
     return 1
 
 

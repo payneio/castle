@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 
 from castle_core.config import save_config
-from castle_core.manifest import ComponentManifest
+from castle_core.manifest import ComponentSpec, JobSpec, ServiceSpec
 
 from castle_api.config import get_castle_root, get_config, get_registry
 from castle_api.stream import broadcast
@@ -29,6 +29,8 @@ class ConfigSaveRequest(BaseModel):
 class ConfigSaveResponse(BaseModel):
     ok: bool
     component_count: int
+    service_count: int
+    job_count: int
     errors: list[str]
 
 
@@ -39,6 +41,14 @@ class ApplyResponse(BaseModel):
 
 
 class ComponentConfigRequest(BaseModel):
+    config: dict
+
+
+class ServiceConfigRequest(BaseModel):
+    config: dict
+
+
+class JobConfigRequest(BaseModel):
     config: dict
 
 
@@ -76,22 +86,44 @@ def save_yaml(request: ConfigSaveRequest) -> ConfigSaveResponse:
             detail=f"Invalid YAML: {e}",
         )
 
-    if not isinstance(data, dict) or "components" not in data:
+    if not isinstance(data, dict):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="YAML must have a 'components' key",
+            detail="YAML must be a mapping",
         )
 
-    # Validate each component
-    count = 0
+    # Validate components
+    comp_count = 0
     for name, comp_data in data.get("components", {}).items():
         try:
             comp_data_copy = dict(comp_data) if comp_data else {}
             comp_data_copy["id"] = name
-            ComponentManifest.model_validate(comp_data_copy)
-            count += 1
+            ComponentSpec.model_validate(comp_data_copy)
+            comp_count += 1
         except Exception as e:
-            errors.append(f"{name}: {e}")
+            errors.append(f"components.{name}: {e}")
+
+    # Validate services
+    svc_count = 0
+    for name, svc_data in data.get("services", {}).items():
+        try:
+            svc_data_copy = dict(svc_data) if svc_data else {}
+            svc_data_copy["id"] = name
+            ServiceSpec.model_validate(svc_data_copy)
+            svc_count += 1
+        except Exception as e:
+            errors.append(f"services.{name}: {e}")
+
+    # Validate jobs
+    job_count = 0
+    for name, job_data in data.get("jobs", {}).items():
+        try:
+            job_data_copy = dict(job_data) if job_data else {}
+            job_data_copy["id"] = name
+            JobSpec.model_validate(job_data_copy)
+            job_count += 1
+        except Exception as e:
+            errors.append(f"jobs.{name}: {e}")
 
     if errors:
         raise HTTPException(
@@ -105,7 +137,10 @@ def save_yaml(request: ConfigSaveRequest) -> ConfigSaveResponse:
     shutil.copy2(config_path, backup_path)
     config_path.write_text(request.yaml_content)
 
-    return ConfigSaveResponse(ok=True, component_count=count, errors=[])
+    return ConfigSaveResponse(
+        ok=True, component_count=comp_count, service_count=svc_count,
+        job_count=job_count, errors=[],
+    )
 
 
 @router.put("/components/{name}")
@@ -113,11 +148,10 @@ def save_component(name: str, request: ComponentConfigRequest) -> dict:
     """Update a single component's config in castle.yaml."""
     _require_repo()
 
-    # Validate
     try:
         comp_data = dict(request.config)
         comp_data["id"] = name
-        ComponentManifest.model_validate(comp_data)
+        ComponentSpec.model_validate(comp_data)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -125,7 +159,7 @@ def save_component(name: str, request: ComponentConfigRequest) -> dict:
         )
 
     config = get_config()
-    config.components[name] = ComponentManifest.model_validate(
+    config.components[name] = ComponentSpec.model_validate(
         {**request.config, "id": name}
     )
     save_config(config)
@@ -144,6 +178,80 @@ def delete_component(name: str) -> dict:
     del config.components[name]
     save_config(config)
     return {"ok": True, "component": name, "action": "deleted"}
+
+
+@router.put("/services/{name}")
+def save_service(name: str, request: ServiceConfigRequest) -> dict:
+    """Update a single service's config in castle.yaml."""
+    _require_repo()
+
+    try:
+        svc_data = dict(request.config)
+        svc_data["id"] = name
+        ServiceSpec.model_validate(svc_data)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Invalid service config: {e}",
+        )
+
+    config = get_config()
+    config.services[name] = ServiceSpec.model_validate(
+        {**request.config, "id": name}
+    )
+    save_config(config)
+    return {"ok": True, "service": name}
+
+
+@router.delete("/services/{name}")
+def delete_service(name: str) -> dict:
+    """Remove a service from castle.yaml."""
+    config = get_config()
+    if name not in config.services:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Service '{name}' not found",
+        )
+    del config.services[name]
+    save_config(config)
+    return {"ok": True, "service": name, "action": "deleted"}
+
+
+@router.put("/jobs/{name}")
+def save_job(name: str, request: JobConfigRequest) -> dict:
+    """Update a single job's config in castle.yaml."""
+    _require_repo()
+
+    try:
+        job_data = dict(request.config)
+        job_data["id"] = name
+        JobSpec.model_validate(job_data)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Invalid job config: {e}",
+        )
+
+    config = get_config()
+    config.jobs[name] = JobSpec.model_validate(
+        {**request.config, "id": name}
+    )
+    save_config(config)
+    return {"ok": True, "job": name}
+
+
+@router.delete("/jobs/{name}")
+def delete_job(name: str) -> dict:
+    """Remove a job from castle.yaml."""
+    config = get_config()
+    if name not in config.jobs:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Job '{name}' not found",
+        )
+    del config.jobs[name]
+    save_config(config)
+    return {"ok": True, "job": name, "action": "deleted"}
 
 
 @router.post("/apply", response_model=ApplyResponse)

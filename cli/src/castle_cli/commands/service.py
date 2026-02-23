@@ -9,7 +9,6 @@ from castle_core.generators.systemd import (
     SYSTEMD_USER_DIR,
     generate_timer,
     generate_unit_from_deployed,
-    get_schedule_trigger,
     timer_name,
     unit_name,
 )
@@ -20,6 +19,9 @@ from castle_cli.config import (
     ensure_dirs,
     load_config,
 )
+
+# Re-export for use by other commands
+UNIT_PREFIX = "castle-"
 
 
 def _install_unit(uname: str, content: str) -> None:
@@ -76,7 +78,6 @@ def run_services(args: argparse.Namespace) -> int:
 
 def _service_enable(config: CastleConfig, name: str) -> int:
     """Enable and start a single service (or timer for scheduled jobs)."""
-    # Require registry
     if not REGISTRY_PATH.exists():
         print("Error: no registry found. Run 'castle deploy' first.")
         return 1
@@ -93,22 +94,29 @@ def _service_enable(config: CastleConfig, name: str) -> int:
 
     ensure_dirs()
 
-    # Get systemd spec from manifest for restart policy etc.
+    # Get systemd spec from config (services or jobs)
     systemd_spec = None
-    if name in config.components:
-        manifest = config.components[name]
-        if manifest.manage and manifest.manage.systemd:
-            systemd_spec = manifest.manage.systemd
+    if name in config.services:
+        svc = config.services[name]
+        if svc.manage and svc.manage.systemd:
+            systemd_spec = svc.manage.systemd
+    elif name in config.jobs:
+        job = config.jobs[name]
+        if job.manage and job.manage.systemd:
+            systemd_spec = job.manage.systemd
 
     # Generate and install the service unit from registry
     svc_unit = unit_name(name)
     svc_content = generate_unit_from_deployed(name, deployed, systemd_spec)
     _install_unit(svc_unit, svc_content)
 
-    # Check for timer (still uses manifest for schedule config)
-    manifest = config.components.get(name)
-    timer_content = generate_timer(name, manifest) if manifest else None
-    if timer_content:
+    # Check for timer (jobs have schedule)
+    if deployed.schedule:
+        timer_content = generate_timer(
+            name,
+            schedule=deployed.schedule,
+            description=deployed.description,
+        )
         tmr_unit = timer_name(name)
         _install_unit(tmr_unit, timer_content)
 
@@ -156,7 +164,6 @@ def _service_disable(name: str) -> int:
 
     print(f"Disabling {name}...")
 
-    # Stop and disable timer if exists
     timer_path = SYSTEMD_USER_DIR / tmr_unit
     if timer_path.exists():
         subprocess.run(["systemctl", "--user", "stop", tmr_unit], check=False)
@@ -172,14 +179,35 @@ def _service_disable(name: str) -> int:
 
 
 def _service_status(config: CastleConfig) -> int:
-    """Show status of all managed services."""
+    """Show status of all managed services and jobs."""
     print("\nCastle Services")
     print("=" * 50)
 
-    for name, manifest in config.managed.items():
-        is_scheduled = get_schedule_trigger(manifest) is not None
+    for name, svc in config.services.items():
+        svc_unit = unit_name(name)
+        result = subprocess.run(
+            ["systemctl", "--user", "is-active", svc_unit],
+            capture_output=True,
+            text=True,
+        )
+        status = result.stdout.strip()
+        if status == "active":
+            color = "\033[92m"
+        elif status == "inactive":
+            color = "\033[90m"
+        else:
+            color = "\033[91m"
+        reset = "\033[0m"
 
-        if is_scheduled:
+        port_str = ""
+        if svc.expose and svc.expose.http:
+            port_str = f":{svc.expose.http.internal.port}"
+        print(f"  {color}{status:10s}{reset}  {name}{port_str}")
+
+    if config.jobs:
+        print(f"\n{'─' * 50}")
+        print("Jobs")
+        for name in config.jobs:
             tmr_unit = timer_name(name)
             result = subprocess.run(
                 ["systemctl", "--user", "is-active", tmr_unit],
@@ -195,26 +223,6 @@ def _service_status(config: CastleConfig) -> int:
                 color = "\033[91m"
             reset = "\033[0m"
             print(f"  {color}{status:10s}{reset}  {name} (timer)")
-        else:
-            svc_unit = unit_name(name)
-            result = subprocess.run(
-                ["systemctl", "--user", "is-active", svc_unit],
-                capture_output=True,
-                text=True,
-            )
-            status = result.stdout.strip()
-            if status == "active":
-                color = "\033[92m"
-            elif status == "inactive":
-                color = "\033[90m"
-            else:
-                color = "\033[91m"
-            reset = "\033[0m"
-
-            port_str = ""
-            if manifest.expose and manifest.expose.http:
-                port_str = f":{manifest.expose.http.internal.port}"
-            print(f"  {color}{status:10s}{reset}  {name}{port_str}")
 
     print()
     return 0
@@ -222,28 +230,33 @@ def _service_status(config: CastleConfig) -> int:
 
 def _service_dry_run(config: CastleConfig, name: str) -> int:
     """Print the generated systemd unit(s) without installing."""
-    # Try registry first, fall back to showing what deploy would generate
     if REGISTRY_PATH.exists():
         registry = load_registry()
         if name in registry.deployed:
             deployed = registry.deployed[name]
             systemd_spec = None
-            if name in config.components:
-                manifest = config.components[name]
-                if manifest.manage and manifest.manage.systemd:
-                    systemd_spec = manifest.manage.systemd
+            if name in config.services:
+                svc = config.services[name]
+                if svc.manage and svc.manage.systemd:
+                    systemd_spec = svc.manage.systemd
+            elif name in config.jobs:
+                job = config.jobs[name]
+                if job.manage and job.manage.systemd:
+                    systemd_spec = job.manage.systemd
 
             svc_unit = unit_name(name)
             svc_content = generate_unit_from_deployed(name, deployed, systemd_spec)
             print(f"# {svc_unit}")
             print(svc_content)
 
-            manifest = config.components.get(name)
-            if manifest:
-                timer_content = generate_timer(name, manifest)
-                if timer_content:
-                    print(f"# {timer_name(name)}")
-                    print(timer_content)
+            if deployed.schedule:
+                timer_content = generate_timer(
+                    name,
+                    schedule=deployed.schedule,
+                    description=deployed.description,
+                )
+                print(f"# {timer_name(name)}")
+                print(timer_content)
             return 0
 
     print(f"Error: '{name}' not found in registry. Run 'castle deploy' first.")
@@ -252,14 +265,12 @@ def _service_dry_run(config: CastleConfig, name: str) -> int:
 
 def _services_start(config: CastleConfig) -> int:
     """Start all managed services and gateway."""
-    # Require registry
     if not REGISTRY_PATH.exists():
         print("Error: no registry found. Run 'castle deploy' first.")
         return 1
 
     ensure_dirs()
 
-    # Generate Caddyfile from registry
     from castle_core.config import GENERATED_DIR
     from castle_core.generators.caddyfile import generate_caddyfile_from_registry
 
@@ -268,7 +279,13 @@ def _services_start(config: CastleConfig) -> int:
     caddyfile_path.write_text(generate_caddyfile_from_registry(registry))
     print(f"Generated {caddyfile_path}")
 
-    for name in config.managed:
+    for name in config.services:
+        if name not in registry.deployed:
+            print(f"  {name}: skipped (not in registry, run 'castle deploy')")
+            continue
+        _service_enable(config, name)
+
+    for name in config.jobs:
         if name not in registry.deployed:
             print(f"  {name}: skipped (not in registry, run 'castle deploy')")
             continue
@@ -279,12 +296,15 @@ def _services_start(config: CastleConfig) -> int:
 
 
 def _services_stop(config: CastleConfig) -> int:
-    """Stop all managed services and gateway."""
-    for name, manifest in config.managed.items():
-        is_scheduled = get_schedule_trigger(manifest) is not None
-        if is_scheduled:
-            tmr_unit = timer_name(name)
-            subprocess.run(["systemctl", "--user", "stop", tmr_unit], check=False)
+    """Stop all managed services and jobs."""
+    for name in config.jobs:
+        tmr_unit = timer_name(name)
+        subprocess.run(["systemctl", "--user", "stop", tmr_unit], check=False)
+        svc_unit = unit_name(name)
+        subprocess.run(["systemctl", "--user", "stop", svc_unit], check=False)
+        print(f"  {name}: stopped")
+
+    for name in config.services:
         svc_unit = unit_name(name)
         subprocess.run(["systemctl", "--user", "stop", svc_unit], check=False)
         print(f"  {name}: stopped")

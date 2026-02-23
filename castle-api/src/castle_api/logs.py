@@ -8,9 +8,7 @@ from collections.abc import AsyncGenerator
 from fastapi import APIRouter, HTTPException, Query, status
 from starlette.responses import StreamingResponse
 
-from castle_core.config import load_config
-
-from castle_api.config import settings
+from castle_api.config import get_castle_root
 
 router = APIRouter(prefix="/logs", tags=["logs"])
 
@@ -24,11 +22,24 @@ async def get_logs(
     follow: bool = Query(default=False, description="Stream new lines via SSE"),
 ) -> StreamingResponse | dict:
     """Get logs for a systemd-managed service."""
-    config = load_config(settings.castle_root)
-    if name not in config.managed:
+    root = get_castle_root()
+    if root:
+        from castle_core.config import load_config
+
+        config = load_config(root)
+        is_managed = (
+            (name in config.services and config.services[name].manage is not None)
+            or (name in config.jobs and config.jobs[name].manage is not None)
+        )
+        if not is_managed:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"'{name}' is not a managed service",
+            )
+    else:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"'{name}' is not a managed service",
+            detail="Castle root not available",
         )
 
     unit = f"{UNIT_PREFIX}{name}.service"

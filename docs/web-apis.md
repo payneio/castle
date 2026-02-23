@@ -101,7 +101,12 @@ Castle passes config via env vars in castle.yaml:
 ```yaml
 components:
   my-service:
-    source: my-service
+    description: Does something useful
+    source: components/my-service
+
+services:
+  my-service:
+    component: my-service
     run:
       runner: python
       tool: my-service

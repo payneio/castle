@@ -20,9 +20,9 @@ is self-sufficient. The mesh is optional.
    Castle service is just a well-behaved Unix daemon that happens to
    be registered in a manifest.
 
-3. **Declare capabilities, derive roles.** Components say what they
-   do (expose HTTP, run on a schedule, install to PATH). Castle infers
-   what they are (service, job, tool, frontend). No role labels.
+3. **Section is category.** Components, services, and jobs live in
+   separate sections of `castle.yaml`. The section determines the
+   category — no role derivation needed.
 
 4. **Language-agnostic above the build line.** Below the build line,
    every language is different (uv, pnpm, cargo, go). Above it,
@@ -149,13 +149,17 @@ answers: "is it working?"
 
 These map to two files:
 
-**`castle.yaml`** (in the repo, version-controlled) — Component specs:
+**`castle.yaml`** (in the repo, version-controlled) — Three sections:
 
 ```yaml
 components:
   central-context:
     description: Content storage API
     source: components/central-context
+
+services:
+  central-context:
+    component: central-context
     run:
       runner: python
       tool: central-context
@@ -168,12 +172,29 @@ components:
         path_prefix: /central-context
     manage:
       systemd: {}
+
+jobs:
+  backup-collect:
+    component: backup-collect
+    run:
+      runner: command
+      argv: [backup-collect]
+    schedule: "0 2 * * *"
+    manage:
+      systemd: {}
 ```
 
-The spec says what the component *is* and what it *needs* — a port, a
-data directory, HTTP exposure. Convention-based env vars (`<PREFIX>_PORT`,
-`<PREFIX>_DATA_DIR`) are generated automatically during deploy. Only
-non-convention values need `defaults.env`.
+Components define *what software exists* (identity, source, install, tools).
+Services define *how daemons run* (run config, expose, proxy, systemd).
+Jobs define *how scheduled tasks run* (run config, cron schedule, systemd).
+
+Services and jobs can reference a component via `component:` for description
+fallthrough and source code linking. They can also exist independently
+(e.g., `castle-gateway` runs Caddy — not our software).
+
+Convention-based env vars (`<PREFIX>_PORT`, `<PREFIX>_DATA_DIR`) are
+generated automatically during deploy. Only non-convention values need
+`defaults.env`.
 
 **`~/.castle/registry.yaml`** (per-node, not in the repo) — Node config:
 
@@ -189,7 +210,7 @@ deployed:
     env:
       CENTRAL_CONTEXT_DATA_DIR: /data/castle/central-context
       CENTRAL_CONTEXT_PORT: "9001"
-    roles: [service]
+    category: service
     port: 9001
     health_path: /health
     proxy_path: /central-context

@@ -69,8 +69,8 @@ def _gateway_start(config: CastleConfig) -> int:
     """Generate config and enable the gateway service."""
     from castle_cli.commands.service import _service_enable
 
-    if GATEWAY_COMPONENT not in config.managed:
-        print(f"Error: '{GATEWAY_COMPONENT}' not found in castle.yaml or not managed")
+    if GATEWAY_COMPONENT not in config.services:
+        print(f"Error: '{GATEWAY_COMPONENT}' not found in services section")
         return 1
 
     print("Generating gateway configuration...")
@@ -101,7 +101,6 @@ def _gateway_reload() -> int:
     if result.returncode == 0:
         print("Gateway reloaded.")
     else:
-        # Fall back to restart if reload not supported
         print("Reload signal sent. Verifying...")
         result = subprocess.run(
             ["systemctl", "--user", "is-active", GATEWAY_UNIT],

@@ -1,138 +1,31 @@
 gateway:
   port: 9000
+
 components:
-  castle-gateway:
-    description: Caddy reverse proxy gateway
-    run:
-      runner: command
-      argv:
-      - caddy
-      - run
-      - --config
-      - /home/payne/.castle/generated/Caddyfile
-      - --adapter
-      - caddyfile
-    manage:
-      systemd:
-        exec_reload: caddy reload --config /home/payne/.castle/generated/Caddyfile
-          --adapter caddyfile
-    expose:
-      http:
-        internal:
-          port: 9000
-        health_path: /
   central-context:
     description: Content storage API useful to get context into my data dir from anywhere
       on the LAN
     source: components/central-context
-    run:
-      runner: python
-      tool: central-context
-    manage:
-      systemd: {}
-    expose:
-      http:
-        internal:
-          port: 9001
-        health_path: /health
-    proxy:
-      caddy:
-        path_prefix: /central-context
   notification-bridge:
     description: Desktop notification forwarder. This taps into your notifications
       system on the desktop and will forward all notifications the the central context
       server.
     source: components/notification-bridge
-    run:
-      runner: python
-      tool: notification-bridge
-    defaults:
-      env:
-        CENTRAL_CONTEXT_URL: http://localhost:9001
-        BUCKET_NAME: notifications
-        PORT: '9002'
-    manage:
-      systemd: {}
-    expose:
-      http:
-        internal:
-          port: 9002
-        health_path: /health
-    proxy:
-      caddy:
-        path_prefix: /notifications
   castle-api:
     description: Castle API
     source: castle-api
-    run:
-      runner: python
-      tool: castle-api
-    manage:
-      systemd: {}
-    expose:
-      http:
-        internal:
-          port: 9020
-        health_path: /health
-    proxy:
-      caddy:
-        path_prefix: /api
   protonmail:
     description: ProtonMail email sync via Bridge
     source: components/protonmail
-    run:
-      runner: command
-      argv:
-      - protonmail
-      - sync
-    defaults:
-      env:
-        PROTONMAIL_USERNAME: paul@payne.io
-        PROTONMAIL_API_KEY: ${secret:PROTONMAIL_API_KEY}
-    triggers:
-    - type: schedule
-      cron: '*/5 * * * *'
-      timezone: America/Los_Angeles
-    manage:
-      systemd: {}
     install:
       path:
         alias: protonmail
   backup-collect:
     description: Collect files from various sources into backup directory
     source: components/backup-collect
-    run:
-      runner: command
-      argv:
-      - backup-collect
-    defaults:
-      env:
-        DBACKUP: /data/backup
-    triggers:
-    - type: schedule
-      cron: 0 2 * * *
-      timezone: America/Los_Angeles
-    manage:
-      systemd: {}
     tool:
       system_dependencies:
       - rsync
-  backup-data:
-    description: Nightly restic backup of /data to /storage
-    run:
-      runner: command
-      argv:
-      - backup-data
-    defaults:
-      env:
-        RESTIC_REPOSITORY: /storage/restic-data
-        RESTIC_PASSWORD_FILE: /home/payne/.config/restic-password
-    triggers:
-    - type: schedule
-      cron: 30 3 * * *
-      timezone: America/Los_Angeles
-    manage:
-      systemd: {}
   castle-app:
     description: Castle web app
     source: app
@@ -249,3 +142,118 @@ components:
     install:
       path:
         alias: text-extractor
+
+services:
+  castle-gateway:
+    description: Caddy reverse proxy gateway
+    run:
+      runner: command
+      argv:
+      - caddy
+      - run
+      - --config
+      - /home/payne/.castle/generated/Caddyfile
+      - --adapter
+      - caddyfile
+    manage:
+      systemd:
+        exec_reload: caddy reload --config /home/payne/.castle/generated/Caddyfile
+          --adapter caddyfile
+    expose:
+      http:
+        internal:
+          port: 9000
+        health_path: /
+  central-context:
+    component: central-context
+    run:
+      runner: python
+      tool: central-context
+    manage:
+      systemd: {}
+    expose:
+      http:
+        internal:
+          port: 9001
+        health_path: /health
+    proxy:
+      caddy:
+        path_prefix: /central-context
+  notification-bridge:
+    component: notification-bridge
+    run:
+      runner: python
+      tool: notification-bridge
+    defaults:
+      env:
+        CENTRAL_CONTEXT_URL: http://localhost:9001
+        BUCKET_NAME: notifications
+        PORT: '9002'
+    manage:
+      systemd: {}
+    expose:
+      http:
+        internal:
+          port: 9002
+        health_path: /health
+    proxy:
+      caddy:
+        path_prefix: /notifications
+  castle-api:
+    component: castle-api
+    run:
+      runner: python
+      tool: castle-api
+    manage:
+      systemd: {}
+    expose:
+      http:
+        internal:
+          port: 9020
+        health_path: /health
+    proxy:
+      caddy:
+        path_prefix: /api
+
+jobs:
+  protonmail-sync:
+    component: protonmail
+    description: Sync ProtonMail email
+    run:
+      runner: command
+      argv:
+      - protonmail
+      - sync
+    schedule: '*/5 * * * *'
+    defaults:
+      env:
+        PROTONMAIL_USERNAME: paul@payne.io
+        PROTONMAIL_API_KEY: ${secret:PROTONMAIL_API_KEY}
+    manage:
+      systemd: {}
+  backup-collect:
+    component: backup-collect
+    description: Collect files from various sources into backup directory
+    run:
+      runner: command
+      argv:
+      - backup-collect
+    schedule: 0 2 * * *
+    defaults:
+      env:
+        DBACKUP: /data/backup
+    manage:
+      systemd: {}
+  backup-data:
+    description: Nightly restic backup of /data to /storage
+    run:
+      runner: command
+      argv:
+      - backup-data
+    schedule: 30 3 * * *
+    defaults:
+      env:
+        RESTIC_REPOSITORY: /storage/restic-data
+        RESTIC_PASSWORD_FILE: /home/payne/.config/restic-password
+    manage:
+      systemd: {}

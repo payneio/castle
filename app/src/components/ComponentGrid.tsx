@@ -1,16 +1,8 @@
 import type { ComponentSummary, HealthStatus } from "@/types"
+import { CATEGORY_LABELS } from "@/lib/labels"
 import { ComponentCard } from "./ComponentCard"
 
-const ROLE_ORDER = ["service", "tool", "worker", "job", "frontend", "remote", "containerized"]
-const ROLE_LABELS: Record<string, string> = {
-  service: "Services",
-  tool: "Tools",
-  worker: "Workers",
-  job: "Jobs",
-  frontend: "Frontends",
-  remote: "Remote",
-  containerized: "Containers",
-}
+const CATEGORY_ORDER = ["service", "job", "tool", "frontend", "component"]
 
 interface ComponentGridProps {
   components: ComponentSummary[]
@@ -20,24 +12,24 @@ interface ComponentGridProps {
 export function ComponentGrid({ components, statuses }: ComponentGridProps) {
   const statusMap = new Map(statuses.map((s) => [s.id, s]))
 
-  // Group by primary role
+  // Group by category
   const groups = new Map<string, ComponentSummary[]>()
   for (const comp of components) {
-    const primary = comp.roles[0] ?? "tool"
-    const list = groups.get(primary) ?? []
+    const cat = comp.category
+    const list = groups.get(cat) ?? []
     list.push(comp)
-    groups.set(primary, list)
+    groups.set(cat, list)
   }
 
   return (
     <div className="space-y-8">
-      {ROLE_ORDER.map((role) => {
-        const items = groups.get(role)
+      {CATEGORY_ORDER.map((cat) => {
+        const items = groups.get(cat)
         if (!items?.length) return null
         return (
-          <section key={role}>
+          <section key={cat}>
             <h2 className="text-lg font-semibold mb-3 text-[var(--muted)]">
-              {ROLE_LABELS[role] ?? role}
+              {CATEGORY_LABELS[cat] ?? cat}
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {items.map((comp) => (

@@ -27,15 +27,13 @@ const TEMPLATES: Record<string, Record<string, unknown>> = {
       path: { alias: "" },
     },
   },
-  worker: {
+  job: {
     run: {
       runner: "command",
       argv: [""],
       cwd: "",
     },
-    manage: {
-      systemd: {},
-    },
+    schedule: "0 2 * * *",
   },
   empty: {},
 }
@@ -145,7 +143,7 @@ export function AddComponent({ onAdd, existingNames }: AddComponentProps) {
           >
             <option value="service">Service (FastAPI + systemd + Caddy)</option>
             <option value="tool">Tool (PATH install)</option>
-            <option value="worker">Worker (systemd, no HTTP)</option>
+            <option value="job">Job (scheduled task)</option>
             <option value="empty">Empty</option>
           </select>
         </Field>

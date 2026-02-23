@@ -5,7 +5,7 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-from castle_core.manifest import ComponentManifest, RestartPolicy, SystemdSpec
+from castle_core.manifest import RestartPolicy, SystemdSpec
 from castle_core.registry import DeployedComponent
 
 SYSTEMD_USER_DIR = Path.home() / ".config" / "systemd" / "user"
@@ -20,14 +20,6 @@ def unit_name(service_name: str) -> str:
 def timer_name(service_name: str) -> str:
     """Get the systemd timer name for a scheduled service."""
     return f"{UNIT_PREFIX}{service_name}.timer"
-
-
-def get_schedule_trigger(manifest: ComponentManifest) -> object | None:
-    """Return the schedule trigger if one exists, else None."""
-    for t in manifest.triggers:
-        if getattr(t, "type", None) == "schedule":
-            return t
-    return None
 
 
 def cron_to_oncalendar(cron: str) -> str:
@@ -142,17 +134,17 @@ WantedBy={wanted_by}
     return unit
 
 
-def generate_timer(name: str, manifest: ComponentManifest) -> str | None:
-    """Generate a systemd timer unit if the component has a schedule trigger."""
-    trigger = get_schedule_trigger(manifest)
-    if trigger is None:
-        return None
-
-    description = manifest.description or name
+def generate_timer(
+    name: str,
+    schedule: str,
+    description: str | None = None,
+) -> str:
+    """Generate a systemd timer unit from a cron schedule string."""
+    description = description or name
 
     # Try to convert cron to OnCalendar, fall back to OnUnitActiveSec
-    on_calendar = cron_to_oncalendar(trigger.cron)
-    interval_sec = cron_to_interval_sec(trigger.cron)
+    on_calendar = cron_to_oncalendar(schedule)
+    interval_sec = cron_to_interval_sec(schedule)
 
     timer_lines = ""
     if on_calendar:

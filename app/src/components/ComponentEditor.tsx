@@ -25,9 +25,7 @@ export function ComponentEditor({ component, onSave, onDelete }: ComponentEditor
           <span className="text-sm text-[var(--muted)]">{component.description}</span>
         </div>
         <div className="flex items-center gap-1.5">
-          {component.roles.map((r) => (
-            <RoleBadge key={r} role={r} />
-          ))}
+          <RoleBadge role={component.category} />
         </div>
       </button>
 

@@ -9,7 +9,7 @@ from pathlib import Path
 
 import yaml
 
-from castle_core.manifest import ComponentManifest, Role
+from castle_core.manifest import ComponentSpec, JobSpec, ServiceSpec
 
 
 def find_castle_root() -> Path:
@@ -47,36 +47,30 @@ class CastleConfig:
 
     root: Path
     gateway: GatewayConfig
-    components: dict[str, ComponentManifest]
+    components: dict[str, ComponentSpec]
+    services: dict[str, ServiceSpec]
+    jobs: dict[str, JobSpec]
 
     @property
-    def services(self) -> dict[str, ComponentManifest]:
-        """Return components with the SERVICE role."""
-        return {k: v for k, v in self.components.items() if Role.SERVICE in v.roles}
-
-    @property
-    def tools(self) -> dict[str, ComponentManifest]:
-        """Return components with the TOOL role."""
-        return {k: v for k, v in self.components.items() if Role.TOOL in v.roles}
-
-    @property
-    def workers(self) -> dict[str, ComponentManifest]:
-        """Return components with the WORKER role."""
-        return {k: v for k, v in self.components.items() if Role.WORKER in v.roles}
-
-    @property
-    def managed(self) -> dict[str, ComponentManifest]:
-        """Return components managed by systemd."""
+    def tools(self) -> dict[str, ComponentSpec]:
+        """Return components that are tools (have install.path or tool spec)."""
         return {
             k: v
             for k, v in self.components.items()
-            if v.manage and v.manage.systemd and v.manage.systemd.enable
+            if (v.install and v.install.path) or v.tool
+        }
+
+    @property
+    def frontends(self) -> dict[str, ComponentSpec]:
+        """Return components that are frontends (have build outputs)."""
+        return {
+            k: v
+            for k, v in self.components.items()
+            if v.build and (v.build.outputs or v.build.commands)
         }
 
 
-def resolve_env_vars(
-    env: dict[str, str], manifest: ComponentManifest
-) -> dict[str, str]:
+def resolve_env_vars(env: dict[str, str]) -> dict[str, str]:
     """Resolve ${secret:NAME} references in env values."""
     resolved = {}
     for key, value in env.items():
@@ -100,11 +94,25 @@ def _read_secret(name: str) -> str:
     return f"<MISSING_SECRET:{name}>"
 
 
-def _parse_component(name: str, data: dict) -> ComponentManifest:
-    """Parse a components: entry directly into a ComponentManifest."""
+def _parse_component(name: str, data: dict) -> ComponentSpec:
+    """Parse a components: entry into a ComponentSpec."""
     data_copy = dict(data)
     data_copy["id"] = name
-    return ComponentManifest.model_validate(data_copy)
+    return ComponentSpec.model_validate(data_copy)
+
+
+def _parse_service(name: str, data: dict) -> ServiceSpec:
+    """Parse a services: entry into a ServiceSpec."""
+    data_copy = dict(data)
+    data_copy["id"] = name
+    return ServiceSpec.model_validate(data_copy)
+
+
+def _parse_job(name: str, data: dict) -> JobSpec:
+    """Parse a jobs: entry into a JobSpec."""
+    data_copy = dict(data)
+    data_copy["id"] = name
+    return JobSpec.model_validate(data_copy)
 
 
 def load_config(root: Path | None = None) -> CastleConfig:
@@ -122,11 +130,25 @@ def load_config(root: Path | None = None) -> CastleConfig:
     gateway_data = data.get("gateway", {})
     gateway = GatewayConfig(port=gateway_data.get("port", 9000))
 
-    components: dict[str, ComponentManifest] = {}
+    components: dict[str, ComponentSpec] = {}
     for name, comp_data in data.get("components", {}).items():
         components[name] = _parse_component(name, comp_data)
 
-    return CastleConfig(root=root, gateway=gateway, components=components)
+    services: dict[str, ServiceSpec] = {}
+    for name, svc_data in data.get("services", {}).items():
+        services[name] = _parse_service(name, svc_data)
+
+    jobs: dict[str, JobSpec] = {}
+    for name, job_data in data.get("jobs", {}).items():
+        jobs[name] = _parse_job(name, job_data)
+
+    return CastleConfig(
+        root=root,
+        gateway=gateway,
+        components=components,
+        services=services,
+        jobs=jobs,
+    )
 
 
 def _clean_for_yaml(data: object, preserve_keys: set[str] | None = None) -> object:
@@ -165,11 +187,12 @@ _STRUCTURAL_KEYS = {
 }
 
 
-def _manifest_to_yaml_dict(manifest: ComponentManifest) -> dict:
-    """Serialize a manifest to a YAML-friendly dict, preserving structural presence."""
-    full = manifest.model_dump(mode="json", exclude_none=True, exclude={"id", "roles"})
-    minimal = manifest.model_dump(
-        mode="json", exclude_none=True, exclude={"id", "roles"}, exclude_defaults=True
+def _spec_to_yaml_dict(spec: ComponentSpec | ServiceSpec | JobSpec) -> dict:
+    """Serialize a spec to a YAML-friendly dict, preserving structural presence."""
+    exclude_fields = {"id"}
+    full = spec.model_dump(mode="json", exclude_none=True, exclude=exclude_fields)
+    minimal = spec.model_dump(
+        mode="json", exclude_none=True, exclude=exclude_fields, exclude_defaults=True
     )
 
     def merge(full_val: object, min_val: object | None, key: str = "") -> object:
@@ -203,10 +226,22 @@ def _manifest_to_yaml_dict(manifest: ComponentManifest) -> dict:
 
 def save_config(config: CastleConfig) -> None:
     """Save castle configuration to castle.yaml."""
-    data: dict = {"gateway": {"port": config.gateway.port}, "components": {}}
+    data: dict = {"gateway": {"port": config.gateway.port}}
 
-    for name, manifest in config.components.items():
-        data["components"][name] = _manifest_to_yaml_dict(manifest)
+    if config.components:
+        data["components"] = {}
+        for name, spec in config.components.items():
+            data["components"][name] = _spec_to_yaml_dict(spec)
+
+    if config.services:
+        data["services"] = {}
+        for name, spec in config.services.items():
+            data["services"][name] = _spec_to_yaml_dict(spec)
+
+    if config.jobs:
+        data["jobs"] = {}
+        for name, spec in config.jobs.items():
+            data["jobs"][name] = _spec_to_yaml_dict(spec)
 
     config_path = config.root / "castle.yaml"
     with open(config_path, "w") as f:

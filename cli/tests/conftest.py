@@ -16,9 +16,17 @@ def castle_root(tmp_path: Path) -> Generator[Path, None, None]:
     config = {
         "gateway": {"port": 18000},
         "components": {
+            "test-tool": {
+                "description": "Test tool",
+                "install": {
+                    "path": {"alias": "test-tool"},
+                },
+            },
+        },
+        "services": {
             "test-svc": {
+                "component": "test-svc-comp",
                 "description": "Test service",
-                "source": "test-svc",
                 "run": {
                     "runner": "python",
                     "tool": "test-svc",
@@ -39,11 +47,15 @@ def castle_root(tmp_path: Path) -> Generator[Path, None, None]:
                     "systemd": {},
                 },
             },
-            "test-tool": {
-                "description": "Test tool",
-                "install": {
-                    "path": {"alias": "test-tool"},
+        },
+        "jobs": {
+            "test-job": {
+                "description": "Test job",
+                "run": {
+                    "runner": "command",
+                    "argv": ["test-job"],
                 },
+                "schedule": "0 2 * * *",
             },
         },
     }
