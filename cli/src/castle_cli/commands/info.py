@@ -29,8 +29,7 @@ def run_info(args: argparse.Namespace) -> int:
     if getattr(args, "json", False):
         data = manifest.model_dump(exclude_none=True)
         # Include CLAUDE.md content if it exists
-        cwd = manifest.run.working_dir if manifest.run else None
-        claude_md = _find_claude_md(config.root, cwd or name)
+        claude_md = _find_claude_md(config.root, manifest.source_dir or name)
         if claude_md:
             data["claude_md"] = claude_md
         print(json.dumps(data, indent=2))

@@ -47,9 +47,11 @@ def run_create(args: argparse.Namespace) -> int:
         print(f"Error: component '{name}' already exists in castle.yaml")
         return 1
 
-    project_dir = config.root / name
+    components_dir = config.root / "components"
+    components_dir.mkdir(exist_ok=True)
+    project_dir = components_dir / name
     if project_dir.exists():
-        print(f"Error: directory '{name}' already exists")
+        print(f"Error: directory 'components/{name}' already exists")
         return 1
 
     # Determine port for services
@@ -80,7 +82,7 @@ def run_create(args: argparse.Namespace) -> int:
             run=RunPythonUvTool(
                 runner="python_uv_tool",
                 tool=name,
-                cwd=name,
+                cwd=f"components/{name}",
                 env={f"{env_prefix}_DATA_DIR": f"/data/castle/{name}"},
             ),
             expose=ExposeSpec(
@@ -96,7 +98,7 @@ def run_create(args: argparse.Namespace) -> int:
         manifest = ComponentManifest(
             id=name,
             description=args.description or f"A castle {proj_type}",
-            tool=ToolSpec(source=f"{name}/"),
+            tool=ToolSpec(source=f"components/{name}/"),
             install=InstallSpec(path=PathInstallSpec(alias=name)),
         )
     else:
@@ -114,7 +116,7 @@ def run_create(args: argparse.Namespace) -> int:
         print(f"  Port: {port}")
     print("  Registered in castle.yaml")
     print("\nNext steps:")
-    print(f"  cd {name}")
+    print(f"  cd components/{name}")
     print("  uv sync")
     if proj_type == "service":
         print(f"  uv run {name}  # starts on port {port}")

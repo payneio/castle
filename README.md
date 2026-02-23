@@ -26,7 +26,7 @@ open http://localhost:9000
 ```bash
 # Service — FastAPI app with health endpoint, systemd unit, gateway route
 castle create my-api --type service --description "Does something useful"
-cd my-api && uv sync
+cd components/my-api && uv sync
 castle test my-api
 castle service enable my-api
 castle gateway reload
@@ -68,7 +68,7 @@ components:
     run:
       runner: python_uv_tool
       tool: central-context
-      working_dir: central-context
+      working_dir: components/central-context
       env:
         CENTRAL_CONTEXT_DATA_DIR: /data/castle/central-context
         CENTRAL_CONTEXT_PORT: "9001"
@@ -89,11 +89,13 @@ castle.yaml          <- component registry (single source of truth)
 cli/                 <- castle CLI
 castle-api/          <- Castle API (dashboard backend)
 app/                 <- Castle web app (React/Vite frontend)
-central-context/     <- content storage API (git submodule)
-notification-bridge/ <- desktop notification forwarder (git submodule)
-protonmail/          <- email sync tool/job
-devbox-connect/      <- SSH tunnel manager
-pdf2md/              <- standalone tool (each tool is its own project)
+components/          <- all non-infrastructure components
+  central-context/   <- content storage API (git submodule)
+  notification-bridge/ <- desktop notification forwarder (git submodule)
+  protonmail/        <- email sync tool/job
+  devbox-connect/    <- SSH tunnel manager
+  pdf2md/            <- standalone tool (each tool is its own project)
+  ...
 ruff.toml            <- shared lint config
 pyrightconfig.json   <- shared type checking config
 ```

@@ -1,6 +1,6 @@
 [submodule "central-context"]
-	path = central-context
+	path = components/central-context
 	url = https://github.com/payneio/central-context.git
 [submodule "notification-bridge"]
-	path = notification-bridge
+	path = components/notification-bridge
 	url = https://github.com/payneio/attention-firewall.git
