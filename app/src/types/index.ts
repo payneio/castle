@@ -69,11 +69,6 @@ export interface ToolSummary {
   installed: boolean
 }
 
-export interface ToolCategory {
-  name: string
-  tools: ToolSummary[]
-}
-
 export interface ToolDetail extends ToolSummary {
   docs: string | null
 }

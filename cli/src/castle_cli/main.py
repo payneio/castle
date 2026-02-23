@@ -120,7 +120,7 @@ def build_parser() -> argparse.ArgumentParser:
     # castle tool
     tool_parser = subparsers.add_parser("tool", help="Manage tools")
     tool_sub = tool_parser.add_subparsers(dest="tool_command")
-    tool_sub.add_parser("list", help="List all tools by category")
+    tool_sub.add_parser("list", help="List all tools")
     tool_info_parser = tool_sub.add_parser("info", help="Show tool details")
     tool_info_parser.add_argument("name", help="Tool name")
 
