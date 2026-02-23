@@ -8,6 +8,26 @@ import subprocess
 from pathlib import Path
 
 from castle_cli.config import ensure_dirs, load_config
+from castle_cli.manifest import ComponentManifest
+
+
+def _sync_cmd(manifest: ComponentManifest) -> list[str] | None:
+    """Derive the sync command from the manifest's runner."""
+    run = manifest.run
+    if run is None:
+        # No runner — check for build commands (frontends)
+        if manifest.build and manifest.build.commands:
+            # Frontends declare build commands; infer from source dir at call site
+            return None
+        return None
+
+    match run.runner:
+        case "python_uv_tool" | "python_module":
+            return ["uv", "sync"]
+        case "node":
+            return [run.package_manager, "install"]
+        case _:
+            return None
 
 
 def run_sync(args: argparse.Namespace) -> int:
@@ -24,35 +44,49 @@ def run_sync(args: argparse.Namespace) -> int:
     if result.returncode != 0:
         print("Warning: git submodule update failed (may not be a git repo)")
 
-    # Run uv sync in each project that has a pyproject.toml
+    # Sync dependencies in each project
     all_ok = True
     synced_dirs: set[Path] = set()
     for name, manifest in config.components.items():
-        working_dir = manifest.source_dir or name
-        project_dir = config.root / working_dir
-        pyproject = project_dir / "pyproject.toml"
+        source_dir = manifest.source_dir
+        if not source_dir:
+            continue
+        project_dir = config.root / source_dir
 
-        if not pyproject.exists() or project_dir in synced_dirs:
+        if project_dir in synced_dirs or not project_dir.is_dir():
             continue
 
-        print(f"\nSyncing {name}...")
-        result = subprocess.run(["uv", "sync"], cwd=project_dir)
+        cmd = _sync_cmd(manifest)
+        if cmd is None:
+            # No runner — check if it's a frontend with a package.json
+            if manifest.build and (project_dir / "package.json").exists():
+                pm = "pnpm" if (project_dir / "pnpm-lock.yaml").exists() else "npm"
+                cmd = [pm, "install"]
+            else:
+                continue
+
+        label = cmd[0]
+        print(f"\nSyncing {name} ({label})...")
+        result = subprocess.run(cmd, cwd=project_dir)
         if result.returncode != 0:
-            print(f"  Warning: uv sync failed for {name}")
+            print(f"  Warning: sync failed for {name}")
             all_ok = False
         else:
             print("  OK")
         synced_dirs.add(project_dir)
 
-    # Install tools — infer method from project structure
+    # Install components as uv tools or symlinks
     uv_path = shutil.which("uv") or "uv"
     installed_dirs: set[Path] = set()
 
     for name, manifest in config.components.items():
-        if not manifest.tool:
-            continue
+        # Determine source directory — from tool.source or manifest.source
+        source = None
+        if manifest.tool and manifest.tool.source:
+            source = manifest.tool.source
+        elif manifest.run and manifest.run.runner == "python_uv_tool" and manifest.source_dir:
+            source = manifest.source_dir
 
-        source = manifest.tool.source
         if not source:
             continue
 
