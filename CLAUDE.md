@@ -28,18 +28,18 @@ When creating a new service, tool, or frontend, follow the detailed guides:
 ```bash
 # Service
 castle create my-service --type service --description "Does something"
-cd my-service && uv sync
+cd components/my-service && uv sync
 uv run my-service               # starts on auto-assigned port
 castle service enable my-service # register with systemd
 castle gateway reload            # update reverse proxy routes
 
 # Tool
 castle create my-tool --type tool --description "Does something"
-cd my-tool && uv sync
+cd components/my-tool && uv sync
 ```
 
-The `castle create` command scaffolds the project, generates a CLAUDE.md,
-and registers it in `castle.yaml` as a `ComponentManifest`.
+The `castle create` command scaffolds the project under `components/`,
+generates a CLAUDE.md, and registers it in `castle.yaml` as a `ComponentManifest`.
 
 ## Castle CLI
 

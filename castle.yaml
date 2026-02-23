@@ -27,7 +27,7 @@ components:
       on the LAN
     run:
       runner: python_uv_tool
-      working_dir: central-context
+      working_dir: components/central-context
       env:
         CENTRAL_CONTEXT_DATA_DIR: /data/castle/central-context
         CENTRAL_CONTEXT_PORT: '9001'
@@ -48,7 +48,7 @@ components:
       server.
     run:
       runner: python_uv_tool
-      working_dir: notification-bridge
+      working_dir: components/notification-bridge
       env:
         CENTRAL_CONTEXT_URL: http://localhost:9001
         BUCKET_NAME: notifications
@@ -86,7 +86,7 @@ components:
     description: ProtonMail email sync via Bridge
     run:
       runner: command
-      working_dir: protonmail
+      working_dir: components/protonmail
       env:
         PROTONMAIL_USERNAME: paul@payne.io
         PROTONMAIL_API_KEY: ${secret:PROTONMAIL_API_KEY}
@@ -103,7 +103,7 @@ components:
       path:
         alias: protonmail
     tool:
-      source: protonmail/
+      source: components/protonmail/
   backup-collect:
     description: Collect files from various sources into backup directory
     run:
@@ -120,7 +120,7 @@ components:
     manage:
       systemd: {}
     tool:
-      source: backup-collect/
+      source: components/backup-collect/
       system_dependencies:
       - rsync
   backup-data:
@@ -155,21 +155,21 @@ components:
       path:
         alias: devbox-connect
     tool:
-      source: devbox-connect/
+      source: components/devbox-connect/
   mbox2eml:
     description: MBOX to EML email converter
     install:
       path:
         alias: mbox2eml
     tool:
-      source: mbox2eml/
+      source: components/mbox2eml/
   android-backup:
     description: Backup Android device using ADB
     install:
       path:
         alias: android-backup
     tool:
-      source: android-backup/
+      source: components/android-backup/
       system_dependencies:
       - adb
   browser:
@@ -178,14 +178,14 @@ components:
       path:
         alias: browser
     tool:
-      source: browser/
+      source: components/browser/
   docx-extractor:
     description: Extract content and metadata from Word .docx files
     install:
       path:
         alias: docx-extractor
     tool:
-      source: docx-extractor/
+      source: components/docx-extractor/
       system_dependencies:
       - pandoc
   docx2md:
@@ -194,7 +194,7 @@ components:
       path:
         alias: docx2md
     tool:
-      source: docx2md/
+      source: components/docx2md/
       system_dependencies:
       - pandoc
   gpt:
@@ -203,21 +203,21 @@ components:
       path:
         alias: gpt
     tool:
-      source: gpt/
+      source: components/gpt/
   html2text:
     description: Convert HTML content to plain text
     install:
       path:
         alias: html2text
     tool:
-      source: html2text/
+      source: components/html2text/
   md2pdf:
     description: Convert Markdown files to PDF
     install:
       path:
         alias: md2pdf
     tool:
-      source: md2pdf/
+      source: components/md2pdf/
       system_dependencies:
       - pandoc
       - texlive-latex-base
@@ -227,21 +227,21 @@ components:
       path:
         alias: mdscraper
     tool:
-      source: mdscraper/
+      source: components/mdscraper/
   pdf-extractor:
     description: Extract content and metadata from PDF files
     install:
       path:
         alias: pdf-extractor
     tool:
-      source: pdf-extractor/
+      source: components/pdf-extractor/
   pdf2md:
     description: Convert PDF files to Markdown
     install:
       path:
         alias: pdf2md
     tool:
-      source: pdf2md/
+      source: components/pdf2md/
       system_dependencies:
       - pandoc
       - poppler-utils
@@ -251,18 +251,18 @@ components:
       path:
         alias: schedule
     tool:
-      source: schedule/
+      source: components/schedule/
   search:
     description: Manage self-contained searchable collections of files
     install:
       path:
         alias: search
     tool:
-      source: search/
+      source: components/search/
   text-extractor:
     description: Extract content and metadata from text files
     install:
       path:
         alias: text-extractor
     tool:
-      source: text-extractor/
+      source: components/text-extractor/

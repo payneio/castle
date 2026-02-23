@@ -14,8 +14,7 @@ def _get_project_dir(config: CastleConfig, project_name: str) -> Path:
     if project_name not in config.components:
         raise ValueError(f"Unknown component: {project_name}")
     manifest = config.components[project_name]
-    cwd = manifest.run.working_dir if manifest.run else None
-    working_dir = cwd or project_name
+    working_dir = manifest.source_dir or project_name
     return config.root / working_dir
 
 
@@ -59,8 +58,7 @@ def run_test(args: argparse.Namespace) -> int:
     # Run all
     all_passed = True
     for name, manifest in config.components.items():
-        cwd = manifest.run.working_dir if manifest.run else None
-        working_dir = cwd or name
+        working_dir = manifest.source_dir or name
         project_dir = config.root / working_dir
         tests_dir = project_dir / "tests"
         if not tests_dir.exists():
@@ -98,8 +96,7 @@ def run_lint(args: argparse.Namespace) -> int:
     # Run all
     all_passed = True
     for name, manifest in config.components.items():
-        cwd = manifest.run.working_dir if manifest.run else None
-        working_dir = cwd or name
+        working_dir = manifest.source_dir or name
         project_dir = config.root / working_dir
         if not _has_pyproject(project_dir):
             continue

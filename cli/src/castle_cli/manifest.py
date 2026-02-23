@@ -302,6 +302,21 @@ class ComponentManifest(BaseModel):
 
         return sorted(roles, key=lambda r: r.value)
 
+    @property
+    def source_dir(self) -> str | None:
+        """Best-effort relative directory for this component's source.
+
+        Resolution order: run.working_dir → build.working_dir → tool.source (strip trailing /).
+        Returns None if no directory can be determined.
+        """
+        if self.run and self.run.working_dir:
+            return self.run.working_dir
+        if self.build and self.build.working_dir:
+            return self.build.working_dir
+        if self.tool and self.tool.source:
+            return self.tool.source.rstrip("/")
+        return None
+
     @model_validator(mode="after")
     def _basic_consistency(self) -> ComponentManifest:
         if self.manage and self.manage.systemd and self.manage.systemd.enable:
