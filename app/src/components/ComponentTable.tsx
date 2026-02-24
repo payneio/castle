@@ -1,23 +1,17 @@
 import { useMemo, useState } from "react"
 import { Link } from "react-router-dom"
-import { ArrowDown, ArrowUp, ArrowUpDown, Plug, Unplug } from "lucide-react"
-import type { ComponentSummary } from "@/types"
-import { useToolAction } from "@/services/api/hooks"
+import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react"
+import type { ProgramSummary } from "@/types"
 import { BehaviorBadge } from "./BehaviorBadge"
 import { StackBadge } from "./StackBadge"
+import { ProgramActions } from "./ProgramActions"
 
 interface ComponentTableProps {
-  components: ComponentSummary[]
+  components: ProgramSummary[]
 }
 
-type SortKey = "id" | "stack" | "behavior" | "status"
+type SortKey = "id" | "stack" | "behavior"
 type SortDir = "asc" | "desc"
-
-function installedRank(installed: boolean | null): number {
-  if (installed === false) return 0
-  if (installed === true) return 1
-  return 2
-}
 
 export function ComponentTable({ components }: ComponentTableProps) {
   const [search, setSearch] = useState("")
@@ -53,8 +47,6 @@ export function ComponentTable({ components }: ComponentTableProps) {
           return dir * (a.stack ?? "").localeCompare(b.stack ?? "")
         case "behavior":
           return dir * (a.behavior ?? "").localeCompare(b.behavior ?? "")
-        case "status":
-          return dir * (installedRank(a.installed) - installedRank(b.installed))
         default:
           return 0
       }
@@ -67,7 +59,7 @@ export function ComponentTable({ components }: ComponentTableProps) {
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Filter components..."
+          placeholder="Filter programs..."
           className="bg-black/30 border border-[var(--border)] rounded px-3 py-1.5 text-sm focus:outline-none focus:border-[var(--primary)] w-56"
         />
       </div>
@@ -79,21 +71,17 @@ export function ComponentTable({ components }: ComponentTableProps) {
               <SortHeader label="Name" sortKey="id" current={sortKey} dir={sortDir} onSort={toggleSort} />
               <SortHeader label="Stack" sortKey="stack" current={sortKey} dir={sortDir} onSort={toggleSort} />
               <SortHeader label="Behavior" sortKey="behavior" current={sortKey} dir={sortDir} onSort={toggleSort} />
-              <SortHeader label="Status" sortKey="status" current={sortKey} dir={sortDir} onSort={toggleSort} />
               <th className="px-3 py-2 font-medium text-[var(--muted)]">Actions</th>
             </tr>
           </thead>
           <tbody>
             {sorted.map((comp) => (
-              <ComponentRow
-                key={comp.id}
-                component={comp}
-              />
+              <ComponentRow key={comp.id} component={comp} />
             ))}
             {sorted.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-3 py-6 text-center text-[var(--muted)]">
-                  No components match.
+                <td colSpan={4} className="px-3 py-6 text-center text-[var(--muted)]">
+                  No programs match.
                 </td>
               </tr>
             )}
@@ -132,33 +120,12 @@ function SortHeader({
   )
 }
 
-function InstalledBadge({ installed }: { installed: boolean }) {
-  return installed ? (
-    <span className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-full bg-green-900/40 text-green-400 border border-green-800/50">
-      <span className="w-1.5 h-1.5 rounded-full bg-green-400" />
-      installed
-    </span>
-  ) : (
-    <span className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-full bg-zinc-800/40 text-[var(--muted)] border border-[var(--border)]">
-      <span className="w-1.5 h-1.5 rounded-full bg-zinc-500" />
-      not installed
-    </span>
-  )
-}
-
-function ComponentRow({
-  component,
-}: {
-  component: ComponentSummary
-}) {
-  const isTool = component.installed !== null
-  const { mutate: toolAction, isPending: toolPending } = useToolAction()
-
+function ComponentRow({ component }: { component: ProgramSummary }) {
   return (
     <tr className="border-b border-[var(--border)] last:border-b-0 hover:bg-[var(--card)]/50 transition-colors">
       <td className="px-3 py-2.5">
         <Link
-          to={`/components/${component.id}`}
+          to={`/programs/${component.id}`}
           className="font-medium hover:text-[var(--primary)] transition-colors"
         >
           {component.id}
@@ -176,38 +143,7 @@ function ComponentRow({
         <BehaviorBadge behavior={component.behavior} />
       </td>
       <td className="px-3 py-2.5">
-        {isTool ? (
-          <InstalledBadge installed={component.installed!} />
-        ) : (
-          <span className="text-[var(--muted)]">—</span>
-        )}
-      </td>
-      <td className="px-3 py-2.5">
-        {isTool ? (
-          <div className="flex items-center gap-1">
-            {component.installed ? (
-              <button
-                onClick={() => toolAction({ name: component.id, action: "uninstall" })}
-                disabled={toolPending}
-                className="p-1 rounded hover:bg-red-800/30 text-red-400 transition-colors disabled:opacity-40"
-                title="Uninstall from PATH"
-              >
-                <Unplug size={14} />
-              </button>
-            ) : (
-              <button
-                onClick={() => toolAction({ name: component.id, action: "install" })}
-                disabled={toolPending}
-                className="p-1 rounded hover:bg-green-800/30 text-green-400 transition-colors disabled:opacity-40"
-                title="Install to PATH"
-              >
-                <Plug size={14} />
-              </button>
-            )}
-          </div>
-        ) : (
-          <span className="text-[var(--muted)]">—</span>
-        )}
+        <ProgramActions name={component.id} actions={component.actions} installed={component.installed} compact />
       </td>
     </tr>
   )

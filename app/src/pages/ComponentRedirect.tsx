@@ -12,7 +12,7 @@ export function ComponentRedirect() {
   }
 
   if (error || !component) {
-    return <Navigate to={`/components/${name}`} replace />
+    return <Navigate to={`/programs/${name}`} replace />
   }
 
   if (component.managed && !component.schedule) {
@@ -20,8 +20,8 @@ export function ComponentRedirect() {
   }
 
   if (component.managed && component.schedule) {
-    return <Navigate to={`/scheduled/${name}`} replace />
+    return <Navigate to={`/jobs/${name}`} replace />
   }
 
-  return <Navigate to={`/components/${name}`} replace />
+  return <Navigate to={`/programs/${name}`} replace />
 }

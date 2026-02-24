@@ -1,5 +1,4 @@
-import { useMemo } from "react"
-import { useComponents, useStatus, useGateway, useNodes, useMeshStatus, useEventStream } from "@/services/api/hooks"
+import { useServices, useJobs, usePrograms, useStatus, useGateway, useNodes, useMeshStatus, useEventStream } from "@/services/api/hooks"
 import { GatewayPanel } from "@/components/GatewayPanel"
 import { MeshPanel } from "@/components/MeshPanel"
 import { NodeBar } from "@/components/NodeBar"
@@ -11,20 +10,16 @@ import { SectionHeader } from "@/components/SectionHeader"
 
 export function Dashboard() {
   useEventStream()
-  const { data: components, isLoading } = useComponents()
+  const { data: services, isLoading: loadingServices } = useServices()
+  const { data: jobs, isLoading: loadingJobs } = useJobs()
+  const { data: programs, isLoading: loadingPrograms } = usePrograms()
   const { data: statusResp } = useStatus()
   const { data: gateway } = useGateway()
   const { data: nodes } = useNodes()
   const { data: mesh } = useMeshStatus()
 
-  const { services, scheduled, catalog } = useMemo(() => {
-    const svc = (components ?? []).filter((c) => c.category === "service")
-    const sch = (components ?? []).filter((c) => c.category === "job")
-    const cat = (components ?? []).filter((c) => c.category === "component")
-    return { services: svc, scheduled: sch, catalog: cat }
-  }, [components])
-
   const statuses = statusResp?.statuses ?? []
+  const isLoading = loadingServices || loadingJobs || loadingPrograms
 
   return (
     <div className="max-w-6xl mx-auto px-6 py-8">
@@ -51,16 +46,16 @@ export function Dashboard() {
         <p className="text-[var(--muted)]">Loading...</p>
       ) : (
         <div className="space-y-10">
-          {services.length > 0 && (
+          {services && services.length > 0 && (
             <ServiceSection services={services} statuses={statuses} />
           )}
-          {scheduled.length > 0 && (
-            <ScheduledSection jobs={scheduled} statuses={statuses} />
+          {jobs && jobs.length > 0 && (
+            <ScheduledSection jobs={jobs} statuses={statuses} />
           )}
-          {catalog.length > 0 && (
+          {programs && programs.length > 0 && (
             <section>
-              <SectionHeader section="component" />
-              <ComponentTable components={catalog} />
+              <SectionHeader section="program" />
+              <ComponentTable components={programs} />
             </section>
           )}
         </div>

@@ -2,8 +2,13 @@ import { useEffect } from "react"
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query"
 import { apiClient } from "./client"
 import type {
-  ComponentSummary,
   ComponentDetail,
+  ServiceSummary,
+  ServiceDetail,
+  JobSummary,
+  JobDetail,
+  ProgramSummary,
+  ProgramDetail,
   StatusResponse,
   GatewayInfo,
   ServiceActionResponse,
@@ -15,17 +20,56 @@ import type {
   ToolDetail,
 } from "@/types"
 
-export function useComponents() {
-  return useQuery({
-    queryKey: ["components"],
-    queryFn: () => apiClient.get<ComponentSummary[]>("/components"),
-  })
-}
-
+// Legacy compat hook — used by ConfigEditorPage and ComponentRedirect
 export function useComponent(name: string) {
   return useQuery({
     queryKey: ["components", name],
     queryFn: () => apiClient.get<ComponentDetail>(`/components/${name}`),
+    enabled: !!name,
+  })
+}
+
+export function useServices() {
+  return useQuery({
+    queryKey: ["services"],
+    queryFn: () => apiClient.get<ServiceSummary[]>("/services"),
+  })
+}
+
+export function useService(name: string) {
+  return useQuery({
+    queryKey: ["services", name],
+    queryFn: () => apiClient.get<ServiceDetail>(`/services/${name}`),
+    enabled: !!name,
+  })
+}
+
+export function useJobs() {
+  return useQuery({
+    queryKey: ["jobs"],
+    queryFn: () => apiClient.get<JobSummary[]>("/jobs"),
+  })
+}
+
+export function useJob(name: string) {
+  return useQuery({
+    queryKey: ["jobs", name],
+    queryFn: () => apiClient.get<JobDetail>(`/jobs/${name}`),
+    enabled: !!name,
+  })
+}
+
+export function usePrograms() {
+  return useQuery({
+    queryKey: ["programs"],
+    queryFn: () => apiClient.get<ProgramSummary[]>("/programs"),
+  })
+}
+
+export function useProgram(name: string) {
+  return useQuery({
+    queryKey: ["programs", name],
+    queryFn: () => apiClient.get<ProgramDetail>(`/programs/${name}`),
     enabled: !!name,
   })
 }
@@ -97,15 +141,15 @@ export function useServiceAction() {
   })
 }
 
-export function useToolAction() {
+export function useProgramAction() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ name, action }: { name: string; action: "install" | "uninstall" }) =>
-      apiClient.post<{ component: string; action: string; status: string }>(
-        `/tools/${name}/${action}`,
+    mutationFn: ({ name, action }: { name: string; action: string }) =>
+      apiClient.post<{ component: string; action: string; status: string; output: string }>(
+        `/programs/${name}/${action}`,
       ),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["components"] })
+      qc.invalidateQueries({ queryKey: ["programs"] })
     },
   })
 }
@@ -171,9 +215,10 @@ export function useEventStream() {
     })
 
     es.addEventListener("service-action", () => {
-      // Health event already pushes correct status; just refetch components
+      // Health event already pushes correct status; just refetch services/jobs
       // in case the action changed what's available
-      qc.invalidateQueries({ queryKey: ["components"] })
+      qc.invalidateQueries({ queryKey: ["services"] })
+      qc.invalidateQueries({ queryKey: ["jobs"] })
     })
 
     es.addEventListener("mesh", () => {

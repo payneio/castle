@@ -7,7 +7,7 @@ import argparse
 from castle_cli.config import load_config, save_config
 from castle_cli.manifest import (
     CaddySpec,
-    ComponentSpec,
+    ProgramSpec,
     ExposeSpec,
     HttpExposeSpec,
     HttpInternal,
@@ -52,15 +52,15 @@ def run_create(args: argparse.Namespace) -> int:
     stack = args.stack
     behavior = STACK_DEFAULTS.get(stack)
 
-    if name in config.components or name in config.services or name in config.jobs:
+    if name in config.programs or name in config.services or name in config.jobs:
         print(f"Error: '{name}' already exists in castle.yaml")
         return 1
 
-    components_dir = config.root / "components"
-    components_dir.mkdir(exist_ok=True)
-    project_dir = components_dir / name
+    programs_dir = config.root / "programs"
+    programs_dir.mkdir(exist_ok=True)
+    project_dir = programs_dir / name
     if project_dir.exists():
-        print(f"Error: directory 'components/{name}' already exists")
+        print(f"Error: directory 'programs/{name}' already exists")
         return 1
 
     # Determine port for daemons
@@ -77,17 +77,17 @@ def run_create(args: argparse.Namespace) -> int:
         name=name,
         package_name=package_name,
         stack=stack,
-        description=args.description or f"A castle {stack} component",
+        description=args.description or f"A castle {stack} program",
         port=port,
     )
 
     # Build entries
     if behavior == "daemon":
-        # Component for software identity
-        config.components[name] = ComponentSpec(
+        # Program for software identity
+        config.programs[name] = ProgramSpec(
             id=name,
-            description=args.description or f"A castle {stack} component",
-            source=f"components/{name}",
+            description=args.description or f"A castle {stack} program",
+            source=f"programs/{name}",
             stack=stack,
         )
         # Service for deployment
@@ -105,31 +105,31 @@ def run_create(args: argparse.Namespace) -> int:
             manage=ManageSpec(systemd=SystemdSpec()),
         )
     elif behavior == "tool":
-        config.components[name] = ComponentSpec(
+        config.programs[name] = ProgramSpec(
             id=name,
-            description=args.description or f"A castle {stack} component",
-            source=f"components/{name}",
+            description=args.description or f"A castle {stack} program",
+            source=f"programs/{name}",
             stack=stack,
             tool=ToolSpec(),
             install=InstallSpec(path=PathInstallSpec(alias=name)),
         )
     else:
         # frontend or other
-        config.components[name] = ComponentSpec(
+        config.programs[name] = ProgramSpec(
             id=name,
-            description=args.description or f"A castle {stack} component",
-            source=f"components/{name}",
+            description=args.description or f"A castle {stack} program",
+            source=f"programs/{name}",
             stack=stack,
         )
 
     save_config(config)
 
-    print(f"Created {stack} component '{name}' at {project_dir}")
+    print(f"Created {stack} program '{name}' at {project_dir}")
     if port:
         print(f"  Port: {port}")
     print("  Registered in castle.yaml")
     print("\nNext steps:")
-    print(f"  cd components/{name}")
+    print(f"  cd programs/{name}")
     print("  uv sync")
     if behavior == "daemon":
         print(f"  uv run {name}  # starts on port {port}")

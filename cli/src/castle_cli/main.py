@@ -19,7 +19,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
     # castle list
-    list_parser = subparsers.add_parser("list", help="List all components")
+    list_parser = subparsers.add_parser("list", help="List all programs, services, and jobs")
     list_parser.add_argument(
         "--behavior",
         choices=["daemon", "tool", "frontend"],
@@ -43,8 +43,8 @@ def build_parser() -> argparse.ArgumentParser:
     create_parser.add_argument("--description", default="", help="Project description")
     create_parser.add_argument("--port", type=int, help="Port number (daemons only)")
     # castle info
-    info_parser = subparsers.add_parser("info", help="Show component details")
-    info_parser.add_argument("project", help="Component name")
+    info_parser = subparsers.add_parser("info", help="Show program details")
+    info_parser.add_argument("project", help="Program, service, or job name")
     info_parser.add_argument("--json", action="store_true", help="Output as JSON")
 
     # castle test
@@ -91,25 +91,25 @@ def build_parser() -> argparse.ArgumentParser:
     services_sub.add_parser("stop", help="Stop all services and gateway")
 
     # castle logs
-    logs_parser = subparsers.add_parser("logs", help="View component logs")
-    logs_parser.add_argument("name", help="Component name")
+    logs_parser = subparsers.add_parser("logs", help="View service/job logs")
+    logs_parser.add_argument("name", help="Service or job name")
     logs_parser.add_argument("-f", "--follow", action="store_true", help="Follow log output")
     logs_parser.add_argument(
         "-n", "--lines", type=int, default=50, help="Number of lines to show (default: 50)"
     )
 
     # castle run
-    run_parser = subparsers.add_parser("run", help="Run a component in the foreground")
-    run_parser.add_argument("name", help="Component name")
+    run_parser = subparsers.add_parser("run", help="Run a service in the foreground")
+    run_parser.add_argument("name", help="Service name")
     run_parser.add_argument(
-        "extra", nargs=argparse.REMAINDER, help="Extra arguments passed to the component"
+        "extra", nargs=argparse.REMAINDER, help="Extra arguments passed to the service"
     )
 
     # castle deploy
     deploy_parser = subparsers.add_parser(
-        "deploy", help="Deploy components to ~/.castle/ (spec → runtime)"
+        "deploy", help="Deploy to ~/.castle/ (spec → runtime)"
     )
-    deploy_parser.add_argument("component", nargs="?", help="Component to deploy (default: all)")
+    deploy_parser.add_argument("name", nargs="?", help="Service or job to deploy (default: all)")
 
     # castle tool
     tool_parser = subparsers.add_parser("tool", help="Manage tools")

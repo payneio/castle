@@ -9,21 +9,21 @@ Castle is a personal software platform — a monorepo of independent projects
 (services, tools, libraries) managed by the `castle` CLI. The registry
 (`castle.yaml`) has three top-level sections:
 
-- **`components:`** — Software catalog (source, install, tool metadata, build)
+- **`programs:`** — Software catalog (source, install, tool metadata, build)
 - **`services:`** — Long-running daemons (run, expose, proxy, systemd)
 - **`jobs:`** — Scheduled tasks (run, cron schedule, systemd timer)
 
-Each component has a **stack** (development toolchain: python-fastapi,
+Each program has a **stack** (development toolchain: python-fastapi,
 python-cli, react-vite) and a **behavior** (runtime role: daemon, tool,
 frontend). Scheduling, systemd management, and proxying are orthogonal
-operations. Services and jobs reference a component via `component:` for
+operations. Services and jobs reference a program via `component:` for
 description fallthrough.
 
 **Key principle:** Regular projects must never depend on castle. They accept standard
-configuration (data dir, port, URLs) via env vars. Only castle-components (CLI, gateway)
+configuration (data dir, port, URLs) via env vars. Only castle programs (CLI, gateway)
 know about castle internals.
 
-## Creating Components
+## Creating Programs
 
 When creating a new service, tool, or frontend, follow the detailed guides:
 
@@ -37,17 +37,17 @@ When creating a new service, tool, or frontend, follow the detailed guides:
 ```bash
 # Daemon (python-fastapi)
 castle create my-service --stack python-fastapi --description "Does something"
-cd components/my-service && uv sync
+cd programs/my-service && uv sync
 uv run my-service               # starts on auto-assigned port
 castle service enable my-service # register with systemd
 castle gateway reload            # update reverse proxy routes
 
 # Tool (python-cli)
 castle create my-tool --stack python-cli --description "Does something"
-cd components/my-tool && uv sync
+cd programs/my-tool && uv sync
 ```
 
-The `castle create` command scaffolds the project under `components/`,
+The `castle create` command scaffolds the project under `programs/`,
 generates a CLAUDE.md, and registers it in `castle.yaml`.
 
 ## Castle CLI
@@ -55,17 +55,17 @@ generates a CLAUDE.md, and registers it in `castle.yaml`.
 The CLI lives in `cli/` and is installed via `uv tool install --editable cli/`.
 
 ```bash
-castle list                              # List all components
+castle list                              # List all programs, services, and jobs
 castle list --behavior daemon             # Filter by behavior
 castle list --stack python-cli           # Filter by stack
-castle info <component>                  # Show details (--json for machine-readable)
+castle info <name>                       # Show details (--json for machine-readable)
 castle create <name> --stack python-fastapi  # Scaffold new project
-castle deploy [component]                # Deploy to runtime (registry + systemd + Caddyfile)
+castle deploy [name]                     # Deploy to runtime (registry + systemd + Caddyfile)
 castle test [project]                    # Run tests (one or all)
 castle lint [project]                    # Run linter (one or all)
 castle sync                              # Update submodules + uv sync all
-castle run <component>                   # Run component in foreground
-castle logs <component> [-f] [-n 50]     # View component logs
+castle run <name>                        # Run service in foreground
+castle logs <name> [-f] [-n 50]          # View service/job logs
 castle tool list                         # List all tools
 castle tool info <name>                  # Show tool details
 castle gateway start|stop|reload|status  # Manage Caddy reverse proxy
@@ -156,8 +156,8 @@ Services also support: `uv run <service-name>` to start.
 
 ## Key Files
 
-- `castle.yaml` — Component registry (three sections: components, services, jobs)
-- `core/src/castle_core/manifest.py` — Pydantic models (ComponentSpec, ServiceSpec, JobSpec, RunSpec)
+- `castle.yaml` — Registry (three sections: programs, services, jobs)
+- `core/src/castle_core/manifest.py` — Pydantic models (ProgramSpec, ServiceSpec, JobSpec, RunSpec)
 - `core/src/castle_core/config.py` — Config loader (castle.yaml → CastleConfig)
 - `core/src/castle_core/generators/` — Systemd unit and Caddyfile generation
 - `cli/src/castle_cli/templates/scaffold.py` — Project scaffolding templates

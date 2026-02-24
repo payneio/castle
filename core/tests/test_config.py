@@ -11,7 +11,7 @@ from castle_core.config import (
     resolve_env_vars,
     save_config,
 )
-from castle_core.manifest import ComponentSpec, JobSpec, ServiceSpec
+from castle_core.manifest import ProgramSpec, JobSpec, ServiceSpec
 
 
 class TestLoadConfig:
@@ -22,14 +22,14 @@ class TestLoadConfig:
         config = load_config(castle_root)
         assert isinstance(config, CastleConfig)
         assert config.gateway.port == 18000
-        assert "test-tool" in config.components
+        assert "test-tool" in config.programs
         assert "test-svc" in config.services
         assert "test-job" in config.jobs
 
     def test_load_produces_typed_specs(self, castle_root: Path) -> None:
         """Each section produces the correct spec type."""
         config = load_config(castle_root)
-        assert isinstance(config.components["test-tool"], ComponentSpec)
+        assert isinstance(config.programs["test-tool"], ProgramSpec)
         assert isinstance(config.services["test-svc"], ServiceSpec)
         assert isinstance(config.jobs["test-job"], JobSpec)
 
@@ -86,21 +86,21 @@ class TestSaveConfig:
         config2 = load_config(castle_root)
 
         assert config2.gateway.port == config.gateway.port
-        assert set(config2.components.keys()) == set(config.components.keys())
+        assert set(config2.programs.keys()) == set(config.programs.keys())
         assert set(config2.services.keys()) == set(config.services.keys())
         assert set(config2.jobs.keys()) == set(config.jobs.keys())
 
     def test_save_adds_component(self, castle_root: Path) -> None:
         """Adding a component and saving persists it."""
         config = load_config(castle_root)
-        config.components["new-lib"] = ComponentSpec(
+        config.programs["new-lib"] = ProgramSpec(
             id="new-lib", description="A new library"
         )
         save_config(config)
 
         config2 = load_config(castle_root)
-        assert "new-lib" in config2.components
-        assert config2.components["new-lib"].description == "A new library"
+        assert "new-lib" in config2.programs
+        assert config2.programs["new-lib"].description == "A new library"
 
     def test_preserves_manage_systemd(self, castle_root: Path) -> None:
         """Roundtrip preserves manage.systemd even with all defaults."""

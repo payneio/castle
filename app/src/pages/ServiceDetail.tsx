@@ -1,9 +1,10 @@
+import { useRef } from "react"
 import { useParams } from "react-router-dom"
-import { Server, ExternalLink, Terminal } from "lucide-react"
-import { useComponent, useStatus, useEventStream, useCaddyfile } from "@/services/api/hooks"
+import { Server, ExternalLink, Terminal, Trash2 } from "lucide-react"
+import { useService, useStatus, useEventStream, useCaddyfile } from "@/services/api/hooks"
 import { runnerLabel } from "@/lib/labels"
 import { HealthBadge } from "@/components/HealthBadge"
-import { LogViewer } from "@/components/LogViewer"
+import { LogViewer, type LogViewerHandle } from "@/components/LogViewer"
 import { DetailHeader } from "@/components/detail/DetailHeader"
 import { ServiceControls } from "@/components/detail/ServiceControls"
 import { SystemdPanel } from "@/components/detail/SystemdPanel"
@@ -11,8 +12,9 @@ import { ConfigPanel } from "@/components/detail/ConfigPanel"
 
 export function ServiceDetailPage() {
   useEventStream()
+  const logRef = useRef<LogViewerHandle>(null)
   const { name } = useParams<{ name: string }>()
-  const { data: component, isLoading, error, refetch } = useComponent(name ?? "")
+  const { data: component, isLoading, error, refetch } = useService(name ?? "")
   const { data: statusResp } = useStatus()
   const health = statusResp?.statuses.find((s) => s.id === name)
   const isGateway = name === "castle-gateway"
@@ -41,7 +43,7 @@ export function ServiceDetailPage() {
         backTo="/"
         backLabel="Back to Services"
         name={component.id}
-        behavior={component.behavior}
+        behavior="daemon"
         stack={component.stack}
         source={component.source}
       >
@@ -129,8 +131,16 @@ export function ServiceDetailPage() {
 
       {component.managed && (
         <div className="mb-6">
-          <h2 className="text-lg font-semibold mb-3">Logs</h2>
-          <LogViewer name={component.id} />
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-lg font-semibold">Logs</h2>
+            <button
+              onClick={() => logRef.current?.clear()}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded border border-[var(--border)] text-[var(--muted)] hover:text-[var(--foreground)] hover:border-[var(--foreground)] transition-colors"
+            >
+              <Trash2 size={14} /> Clear
+            </button>
+          </div>
+          <LogViewer ref={logRef} name={component.id} />
         </div>
       )}
     </div>

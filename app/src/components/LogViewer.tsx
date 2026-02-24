@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useImperativeHandle, useRef, useState, forwardRef } from "react"
 import { apiClient } from "@/services/api/client"
 
 interface LogViewerProps {
@@ -7,7 +7,14 @@ interface LogViewerProps {
   follow?: boolean
 }
 
-export function LogViewer({ name, lines = 50, follow = true }: LogViewerProps) {
+export interface LogViewerHandle {
+  clear: () => void
+}
+
+export const LogViewer = forwardRef<LogViewerHandle, LogViewerProps>(function LogViewer(
+  { name, lines = 50, follow = true },
+  ref,
+) {
   const [logs, setLogs] = useState<string[]>([])
   const [connected, setConnected] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
@@ -40,6 +47,8 @@ export function LogViewer({ name, lines = 50, follow = true }: LogViewerProps) {
     return () => es.close()
   }, [name, lines, follow])
 
+  useImperativeHandle(ref, () => ({ clear: () => setLogs([]) }), [])
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [logs])
@@ -68,4 +77,4 @@ export function LogViewer({ name, lines = 50, follow = true }: LogViewerProps) {
       </pre>
     </div>
   )
-}
+})

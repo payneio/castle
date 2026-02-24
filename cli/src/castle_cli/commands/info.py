@@ -1,4 +1,4 @@
-"""castle info - show detailed component information."""
+"""castle info - show detailed program information."""
 
 from __future__ import annotations
 
@@ -17,8 +17,8 @@ GREEN = "\033[92m"
 RED = "\033[91m"
 
 
-def _load_deployed_component(name: str) -> object | None:
-    """Try to load a specific deployed component from registry."""
+def _load_deployed_program(name: str) -> object | None:
+    """Try to load a specific deployed program from registry."""
     try:
         from castle_core.registry import load_registry
 
@@ -29,23 +29,23 @@ def _load_deployed_component(name: str) -> object | None:
 
 
 def run_info(args: argparse.Namespace) -> int:
-    """Show detailed info for a component, service, or job."""
+    """Show detailed info for a program, service, or job."""
     config = load_config()
     name = args.project
 
     # Look up in all sections
-    component = config.components.get(name)
+    program = config.programs.get(name)
     service = config.services.get(name)
     job = config.jobs.get(name)
 
-    if not component and not service and not job:
+    if not program and not service and not job:
         print(f"Error: '{name}' not found in castle.yaml")
         return 1
 
-    deployed = _load_deployed_component(name)
+    deployed = _load_deployed_program(name)
 
     if getattr(args, "json", False):
-        return _info_json(config, name, component, service, job, deployed)
+        return _info_json(config, name, program, service, job, deployed)
 
     # Human-readable output
     print(f"\n{BOLD}{name}{RESET}")
@@ -56,51 +56,51 @@ def run_info(args: argparse.Namespace) -> int:
         print(f"  {BOLD}behavior{RESET}:    daemon")
     elif job:
         print(f"  {BOLD}behavior{RESET}:    tool")
-    elif component:
-        if component.tool or (component.install and component.install.path):
+    elif program:
+        if program.tool or (program.install and program.install.path):
             print(f"  {BOLD}behavior{RESET}:    tool")
-        elif component.build:
+        elif program.build:
             print(f"  {BOLD}behavior{RESET}:    frontend")
         else:
             print(f"  {BOLD}behavior{RESET}:    —")
 
     # Show stack
     stack = None
-    if component and component.stack:
-        stack = component.stack
-    elif service and service.component and service.component in config.components:
-        stack = config.components[service.component].stack
-    elif job and job.component and job.component in config.components:
-        stack = config.components[job.component].stack
+    if program and program.stack:
+        stack = program.stack
+    elif service and service.component and service.component in config.programs:
+        stack = config.programs[service.component].stack
+    elif job and job.component and job.component in config.programs:
+        stack = config.programs[job.component].stack
     if stack:
         print(f"  {BOLD}stack{RESET}:       {stack}")
 
-    # Component info
-    if component:
-        if component.description:
-            print(f"  {BOLD}description{RESET}: {component.description}")
-        if component.source:
-            print(f"  {BOLD}source{RESET}:      {component.source}")
-        if component.install and component.install.path:
-            pi = component.install.path
+    # Program info
+    if program:
+        if program.description:
+            print(f"  {BOLD}description{RESET}: {program.description}")
+        if program.source:
+            print(f"  {BOLD}source{RESET}:      {program.source}")
+        if program.install and program.install.path:
+            pi = program.install.path
             print(f"  {BOLD}install{RESET}:     path" + (f" (alias: {pi.alias})" if pi.alias else ""))
-        if component.tool:
-            t = component.tool
+        if program.tool:
+            t = program.tool
             if t.system_dependencies:
                 print(f"  {BOLD}requires{RESET}:    {', '.join(t.system_dependencies)}")
-        if component.tags:
-            print(f"  {BOLD}tags{RESET}:        {', '.join(component.tags)}")
+        if program.tags:
+            print(f"  {BOLD}tags{RESET}:        {', '.join(program.tags)}")
 
     # Service info
     spec = service or job
     if spec:
         desc = spec.description
-        if not desc and spec.component and spec.component in config.components:
-            desc = config.components[spec.component].description
-        if desc and not (component and component.description == desc):
+        if not desc and spec.component and spec.component in config.programs:
+            desc = config.programs[spec.component].description
+        if desc and not (program and program.description == desc):
             print(f"  {BOLD}description{RESET}: {desc}")
         if spec.component:
-            print(f"  {BOLD}component{RESET}:   {spec.component}")
+            print(f"  {BOLD}program{RESET}:     {spec.component}")
 
         # Run spec
         print(f"  {BOLD}runner{RESET}:      {spec.run.runner}")
@@ -154,10 +154,10 @@ def run_info(args: argparse.Namespace) -> int:
 
     # Show CLAUDE.md if it exists
     source_dir = None
-    if component and component.source_dir:
-        source_dir = component.source_dir
-    elif spec and spec.component and spec.component in config.components:
-        source_dir = config.components[spec.component].source_dir
+    if program and program.source_dir:
+        source_dir = program.source_dir
+    elif spec and spec.component and spec.component in config.programs:
+        source_dir = config.programs[spec.component].source_dir
 
     if source_dir:
         claude_md = _find_claude_md(config.root, source_dir)
@@ -173,7 +173,7 @@ def run_info(args: argparse.Namespace) -> int:
 def _info_json(
     config: object,
     name: str,
-    component: object | None,
+    program: object | None,
     service: object | None,
     job: object | None,
     deployed: object | None,
@@ -181,28 +181,28 @@ def _info_json(
     """Output JSON info."""
     data: dict = {"name": name}
 
-    if component:
-        data["component"] = component.model_dump(exclude_none=True, exclude={"id"})
+    if program:
+        data["program"] = program.model_dump(exclude_none=True, exclude={"id"})
     if service:
         data["service"] = service.model_dump(exclude_none=True, exclude={"id"})
         data["behavior"] = "daemon"
     if job:
         data["job"] = job.model_dump(exclude_none=True, exclude={"id"})
         data["behavior"] = "tool"
-    if not service and not job and component:
-        if component.tool or (component.install and component.install.path):
+    if not service and not job and program:
+        if program.tool or (program.install and program.install.path):
             data["behavior"] = "tool"
-        elif component.build:
+        elif program.build:
             data["behavior"] = "frontend"
 
     # Resolve stack
     stack = None
-    if component and component.stack:
-        stack = component.stack
-    elif service and service.component and service.component in config.components:
-        stack = config.components[service.component].stack
-    elif job and job.component and job.component in config.components:
-        stack = config.components[job.component].stack
+    if program and program.stack:
+        stack = program.stack
+    elif service and service.component and service.component in config.programs:
+        stack = config.programs[service.component].stack
+    elif job and job.component and job.component in config.programs:
+        stack = config.programs[job.component].stack
     if stack:
         data["stack"] = stack
 

@@ -6,7 +6,7 @@ import pytest
 from castle_core.manifest import (
     BuildSpec,
     CaddySpec,
-    ComponentSpec,
+    ProgramSpec,
     ExposeSpec,
     HttpExposeSpec,
     HttpInternal,
@@ -24,12 +24,12 @@ from castle_core.manifest import (
 )
 
 
-class TestComponentSpec:
+class TestProgramSpec:
     """Tests for component (software catalog) model."""
 
     def test_minimal(self) -> None:
         """Minimal component just needs an id."""
-        c = ComponentSpec(id="bare")
+        c = ProgramSpec(id="bare")
         assert c.description is None
         assert c.source is None
         assert c.install is None
@@ -38,7 +38,7 @@ class TestComponentSpec:
 
     def test_tool_component(self) -> None:
         """Component with tool and install specs."""
-        c = ComponentSpec(
+        c = ProgramSpec(
             id="my-tool",
             description="A tool",
             source="my-tool/",
@@ -50,7 +50,7 @@ class TestComponentSpec:
 
     def test_frontend_component(self) -> None:
         """Component with build spec."""
-        c = ComponentSpec(
+        c = ProgramSpec(
             id="my-app",
             build=BuildSpec(commands=[["pnpm", "build"]], outputs=["dist/"]),
         )
@@ -58,12 +58,12 @@ class TestComponentSpec:
 
     def test_source_dir_from_source(self) -> None:
         """source_dir uses source field."""
-        c = ComponentSpec(id="x", source="components/x/")
+        c = ProgramSpec(id="x", source="components/x/")
         assert c.source_dir == "components/x"
 
     def test_source_dir_none(self) -> None:
         """source_dir returns None when no source available."""
-        c = ComponentSpec(id="x")
+        c = ProgramSpec(id="x")
         assert c.source_dir is None
 
 
@@ -171,7 +171,7 @@ class TestModelSerialization:
 
     def test_dump_component_excludes_none(self) -> None:
         """model_dump with exclude_none drops None fields."""
-        c = ComponentSpec(id="test", description="Test")
+        c = ProgramSpec(id="test", description="Test")
         data = c.model_dump(exclude_none=True, exclude={"id"})
         assert "description" in data
         assert "install" not in data

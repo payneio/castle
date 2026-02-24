@@ -1,7 +1,7 @@
 gateway:
   port: 9000
 
-components:
+programs:
   central-context:
     description: Content storage API useful to get context into my data dir from anywhere
       on the LAN

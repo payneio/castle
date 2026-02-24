@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 
 from castle_core.config import save_config
-from castle_core.manifest import ComponentSpec, JobSpec, ServiceSpec
+from castle_core.manifest import ProgramSpec, JobSpec, ServiceSpec
 
 from castle_api.config import get_castle_root, get_config, get_registry
 from castle_api.stream import broadcast
@@ -28,7 +28,7 @@ class ConfigSaveRequest(BaseModel):
 
 class ConfigSaveResponse(BaseModel):
     ok: bool
-    component_count: int
+    program_count: int
     service_count: int
     job_count: int
     errors: list[str]
@@ -40,7 +40,7 @@ class ApplyResponse(BaseModel):
     errors: list[str]
 
 
-class ComponentConfigRequest(BaseModel):
+class ProgramConfigRequest(BaseModel):
     config: dict
 
 
@@ -92,16 +92,17 @@ def save_yaml(request: ConfigSaveRequest) -> ConfigSaveResponse:
             detail="YAML must be a mapping",
         )
 
-    # Validate components
-    comp_count = 0
-    for name, comp_data in data.get("components", {}).items():
+    # Validate programs
+    prog_count = 0
+    programs_data = data.get("programs") or data.get("components") or {}
+    for name, comp_data in programs_data.items():
         try:
             comp_data_copy = dict(comp_data) if comp_data else {}
             comp_data_copy["id"] = name
-            ComponentSpec.model_validate(comp_data_copy)
-            comp_count += 1
+            ProgramSpec.model_validate(comp_data_copy)
+            prog_count += 1
         except Exception as e:
-            errors.append(f"components.{name}: {e}")
+            errors.append(f"programs.{name}: {e}")
 
     # Validate services
     svc_count = 0
@@ -138,46 +139,46 @@ def save_yaml(request: ConfigSaveRequest) -> ConfigSaveResponse:
     config_path.write_text(request.yaml_content)
 
     return ConfigSaveResponse(
-        ok=True, component_count=comp_count, service_count=svc_count,
+        ok=True, program_count=prog_count, service_count=svc_count,
         job_count=job_count, errors=[],
     )
 
 
-@router.put("/components/{name}")
-def save_component(name: str, request: ComponentConfigRequest) -> dict:
-    """Update a single component's config in castle.yaml."""
+@router.put("/programs/{name}")
+def save_program(name: str, request: ProgramConfigRequest) -> dict:
+    """Update a single program's config in castle.yaml."""
     _require_repo()
 
     try:
-        comp_data = dict(request.config)
-        comp_data["id"] = name
-        ComponentSpec.model_validate(comp_data)
+        prog_data = dict(request.config)
+        prog_data["id"] = name
+        ProgramSpec.model_validate(prog_data)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Invalid component config: {e}",
+            detail=f"Invalid program config: {e}",
         )
 
     config = get_config()
-    config.components[name] = ComponentSpec.model_validate(
+    config.programs[name] = ProgramSpec.model_validate(
         {**request.config, "id": name}
     )
     save_config(config)
-    return {"ok": True, "component": name}
+    return {"ok": True, "program": name}
 
 
-@router.delete("/components/{name}")
-def delete_component(name: str) -> dict:
-    """Remove a component from castle.yaml."""
+@router.delete("/programs/{name}")
+def delete_program(name: str) -> dict:
+    """Remove a program from castle.yaml."""
     config = get_config()
-    if name not in config.components:
+    if name not in config.programs:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Component '{name}' not found",
+            detail=f"Program '{name}' not found",
         )
-    del config.components[name]
+    del config.programs[name]
     save_config(config)
-    return {"ok": True, "component": name, "action": "deleted"}
+    return {"ok": True, "program": name, "action": "deleted"}
 
 
 @router.put("/services/{name}")

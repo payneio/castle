@@ -37,16 +37,16 @@ SYSTEMD_USER_DIR = Path.home() / ".config" / "systemd" / "user"
 
 
 def run_deploy(args: argparse.Namespace) -> int:
-    """Deploy components from castle.yaml to ~/.castle/."""
+    """Deploy from castle.yaml to ~/.castle/."""
     config = load_config()
-    target_name = getattr(args, "component", None)
+    target_name = getattr(args, "name", None)
 
     ensure_dirs()
 
     # Build node config
     node = NodeConfig(castle_root=str(config.root), gateway_port=config.gateway.port)
 
-    # Load existing registry to preserve components not being redeployed,
+    # Load existing registry to preserve entries not being redeployed,
     # or start fresh if deploying all
     if target_name and REGISTRY_PATH.exists():
         try:
@@ -96,24 +96,24 @@ def run_deploy(args: argparse.Namespace) -> int:
     # Reload systemd daemon
     subprocess.run(["systemctl", "--user", "daemon-reload"], check=False)
 
-    print(f"\nDeployed {deployed_count} component(s).")
+    print(f"\nDeployed {deployed_count} item(s).")
     print("Run 'castle services start' to start all services.")
     return 0
 
 
 def _env_prefix(name: str) -> str:
-    """Derive env var prefix from component name: central-context → CENTRAL_CONTEXT."""
+    """Derive env var prefix from name: central-context → CENTRAL_CONTEXT."""
     return name.replace("-", "_").upper()
 
 
 def _resolve_description(
     config: CastleConfig, spec: ServiceSpec | JobSpec
 ) -> str | None:
-    """Get description, falling through to component if referenced."""
+    """Get description, falling through to program if referenced."""
     if spec.description:
         return spec.description
-    if spec.component and spec.component in config.components:
-        return config.components[spec.component].description
+    if spec.component and spec.component in config.programs:
+        return config.programs[spec.component].description
     return None
 
 
@@ -155,10 +155,10 @@ def _build_deployed_service(
     if svc.proxy and svc.proxy.caddy and svc.proxy.caddy.enable:
         proxy_path = svc.proxy.caddy.path_prefix or f"/{name}"
 
-    # Resolve stack from referenced component
+    # Resolve stack from referenced program
     stack = None
-    if svc.component and svc.component in config.components:
-        stack = config.components[svc.component].stack
+    if svc.component and svc.component in config.programs:
+        stack = config.programs[svc.component].stack
 
     return DeployedComponent(
         runner=run.runner,
@@ -195,10 +195,10 @@ def _build_deployed_job(
     # Build run_cmd
     run_cmd = _build_run_cmd(run, env)
 
-    # Resolve stack from referenced component
+    # Resolve stack from referenced program
     stack = None
-    if job.component and job.component in config.components:
-        stack = config.components[job.component].stack
+    if job.component and job.component in config.programs:
+        stack = config.programs[job.component].stack
 
     return DeployedComponent(
         runner=run.runner,
@@ -275,10 +275,10 @@ def _print_deployed(name: str, deployed: DeployedComponent) -> None:
 
 def _copy_app_static(config: CastleConfig) -> None:
     """Copy castle-app build output to ~/.castle/static/castle-app/."""
-    if "castle-app" not in config.components:
+    if "castle-app" not in config.programs:
         return
 
-    comp = config.components["castle-app"]
+    comp = config.programs["castle-app"]
     if not (comp.build and comp.build.outputs):
         return
 

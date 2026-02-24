@@ -108,12 +108,12 @@ The `build` output is a static SPA in `dist/` — just HTML, JS, and CSS files.
 ## Registering as a castle component
 
 A frontend component has a `build` spec (produces static output). Register it
-in the `components:` section of `castle.yaml`. No `run` block needed if Caddy
+in the `programs:` section of `castle.yaml`. No `run` block needed if Caddy
 handles serving directly from the build output.
 
 ```yaml
 # castle.yaml
-components:
+programs:
   my-frontend:
     description: Web dashboard
     source: components/my-frontend

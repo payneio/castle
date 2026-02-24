@@ -3,12 +3,12 @@ import { useNavigate } from "react-router-dom"
 import { useQueryClient } from "@tanstack/react-query"
 import { Check } from "lucide-react"
 import { apiClient } from "@/services/api/client"
-import type { ComponentDetail } from "@/types"
+import type { AnyDetail } from "@/types"
 import { ComponentFields } from "@/components/ComponentFields"
 
 interface ConfigPanelProps {
-  component: ComponentDetail
-  configSection: "services" | "jobs" | "components"
+  component: AnyDetail
+  configSection: "services" | "jobs" | "programs"
   onRefetch: () => void
 }
 
@@ -23,7 +23,7 @@ export function ConfigPanel({ component, configSection, onRefetch }: ConfigPanel
       await apiClient.put(`/config/${configSection}/${compName}`, { config })
       setMessage({ type: "ok", text: "Saved to castle.yaml" })
       onRefetch()
-      qc.invalidateQueries({ queryKey: ["components"] })
+      qc.invalidateQueries({ queryKey: [configSection] })
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e)
       setMessage({ type: "error", text: msg })
@@ -33,7 +33,7 @@ export function ConfigPanel({ component, configSection, onRefetch }: ConfigPanel
   const handleDelete = async (compName: string) => {
     try {
       await apiClient.delete(`/config/${configSection}/${compName}`)
-      qc.invalidateQueries({ queryKey: ["components"] })
+      qc.invalidateQueries({ queryKey: [configSection] })
       navigate("/")
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e)
