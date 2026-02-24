@@ -16,7 +16,8 @@ class ComponentSummary(BaseModel):
 
     id: str
     description: str | None = None
-    category: str
+    behavior: str | None = None
+    stack: str | None = None
     runner: str | None = None
     port: int | None = None
     health_path: str | None = None

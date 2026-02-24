@@ -7,7 +7,8 @@ export interface SystemdInfo {
 export interface ComponentSummary {
   id: string
   description: string | null
-  category: string
+  behavior: string | null
+  stack: string | null
   runner: string | null
   port: number | null
   health_path: string | null

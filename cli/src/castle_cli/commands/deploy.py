@@ -155,12 +155,18 @@ def _build_deployed_service(
     if svc.proxy and svc.proxy.caddy and svc.proxy.caddy.enable:
         proxy_path = svc.proxy.caddy.path_prefix or f"/{name}"
 
+    # Resolve stack from referenced component
+    stack = None
+    if svc.component and svc.component in config.components:
+        stack = config.components[svc.component].stack
+
     return DeployedComponent(
         runner=run.runner,
         run_cmd=run_cmd,
         env=env,
         description=_resolve_description(config, svc),
-        category="service",
+        behavior="daemon",
+        stack=stack,
         port=port,
         health_path=health_path,
         proxy_path=proxy_path,
@@ -189,12 +195,18 @@ def _build_deployed_job(
     # Build run_cmd
     run_cmd = _build_run_cmd(run, env)
 
+    # Resolve stack from referenced component
+    stack = None
+    if job.component and job.component in config.components:
+        stack = config.components[job.component].stack
+
     return DeployedComponent(
         runner=run.runner,
         run_cmd=run_cmd,
         env=env,
         description=_resolve_description(config, job),
-        category="job",
+        behavior="tool",
+        stack=stack,
         schedule=job.schedule,
         managed=True,
     )

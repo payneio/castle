@@ -19,7 +19,7 @@ class TestListCommand:
             from castle_cli.config import load_config
 
             mock_load.return_value = load_config(castle_root)
-            args = Namespace(type=None, json=False)
+            args = Namespace(behavior=None, stack=None, json=False)
             result = run_list(args)
 
         assert result == 0
@@ -27,13 +27,13 @@ class TestListCommand:
         assert "test-svc" in captured.out
         assert "test-tool" in captured.out
 
-    def test_list_filter_service(self, castle_root: Path, capsys: object) -> None:
-        """List filtered to services."""
+    def test_list_filter_daemon(self, castle_root: Path, capsys: object) -> None:
+        """List filtered to daemons."""
         with patch("castle_cli.commands.list_cmd.load_config") as mock_load:
             from castle_cli.config import load_config
 
             mock_load.return_value = load_config(castle_root)
-            args = Namespace(type="service", json=False)
+            args = Namespace(behavior="daemon", stack=None, json=False)
             result = run_list(args)
 
         assert result == 0
@@ -47,7 +47,7 @@ class TestListCommand:
             from castle_cli.config import load_config
 
             mock_load.return_value = load_config(castle_root)
-            args = Namespace(type="tool", json=False)
+            args = Namespace(behavior="tool", stack=None, json=False)
             result = run_list(args)
 
         assert result == 0
@@ -56,12 +56,12 @@ class TestListCommand:
         assert "test-svc" not in captured.out
 
     def test_list_filter_job(self, castle_root: Path, capsys: object) -> None:
-        """List filtered to jobs."""
+        """List filtered to jobs (shown under tool behavior)."""
         with patch("castle_cli.commands.list_cmd.load_config") as mock_load:
             from castle_cli.config import load_config
 
             mock_load.return_value = load_config(castle_root)
-            args = Namespace(type="job", json=False)
+            args = Namespace(behavior="tool", stack=None, json=False)
             result = run_list(args)
 
         assert result == 0
@@ -75,7 +75,7 @@ class TestListCommand:
             from castle_cli.config import load_config
 
             mock_load.return_value = load_config(castle_root)
-            args = Namespace(type=None, json=True)
+            args = Namespace(behavior=None, stack=None, json=True)
             result = run_list(args)
 
         assert result == 0
@@ -85,4 +85,4 @@ class TestListCommand:
         assert "test-svc" in names
         assert "test-tool" in names
         svc = next(p for p in data if p["name"] == "test-svc")
-        assert svc["category"] == "service"
+        assert svc["behavior"] == "daemon"

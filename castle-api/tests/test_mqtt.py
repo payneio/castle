@@ -16,7 +16,8 @@ def _make_registry() -> NodeRegistry:
                 run_cmd=["uv", "run", "my-svc"],
                 env={"PORT": "9001", "SECRET_KEY": "super-secret"},
                 description="My service",
-                category="service",
+                behavior="daemon",
+                stack="python-fastapi",
                 port=9001,
                 health_path="/health",
                 proxy_path="/my-svc",
@@ -25,7 +26,8 @@ def _make_registry() -> NodeRegistry:
             "my-job": DeployedComponent(
                 runner="command",
                 run_cmd=["my-job"],
-                category="job",
+                behavior="tool",
+                stack="python-cli",
                 schedule="0 2 * * *",
             ),
         },
@@ -54,6 +56,8 @@ class TestRegistrySerialization:
         assert svc.health_path == "/health"
         assert svc.proxy_path == "/my-svc"
         assert svc.managed is True
+        assert svc.behavior == "daemon"
+        assert svc.stack == "python-fastapi"
 
     def test_job_fields_preserved(self) -> None:
         original = _make_registry()
@@ -63,7 +67,8 @@ class TestRegistrySerialization:
         job = restored.deployed["my-job"]
         assert job.runner == "command"
         assert job.schedule == "0 2 * * *"
-        assert job.category == "job"
+        assert job.behavior == "tool"
+        assert job.stack == "python-cli"
 
     def test_optional_fields_omitted(self) -> None:
         """Fields like port, health_path are None when not set."""

@@ -3,26 +3,24 @@ import { Link } from "react-router-dom"
 import { ArrowDown, ArrowUp, ArrowUpDown, Download, Play, RefreshCw, Square, Trash2 } from "lucide-react"
 import type { ComponentSummary, HealthStatus } from "@/types"
 import { useServiceAction, useToolAction } from "@/services/api/hooks"
-import { runnerLabel } from "@/lib/labels"
 import { HealthBadge } from "./HealthBadge"
-import { RoleBadge } from "./RoleBadge"
+import { BehaviorBadge } from "./BehaviorBadge"
+import { StackBadge } from "./StackBadge"
 
 interface ComponentTableProps {
   components: ComponentSummary[]
   statuses: HealthStatus[]
 }
 
-type SortKey = "id" | "category" | "runner" | "schedule" | "port" | "status"
+type SortKey = "id" | "stack" | "behavior" | "status"
 type SortDir = "asc" | "desc"
 
 function statusRank(s: HealthStatus | undefined, installed: boolean | null): number {
-  // Health takes priority for services
   if (s) {
     if (s.status === "down") return 0
     if (s.status === "up") return 3
     return 2
   }
-  // Installed state for tools
   if (installed === false) return 1
   if (installed === true) return 3
   return 2
@@ -30,13 +28,7 @@ function statusRank(s: HealthStatus | undefined, installed: boolean | null): num
 
 export function ComponentTable({ components, statuses }: ComponentTableProps) {
   const statusMap = useMemo(() => new Map(statuses.map((s) => [s.id, s])), [statuses])
-  const allCategories = useMemo(() => {
-    const set = new Set<string>()
-    for (const c of components) set.add(c.category)
-    return Array.from(set).sort()
-  }, [components])
 
-  const [categoryFilter, setCategoryFilter] = useState<string | null>(null)
   const [search, setSearch] = useState("")
   const [sortKey, setSortKey] = useState<SortKey>("id")
   const [sortDir, setSortDir] = useState<SortDir>("asc")
@@ -51,20 +43,14 @@ export function ComponentTable({ components, statuses }: ComponentTableProps) {
   }
 
   const filtered = useMemo(() => {
-    let list = components
-    if (categoryFilter) {
-      list = list.filter((c) => c.category === categoryFilter)
-    }
-    if (search) {
-      const q = search.toLowerCase()
-      list = list.filter(
-        (c) =>
-          c.id.toLowerCase().includes(q) ||
-          (c.description?.toLowerCase().includes(q) ?? false),
-      )
-    }
-    return list
-  }, [components, categoryFilter, search])
+    if (!search) return components
+    const q = search.toLowerCase()
+    return components.filter(
+      (c) =>
+        c.id.toLowerCase().includes(q) ||
+        (c.description?.toLowerCase().includes(q) ?? false),
+    )
+  }, [components, search])
 
   const sorted = useMemo(() => {
     const dir = sortDir === "asc" ? 1 : -1
@@ -72,14 +58,10 @@ export function ComponentTable({ components, statuses }: ComponentTableProps) {
       switch (sortKey) {
         case "id":
           return dir * a.id.localeCompare(b.id)
-        case "category":
-          return dir * a.category.localeCompare(b.category)
-        case "runner":
-          return dir * (a.runner ?? "").localeCompare(b.runner ?? "")
-        case "schedule":
-          return dir * (a.schedule ?? "").localeCompare(b.schedule ?? "")
-        case "port":
-          return dir * ((a.port ?? 0) - (b.port ?? 0))
+        case "stack":
+          return dir * (a.stack ?? "").localeCompare(b.stack ?? "")
+        case "behavior":
+          return dir * (a.behavior ?? "").localeCompare(b.behavior ?? "")
         case "status":
           return dir * (statusRank(statusMap.get(a.id), a.installed) - statusRank(statusMap.get(b.id), b.installed))
         default:
@@ -90,51 +72,22 @@ export function ComponentTable({ components, statuses }: ComponentTableProps) {
 
   return (
     <div>
-      {/* Filters */}
-      <div className="flex items-center gap-3 mb-4 flex-wrap">
+      <div className="mb-4">
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Filter components..."
           className="bg-black/30 border border-[var(--border)] rounded px-3 py-1.5 text-sm focus:outline-none focus:border-[var(--primary)] w-56"
         />
-        <div className="flex items-center gap-1.5">
-          <button
-            onClick={() => setCategoryFilter(null)}
-            className={`text-xs px-2 py-1 rounded transition-colors ${
-              categoryFilter === null
-                ? "bg-[var(--primary)] text-white"
-                : "bg-[var(--border)] text-[var(--muted)] hover:text-[var(--foreground)]"
-            }`}
-          >
-            All
-          </button>
-          {allCategories.map((cat) => (
-            <button
-              key={cat}
-              onClick={() => setCategoryFilter(categoryFilter === cat ? null : cat)}
-              className={`text-xs px-2 py-1 rounded transition-colors ${
-                categoryFilter === cat
-                  ? "bg-[var(--primary)] text-white"
-                  : "bg-[var(--border)] text-[var(--muted)] hover:text-[var(--foreground)]"
-              }`}
-            >
-              {cat}
-            </button>
-          ))}
-        </div>
       </div>
 
-      {/* Table */}
       <div className="border border-[var(--border)] rounded-lg overflow-hidden">
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-[var(--card)] border-b border-[var(--border)] text-left">
               <SortHeader label="Name" sortKey="id" current={sortKey} dir={sortDir} onSort={toggleSort} />
-              <SortHeader label="Category" sortKey="category" current={sortKey} dir={sortDir} onSort={toggleSort} />
-              <SortHeader label="Runner" sortKey="runner" current={sortKey} dir={sortDir} onSort={toggleSort} />
-              <SortHeader label="Schedule" sortKey="schedule" current={sortKey} dir={sortDir} onSort={toggleSort} />
-              <SortHeader label="Port" sortKey="port" current={sortKey} dir={sortDir} onSort={toggleSort} />
+              <SortHeader label="Stack" sortKey="stack" current={sortKey} dir={sortDir} onSort={toggleSort} />
+              <SortHeader label="Behavior" sortKey="behavior" current={sortKey} dir={sortDir} onSort={toggleSort} />
               <SortHeader label="Status" sortKey="status" current={sortKey} dir={sortDir} onSort={toggleSort} />
               <th className="px-3 py-2 font-medium text-[var(--muted)]">Actions</th>
             </tr>
@@ -149,7 +102,7 @@ export function ComponentTable({ components, statuses }: ComponentTableProps) {
             ))}
             {sorted.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-3 py-6 text-center text-[var(--muted)]">
+                <td colSpan={5} className="px-3 py-6 text-center text-[var(--muted)]">
                   No components match.
                 </td>
               </tr>
@@ -222,7 +175,6 @@ function ComponentRow({
         <Link
           to={`/component/${component.id}`}
           className="font-medium hover:text-[var(--primary)] transition-colors"
-          title={component.systemd?.unit_path ?? undefined}
         >
           {component.id}
         </Link>
@@ -233,16 +185,10 @@ function ComponentRow({
         )}
       </td>
       <td className="px-3 py-2.5">
-        <RoleBadge role={component.category} />
+        <StackBadge stack={component.stack} />
       </td>
-      <td className="px-3 py-2.5 text-[var(--muted)]">
-        {component.runner ? runnerLabel(component.runner) : "—"}
-      </td>
-      <td className="px-3 py-2.5 font-mono text-[var(--muted)]">
-        {component.schedule ?? "—"}
-      </td>
-      <td className="px-3 py-2.5 font-mono text-[var(--muted)]">
-        {component.port ?? "—"}
+      <td className="px-3 py-2.5">
+        <BehaviorBadge behavior={component.behavior} />
       </td>
       <td className="px-3 py-2.5">
         {health ? (

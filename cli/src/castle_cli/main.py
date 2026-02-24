@@ -21,9 +21,13 @@ def build_parser() -> argparse.ArgumentParser:
     # castle list
     list_parser = subparsers.add_parser("list", help="List all components")
     list_parser.add_argument(
-        "--type",
-        choices=["service", "job", "tool", "frontend"],
-        help="Filter by type",
+        "--behavior",
+        choices=["daemon", "tool", "frontend"],
+        help="Filter by behavior",
+    )
+    list_parser.add_argument(
+        "--stack",
+        help="Filter by stack (e.g. python-cli, python-fastapi, react-vite)",
     )
     list_parser.add_argument("--json", action="store_true", help="Output as JSON")
 
@@ -31,13 +35,13 @@ def build_parser() -> argparse.ArgumentParser:
     create_parser = subparsers.add_parser("create", help="Create a new project")
     create_parser.add_argument("name", help="Project name")
     create_parser.add_argument(
-        "--type",
-        choices=["service", "tool", "library"],
+        "--stack",
+        choices=["python-cli", "python-fastapi", "react-vite"],
         required=True,
-        help="Project type",
+        help="Development stack (determines scaffold template and default behavior)",
     )
     create_parser.add_argument("--description", default="", help="Project description")
-    create_parser.add_argument("--port", type=int, help="Port number (services only)")
+    create_parser.add_argument("--port", type=int, help="Port number (daemons only)")
     # castle info
     info_parser = subparsers.add_parser("info", help="Show component details")
     info_parser.add_argument("project", help="Component name")

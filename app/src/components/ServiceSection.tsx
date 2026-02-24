@@ -13,7 +13,7 @@ export function ServiceSection({ services, statuses }: ServiceSectionProps) {
 
   return (
     <section>
-      <SectionHeader category="service" />
+      <SectionHeader section="service" />
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {services.map((svc) => (
           <ComponentCard key={svc.id} component={svc} health={statusMap.get(svc.id)} />

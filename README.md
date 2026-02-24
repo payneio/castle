@@ -25,22 +25,23 @@ open http://localhost:9000
 
 ```bash
 # Service — FastAPI app with health endpoint, systemd unit, gateway route
-castle create my-api --type service --description "Does something useful"
+castle create my-api --stack python-fastapi --description "Does something useful"
 cd components/my-api && uv sync
 castle test my-api
 castle service enable my-api
 castle gateway reload
 
 # Standalone tool — CLI tool with argparse, stdin/stdout, Unix pipes
-castle create my-tool --type tool --description "Does something"
+castle create my-tool --stack python-cli --description "Does something"
 ```
 
 ## CLI Reference
 
 ```
-castle list [--role ROLE] [--json]    List all components
-castle info NAME [--json]             Show component details
-castle create NAME --type TYPE        Scaffold a new component
+castle list [--behavior B] [--stack S] [--json]  List all components
+castle info NAME [--json]                        Show component details
+castle create NAME --stack STACK                 Scaffold a new component
+castle deploy [NAME]                  Deploy component(s) to runtime
 castle run NAME                       Run component in foreground
 castle test [NAME]                    Run tests (one or all)
 castle lint [NAME]                    Run linter (one or all)
@@ -56,7 +57,13 @@ castle tool info NAME                 Show tool details
 
 ## Registry
 
-`castle.yaml` is the single source of truth. Components declare **what they do** (run, expose, manage, install, build, triggers) and roles are **derived** from those declarations.
+`castle.yaml` is the single source of truth with three sections:
+
+- **`components:`** — Software catalog (source, install, tool metadata, build)
+- **`services:`** — Long-running daemons (run, expose, proxy, systemd)
+- **`jobs:`** — Scheduled tasks (run, cron schedule, systemd timer)
+
+Services and jobs can reference a component via `component:` for description fallthrough.
 
 ```yaml
 gateway:
@@ -66,6 +73,10 @@ components:
   central-context:
     description: Content storage API
     source: components/central-context
+
+services:
+  central-context:
+    component: central-context
     run:
       runner: python
       tool: central-context
@@ -78,22 +89,13 @@ components:
     manage:
       systemd: {}
 
-  notification-bridge:
-    description: Desktop notification forwarder
-    source: components/notification-bridge
+jobs:
+  backup-collect:
+    component: backup-collect
     run:
-      runner: python
-      tool: notification-bridge
-    defaults:
-      env:
-        CENTRAL_CONTEXT_URL: http://localhost:9001
-        BUCKET_NAME: notifications
-    expose:
-      http:
-        internal: { port: 9002 }
-        health_path: /health
-    proxy:
-      caddy: { path_prefix: /notifications }
+      runner: command
+      argv: [backup-collect]
+    schedule: "0 2 * * *"
     manage:
       systemd: {}
 ```
@@ -106,15 +108,16 @@ automatically by `castle deploy`. Only non-convention values need `defaults.env`
 ```
 castle.yaml          <- component registry (single source of truth)
 cli/                 <- castle CLI
+core/                <- castle-core library (models, config, generators)
 castle-api/          <- Castle API (dashboard backend)
 app/                 <- Castle web app (React/Vite frontend)
 components/          <- all non-infrastructure components
   central-context/   <- content storage API (git submodule)
   notification-bridge/ <- desktop notification forwarder (git submodule)
   protonmail/        <- email sync tool/job
-  devbox-connect/    <- SSH tunnel manager
   pdf2md/            <- standalone tool (each tool is its own project)
   ...
+docs/                <- architecture docs and component guides
 ruff.toml            <- shared lint config
 pyrightconfig.json   <- shared type checking config
 ```
@@ -137,6 +140,7 @@ pyrightconfig.json   <- shared type checking config
 | central-context | 9001 | Content storage API |
 | notification-bridge | 9002 | Desktop notification forwarder |
 | castle-api | 9020 | Castle API (dashboard backend) |
+| castle-mqtt | 1883 | MQTT broker for mesh coordination (Mosquitto container) |
 
 ### Jobs
 
@@ -171,3 +175,38 @@ pyrightconfig.json   <- shared type checking config
 | Component | Description |
 |-----------|-------------|
 | castle-app | Castle web dashboard (React/Vite/TypeScript) |
+
+## Mesh Coordination
+
+Castle nodes can discover each other via MQTT and mDNS, forming a personal infrastructure mesh. All mesh features are opt-in — single-node works without them.
+
+```bash
+# Enable on castle-api (via systemd drop-in or env vars)
+CASTLE_API_MQTT_ENABLED=true     # Connect to MQTT broker
+CASTLE_API_MQTT_HOST=localhost    # Broker address (default)
+CASTLE_API_MQTT_PORT=1883         # Broker port (default)
+CASTLE_API_MDNS_ENABLED=true     # Advertise/discover via mDNS
+```
+
+When enabled, the API publishes the node's registry to `castle/{hostname}/registry` (retained) and subscribes to other nodes. The gateway can proxy to services on remote nodes. The dashboard shows discovered nodes, cross-node routes, and mesh connection status.
+
+## API
+
+`castle-api` runs on port 9020 and is proxied at `/api` through the gateway.
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /health` | Health check |
+| `GET /stream` | SSE stream (health, service-action, mesh events) |
+| `GET /components` | List all components (`?include_remote=true` for cross-node) |
+| `GET /components/{name}` | Component detail |
+| `GET /status` | Live health for all services |
+| `GET /gateway` | Gateway info with route table |
+| `GET /gateway/caddyfile` | Generated Caddyfile content |
+| `POST /gateway/reload` | Regenerate Caddyfile and reload Caddy |
+| `GET /mesh/status` | Mesh connection state (MQTT, mDNS, peers) |
+| `GET /nodes` | All known nodes (local + remote) |
+| `GET /nodes/{hostname}` | Node detail with deployed components |
+| `POST /services/{name}/{action}` | Start/stop/restart a service |
+| `GET /tools` | List all tools |
+| `POST /tools/{name}/install` | Install tool to PATH |

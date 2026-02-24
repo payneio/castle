@@ -13,8 +13,11 @@ Castle is a personal software platform — a monorepo of independent projects
 - **`services:`** — Long-running daemons (run, expose, proxy, systemd)
 - **`jobs:`** — Scheduled tasks (run, cron schedule, systemd timer)
 
-The section determines the category — no role derivation. Services and jobs
-can reference a component via `component:` for description fallthrough.
+Each component has a **stack** (development toolchain: python-fastapi,
+python-cli, react-vite) and a **behavior** (runtime role: daemon, tool,
+frontend). Scheduling, systemd management, and proxying are orthogonal
+operations. Services and jobs reference a component via `component:` for
+description fallthrough.
 
 **Key principle:** Regular projects must never depend on castle. They accept standard
 configuration (data dir, port, URLs) via env vars. Only castle-components (CLI, gateway)
@@ -25,22 +28,22 @@ know about castle internals.
 When creating a new service, tool, or frontend, follow the detailed guides:
 
 - @docs/component-registry.md — Registry architecture, castle.yaml structure, lifecycle
-- @docs/web-apis.md — FastAPI service patterns (config, routes, models, testing)
-- @docs/python-tools.md — CLI tool patterns (argparse, stdin/stdout, piping, testing)
-- @docs/web-frontends.md — React/Vite/TypeScript frontend patterns
+- @docs/stacks/python-fastapi.md — FastAPI service patterns (config, routes, models, testing)
+- @docs/stacks/python-cli.md — CLI tool patterns (argparse, stdin/stdout, piping, testing)
+- @docs/stacks/react-vite.md — React/Vite/TypeScript frontend patterns
 
 ### Quick start
 
 ```bash
-# Service
-castle create my-service --type service --description "Does something"
+# Daemon (python-fastapi)
+castle create my-service --stack python-fastapi --description "Does something"
 cd components/my-service && uv sync
 uv run my-service               # starts on auto-assigned port
 castle service enable my-service # register with systemd
 castle gateway reload            # update reverse proxy routes
 
-# Tool
-castle create my-tool --type tool --description "Does something"
+# Tool (python-cli)
+castle create my-tool --stack python-cli --description "Does something"
 cd components/my-tool && uv sync
 ```
 
@@ -53,9 +56,11 @@ The CLI lives in `cli/` and is installed via `uv tool install --editable cli/`.
 
 ```bash
 castle list                              # List all components
-castle list --type service               # Filter by category
+castle list --behavior daemon             # Filter by behavior
+castle list --stack python-cli           # Filter by stack
 castle info <component>                  # Show details (--json for machine-readable)
-castle create <name> --type service      # Scaffold new project
+castle create <name> --stack python-fastapi  # Scaffold new project
+castle deploy [component]                # Deploy to runtime (registry + systemd + Caddyfile)
 castle test [project]                    # Run tests (one or all)
 castle lint [project]                    # Run linter (one or all)
 castle sync                              # Update submodules + uv sync all
@@ -73,7 +78,14 @@ castle services start|stop               # Start/stop everything
 
 - **Gateway**: Caddy reverse proxy at port 9000, config generated from `castle.yaml`
   into `~/.castle/generated/Caddyfile`. Dashboard served at root.
-- **Systemd**: User units generated under `~/.config/systemd/user/castle-*.service`
+- **Systemd**: User units generated under `~/.config/systemd/user/castle-*.service`.
+  Use drop-in overrides (`*.service.d/*.conf`) for extra env vars that `castle deploy`
+  shouldn't overwrite (e.g., `CASTLE_API_MQTT_ENABLED`).
+- **Containers**: `runner: container` services use Docker (preferred on this system
+  due to rootless podman UID mapping issues). Deploy resolves the runtime via
+  `shutil.which("docker")`.
+- **MQTT**: Mosquitto broker runs as `castle-mqtt` (Docker container on port 1883).
+  Data in `/data/castle/castle-mqtt/`, config in `/data/castle/castle-mqtt/config/`.
 - **Data**: Service data lives in `/data/castle/<service-name>/`, passed via env var.
 - **Secrets**: `~/.castle/secrets/` — never in project directories.
 
@@ -93,7 +105,8 @@ Gateway:
 - `GET /gateway/caddyfile` — Generated Caddyfile content
 - `POST /gateway/reload` — Regenerate Caddyfile and reload Caddy
 
-Nodes (mesh):
+Mesh:
+- `GET /mesh/status` — MQTT connection state, broker info, peer list
 - `GET /nodes` — All known nodes (local + discovered remote)
 - `GET /nodes/{hostname}` — Node detail with deployed components
 

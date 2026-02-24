@@ -25,7 +25,7 @@ class TestCreateCommand:
 
             args = Namespace(
                 name="my-api",
-                type="service",
+                stack="python-fastapi",
                 description="My API service",
                 port=9050,
             )
@@ -60,7 +60,7 @@ class TestCreateCommand:
 
             from castle_cli.commands.create import run_create
 
-            args = Namespace(name="my-tool2", type="tool", description="My tool", port=None)
+            args = Namespace(name="my-tool2", stack="python-cli", description="My tool", port=None)
             result = run_create(args)
 
         assert result == 0
@@ -73,27 +73,6 @@ class TestCreateCommand:
         assert comp.tool is not None
         assert comp.install is not None
 
-    def test_create_library(self, castle_root: Path) -> None:
-        """Create a new library project."""
-        with (
-            patch("castle_cli.commands.create.load_config") as mock_load,
-            patch("castle_cli.commands.create.save_config"),
-        ):
-            config = load_config(castle_root)
-            mock_load.return_value = config
-
-            from castle_cli.commands.create import run_create
-
-            args = Namespace(name="my-lib", type="library", description="My library", port=None)
-            result = run_create(args)
-
-        assert result == 0
-        project_dir = castle_root / "components" / "my-lib"
-        assert project_dir.exists()
-        assert (project_dir / "src" / "my_lib" / "__init__.py").exists()
-        assert (project_dir / "CLAUDE.md").exists()
-        assert "my-lib" in config.components
-
     def test_create_duplicate_fails(self, castle_root: Path, capsys: object) -> None:
         """Creating a project with existing name fails."""
         with patch("castle_cli.commands.create.load_config") as mock_load:
@@ -105,7 +84,7 @@ class TestCreateCommand:
             # test-svc exists in the services section
             args = Namespace(
                 name="test-svc",
-                type="service",
+                stack="python-fastapi",
                 description="Duplicate",
                 port=None,
             )
@@ -126,7 +105,7 @@ class TestCreateCommand:
 
             args = Namespace(
                 name="auto-port-svc",
-                type="service",
+                stack="python-fastapi",
                 description="Auto port",
                 port=None,
             )

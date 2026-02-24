@@ -44,13 +44,14 @@ def _summary_from_deployed(name: str, deployed: object) -> ComponentSummary:
 
     # Check if tool is installed on PATH
     installed: bool | None = None
-    if deployed.category == "tool":
+    if deployed.behavior == "tool":
         installed = shutil.which(name) is not None
 
     return ComponentSummary(
         id=name,
         description=deployed.description,
-        category=deployed.category,
+        behavior=deployed.behavior,
+        stack=deployed.stack,
         runner=deployed.runner,
         port=deployed.port,
         health_path=deployed.health_path,
@@ -83,18 +84,21 @@ def _summary_from_service(name: str, svc: ServiceSpec, config: object) -> Compon
 
     description = svc.description
     source = None
+    stack = None
     if svc.component and svc.component in config.components:
         comp = config.components[svc.component]
         if not description:
             description = comp.description
         source = comp.source
+        stack = comp.stack
 
     runner = svc.run.runner
 
     return ComponentSummary(
         id=name,
         description=description,
-        category="service",
+        behavior="daemon",
+        stack=stack,
         runner=runner,
         port=port,
         health_path=health_path,
@@ -117,16 +121,19 @@ def _summary_from_job(name: str, job: JobSpec, config: object) -> ComponentSumma
 
     description = job.description
     source = None
+    stack = None
     if job.component and job.component in config.components:
         comp = config.components[job.component]
         if not description:
             description = comp.description
         source = comp.source
+        stack = comp.stack
 
     return ComponentSummary(
         id=name,
         description=description,
-        category="job",
+        behavior="tool",
+        stack=stack,
         runner=job.run.runner,
         managed=managed,
         systemd=systemd_info,
@@ -137,16 +144,16 @@ def _summary_from_job(name: str, job: JobSpec, config: object) -> ComponentSumma
 
 def _summary_from_component(name: str, comp: ComponentSpec, root: Path) -> ComponentSummary:
     """Build a ComponentSummary from a ComponentSpec (tools/frontends)."""
-    # Determine category
+    # Determine behavior
     is_tool = bool((comp.install and comp.install.path) or comp.tool)
     is_frontend = bool(comp.build and (comp.build.outputs or comp.build.commands))
 
     if is_tool:
-        category = "tool"
+        behavior = "tool"
     elif is_frontend:
-        category = "frontend"
+        behavior = "frontend"
     else:
-        category = "component"
+        behavior = None
 
     source = comp.source
 
@@ -167,7 +174,8 @@ def _summary_from_component(name: str, comp: ComponentSpec, root: Path) -> Compo
     return ComponentSummary(
         id=name,
         description=comp.description,
-        category=category,
+        behavior=behavior,
+        stack=comp.stack,
         runner=runner,
         version=comp.tool.version if comp.tool else None,
         source=source,
@@ -232,16 +240,19 @@ def list_components(include_remote: bool = False) -> list[ComponentSummary]:
                     if ref and ref in config.components:
                         s.source = config.components[ref].source
 
-            # Components (tools/frontends) — always listed, even if a
-            # service/job with the same name exists.  A component is
-            # "what software exists", services/jobs are "how it runs".
+            # Components (tools/frontends) not already represented by a
+            # service or job entry.  Skip if the component has no
+            # distinct behavior (e.g. it's just the software identity
+            # behind a service).
             for name, comp in config.components.items():
+                if name in seen:
+                    continue
                 summary = _summary_from_component(name, comp, root)
+                if summary.behavior is None:
+                    continue
                 summary.node = local_hostname
-                # Skip if this exact category is already represented
-                # (e.g. a deployed tool already in the list)
-                if not any(s.id == name and s.category == summary.category for s in summaries):
-                    summaries.append(summary)
+                summaries.append(summary)
+                seen.add(name)
         except FileNotFoundError:
             pass
 
@@ -254,7 +265,8 @@ def list_components(include_remote: bool = False) -> list[ComponentSummary]:
                         ComponentSummary(
                             id=name,
                             description=d.description,
-                            category=d.category,
+                            behavior=d.behavior,
+                            stack=d.stack,
                             runner=d.runner,
                             port=d.port,
                             health_path=d.health_path,
@@ -306,7 +318,8 @@ def get_component(name: str) -> ComponentDetail:
             "health_path": deployed.health_path,
             "proxy_path": deployed.proxy_path,
             "managed": deployed.managed,
-            "category": deployed.category,
+            "behavior": deployed.behavior,
+            "stack": deployed.stack,
         }
         return ComponentDetail(**summary.model_dump(), manifest=raw)
 

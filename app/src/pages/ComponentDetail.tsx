@@ -8,7 +8,8 @@ import { runnerLabel } from "@/lib/labels"
 import { ComponentFields } from "@/components/ComponentFields"
 import { HealthBadge } from "@/components/HealthBadge"
 import { LogViewer } from "@/components/LogViewer"
-import { RoleBadge } from "@/components/RoleBadge"
+import { BehaviorBadge } from "@/components/BehaviorBadge"
+import { StackBadge } from "@/components/StackBadge"
 
 export function ComponentDetailPage() {
   useEventStream()
@@ -20,7 +21,7 @@ export function ComponentDetailPage() {
   const { mutate, isPending } = useServiceAction()
   const health = statusResp?.statuses.find((s) => s.id === name)
   const isDown = health?.status === "down"
-  const isTool = component?.category === "tool"
+  const isTool = component?.behavior === "tool"
   const { data: toolDetail } = useToolDetail(isTool ? (name ?? "") : "")
   const isGateway = name === "castle-gateway"
   const { data: caddyfile } = useCaddyfile(isGateway)
@@ -28,8 +29,8 @@ export function ComponentDetailPage() {
   const { data: unitData } = useSystemdUnit(name ?? "", showUnit && !!component?.systemd)
   const [message, setMessage] = useState<{ type: "ok" | "error"; text: string } | null>(null)
 
-  const configSection = component?.category === "service" ? "services"
-    : component?.category === "job" ? "jobs"
+  const configSection = component?.behavior === "daemon" ? "services"
+    : component?.schedule ? "jobs"
     : "components"
 
   const handleSave = async (compName: string, config: Record<string, unknown>) => {
@@ -121,7 +122,8 @@ export function ComponentDetailPage() {
       </div>
 
       <div className="flex items-center gap-3 mb-6">
-        <RoleBadge role={component.category} />
+        <BehaviorBadge behavior={component.behavior} />
+        <StackBadge stack={component.stack} />
         {component.source && (
           <span className="text-sm text-[var(--muted)] font-mono">{component.source}</span>
         )}

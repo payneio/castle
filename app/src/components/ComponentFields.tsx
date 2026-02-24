@@ -63,7 +63,7 @@ export function ComponentFields({ component, onSave, onDelete }: ComponentFields
     try {
       const config: Record<string, unknown> = { ...m }
       delete config.id
-      delete config.category
+      delete config.behavior
       config.description = description || undefined
 
       // Merge plain env + secret references back together

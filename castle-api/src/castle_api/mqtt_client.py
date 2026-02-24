@@ -44,8 +44,10 @@ def _registry_to_json(registry: NodeRegistry) -> str:
     for name, comp in registry.deployed.items():
         entry: dict = {
             "runner": comp.runner,
-            "category": comp.category,
+            "behavior": comp.behavior,
         }
+        if comp.stack:
+            entry["stack"] = comp.stack
         if comp.description:
             entry["description"] = comp.description
         if comp.port is not None:
@@ -79,7 +81,8 @@ def _json_to_registry(payload: str) -> NodeRegistry:
             run_cmd=comp_data.get("run_cmd", []),
             env=comp_data.get("env", {}),
             description=comp_data.get("description"),
-            category=comp_data.get("category", "service"),
+            behavior=comp_data.get("behavior", "daemon"),
+            stack=comp_data.get("stack"),
             port=comp_data.get("port"),
             health_path=comp_data.get("health_path"),
             proxy_path=comp_data.get("proxy_path"),

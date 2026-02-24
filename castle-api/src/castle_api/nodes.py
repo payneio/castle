@@ -47,7 +47,8 @@ def _deployed_to_summaries(registry: object, hostname: str) -> list[ComponentSum
             ComponentSummary(
                 id=name,
                 description=d.description,
-                category=d.category,
+                behavior=d.behavior,
+                stack=d.stack,
                 runner=d.runner,
                 port=d.port,
                 health_path=d.health_path,

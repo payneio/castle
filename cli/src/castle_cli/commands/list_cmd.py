@@ -20,11 +20,21 @@ CYAN = "\033[96m"
 MAGENTA = "\033[95m"
 YELLOW = "\033[93m"
 
-CATEGORY_COLORS: dict[str, str] = {
-    "service": GREEN,
-    "job": MAGENTA,
+BEHAVIOR_COLORS: dict[str, str] = {
+    "daemon": GREEN,
     "tool": CYAN,
     "frontend": YELLOW,
+}
+
+STACK_DISPLAY: dict[str, str] = {
+    "python-fastapi": "python-fastapi",
+    "python-cli": "python-cli",
+    "react-vite": "react-vite",
+    "rust": "rust",
+    "go": "go",
+    "bash": "bash",
+    "container": "container",
+    "command": "command",
 }
 
 
@@ -39,26 +49,48 @@ def _load_deployed() -> dict[str, object] | None:
         return None
 
 
+def _resolve_stack(config: object, name: str) -> str | None:
+    """Resolve stack from component reference or direct component."""
+    # Check services for component ref
+    if name in config.services:
+        svc = config.services[name]
+        comp_name = svc.component
+        if comp_name and comp_name in config.components:
+            return config.components[comp_name].stack
+    # Check jobs for component ref
+    if name in config.jobs:
+        job = config.jobs[name]
+        comp_name = job.component
+        if comp_name and comp_name in config.components:
+            return config.components[comp_name].stack
+    # Direct component
+    if name in config.components:
+        return config.components[name].stack
+    return None
+
+
 def run_list(args: argparse.Namespace) -> int:
     """List all components, services, and jobs."""
     config = load_config()
     deployed = _load_deployed()
 
-    filter_type = getattr(args, "type", None)
+    filter_behavior = getattr(args, "behavior", None)
+    filter_stack = getattr(args, "stack", None)
 
     if getattr(args, "json", False):
-        return _list_json(config, deployed, filter_type)
+        return _list_json(config, deployed, filter_behavior, filter_stack)
 
     any_output = False
 
-    # Services
-    if not filter_type or filter_type == "service":
-        if config.services:
+    # Daemons (services)
+    if not filter_behavior or filter_behavior == "daemon":
+        services = _filter_by_stack(config.services, config, filter_stack)
+        if services:
             any_output = True
-            color = CATEGORY_COLORS["service"]
-            print(f"\n{BOLD}{color}Services{RESET}")
+            color = BEHAVIOR_COLORS["daemon"]
+            print(f"\n{BOLD}{color}Daemons{RESET}")
             print(f"{color}{'─' * 40}{RESET}")
-            for name, svc in config.services.items():
+            for name, svc in services.items():
                 port_str = ""
                 if svc.expose and svc.expose.http:
                     port_str = f"  :{svc.expose.http.internal.port}"
@@ -68,17 +100,20 @@ def run_list(args: argparse.Namespace) -> int:
                 else:
                     status = f"{DIM}?{RESET}"
 
+                stack = _resolve_stack(config, name)
+                stack_str = f"  {DIM}{stack}{RESET}" if stack else ""
                 desc = f"  {DIM}{svc.description}{RESET}" if svc.description else ""
-                print(f"  {status} {BOLD}{name}{RESET}{port_str}{desc}")
+                print(f"  {status} {BOLD}{name}{RESET}{port_str}{stack_str}{desc}")
 
-    # Jobs
-    if not filter_type or filter_type == "job":
-        if config.jobs:
+    # Scheduled (jobs)
+    if not filter_behavior or filter_behavior == "tool":
+        jobs = _filter_by_stack(config.jobs, config, filter_stack)
+        if jobs:
             any_output = True
-            color = CATEGORY_COLORS["job"]
-            print(f"\n{BOLD}{color}Jobs{RESET}")
+            color = MAGENTA
+            print(f"\n{BOLD}{color}Scheduled{RESET}")
             print(f"{color}{'─' * 40}{RESET}")
-            for name, job in config.jobs.items():
+            for name, job in jobs.items():
                 if deployed is not None:
                     status = f"{GREEN}●{RESET}" if name in deployed else f"{RED}○{RESET}"
                 else:
@@ -88,29 +123,37 @@ def run_list(args: argparse.Namespace) -> int:
                 sched = f"  {DIM}[{job.schedule}]{RESET}"
                 print(f"  {status} {BOLD}{name}{RESET}{sched}{desc}")
 
-    # Tools
-    if not filter_type or filter_type == "tool":
-        tools = config.tools
-        if tools:
-            any_output = True
-            color = CATEGORY_COLORS["tool"]
-            print(f"\n{BOLD}{color}Tools{RESET}")
-            print(f"{color}{'─' * 40}{RESET}")
-            for name, comp in tools.items():
-                desc = f"  {DIM}{comp.description}{RESET}" if comp.description else ""
-                print(f"  {BOLD}{name}{RESET}{desc}")
+    # Components (tools, frontends, etc.)
+    show_tools = not filter_behavior or filter_behavior == "tool"
+    show_frontends = not filter_behavior or filter_behavior == "frontend"
 
-    # Frontends
-    if not filter_type or filter_type == "frontend":
-        frontends = config.frontends
-        if frontends:
+    if show_tools or show_frontends:
+        # Collect non-daemon components
+        comps: dict[str, tuple[str, str | None, str | None]] = {}
+
+        if show_tools:
+            for name, comp in config.tools.items():
+                if filter_stack and comp.stack != filter_stack:
+                    continue
+                comps[name] = ("tool", comp.stack, comp.description)
+
+        if show_frontends:
+            for name, comp in config.frontends.items():
+                if filter_stack and comp.stack != filter_stack:
+                    continue
+                if name not in comps:
+                    comps[name] = ("frontend", comp.stack, comp.description)
+
+        if comps:
             any_output = True
-            color = CATEGORY_COLORS["frontend"]
-            print(f"\n{BOLD}{color}Frontends{RESET}")
+            color = CYAN
+            print(f"\n{BOLD}{color}Components{RESET}")
             print(f"{color}{'─' * 40}{RESET}")
-            for name, comp in frontends.items():
-                desc = f"  {DIM}{comp.description}{RESET}" if comp.description else ""
-                print(f"  {BOLD}{name}{RESET}{desc}")
+            for name, (behavior, stack, description) in comps.items():
+                stack_str = f"  {DIM}{stack}{RESET}" if stack else ""
+                behavior_str = f"  {behavior}"
+                desc = f"  {DIM}{description}{RESET}" if description else ""
+                print(f"  {BOLD}{name}{RESET}{stack_str}{behavior_str}{desc}")
 
     if not any_output:
         print("No components found.")
@@ -122,47 +165,83 @@ def run_list(args: argparse.Namespace) -> int:
     return 0
 
 
+def _filter_by_stack(
+    items: dict[str, object],
+    config: object,
+    filter_stack: str | None,
+) -> dict[str, object]:
+    """Filter items by stack if a filter is provided."""
+    if not filter_stack:
+        return items
+    return {
+        name: item
+        for name, item in items.items()
+        if _resolve_stack(config, name) == filter_stack
+    }
+
+
 def _list_json(
-    config: object, deployed: dict | None, filter_type: str | None
+    config: object,
+    deployed: dict | None,
+    filter_behavior: str | None,
+    filter_stack: str | None,
 ) -> int:
     """Output JSON list of all entries."""
     output = []
 
-    if not filter_type or filter_type == "service":
+    if not filter_behavior or filter_behavior == "daemon":
         for name, svc in config.services.items():
+            stack = _resolve_stack(config, name)
+            if filter_stack and stack != filter_stack:
+                continue
             entry: dict = {
                 "name": name,
-                "category": "service",
+                "behavior": "daemon",
                 "deployed": deployed is not None and name in deployed,
             }
+            if stack:
+                entry["stack"] = stack
             if svc.description:
                 entry["description"] = svc.description
             if svc.expose and svc.expose.http:
                 entry["port"] = svc.expose.http.internal.port
             output.append(entry)
 
-    if not filter_type or filter_type == "job":
+    if not filter_behavior or filter_behavior == "tool":
         for name, job in config.jobs.items():
+            stack = _resolve_stack(config, name)
+            if filter_stack and stack != filter_stack:
+                continue
             entry = {
                 "name": name,
-                "category": "job",
+                "behavior": "tool",
                 "deployed": deployed is not None and name in deployed,
                 "schedule": job.schedule,
             }
+            if stack:
+                entry["stack"] = stack
             if job.description:
                 entry["description"] = job.description
             output.append(entry)
 
-    if not filter_type or filter_type == "tool":
+    if not filter_behavior or filter_behavior == "tool":
         for name, comp in config.tools.items():
-            entry = {"name": name, "category": "tool"}
+            if filter_stack and comp.stack != filter_stack:
+                continue
+            entry = {"name": name, "behavior": "tool"}
+            if comp.stack:
+                entry["stack"] = comp.stack
             if comp.description:
                 entry["description"] = comp.description
             output.append(entry)
 
-    if not filter_type or filter_type == "frontend":
+    if not filter_behavior or filter_behavior == "frontend":
         for name, comp in config.frontends.items():
-            entry = {"name": name, "category": "frontend"}
+            if filter_stack and comp.stack != filter_stack:
+                continue
+            entry = {"name": name, "behavior": "frontend"}
+            if comp.stack:
+                entry["stack"] = comp.stack
             if comp.description:
                 entry["description"] = comp.description
             output.append(entry)

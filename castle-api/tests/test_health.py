@@ -34,7 +34,7 @@ class TestComponents:
         assert svc["health_path"] == "/health"
         assert svc["proxy_path"] == "/test-svc"
         assert svc["managed"] is True
-        assert svc["category"] == "service"
+        assert svc["behavior"] == "daemon"
 
     def test_tool_has_no_port(self, client: TestClient) -> None:
         """Tool component has no port."""
@@ -42,14 +42,14 @@ class TestComponents:
         data = response.json()
         tool = next(c for c in data if c["id"] == "test-tool")
         assert tool["port"] is None
-        assert tool["category"] == "tool"
+        assert tool["behavior"] == "tool"
 
     def test_job_has_schedule(self, client: TestClient) -> None:
         """Job component has schedule."""
         response = client.get("/components")
         data = response.json()
         job = next(c for c in data if c["id"] == "test-job")
-        assert job["category"] == "job"
+        assert job["behavior"] == "tool"
         assert job["schedule"] == "0 2 * * *"
 
 

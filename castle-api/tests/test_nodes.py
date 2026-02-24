@@ -45,7 +45,7 @@ class TestNodesList:
                         runner="python",
                         run_cmd=["svc"],
                         port=9050,
-                        category="service",
+                        behavior="daemon",
                     ),
                 },
             )
