@@ -6,6 +6,7 @@ export interface SystemdInfo {
 
 export interface ComponentSummary {
   id: string
+  category: "component" | "service" | "job" | null
   description: string | null
   behavior: string | null
   stack: string | null

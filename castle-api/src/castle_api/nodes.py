@@ -46,6 +46,7 @@ def _deployed_to_summaries(registry: object, hostname: str) -> list[ComponentSum
         summaries.append(
             ComponentSummary(
                 id=name,
+                category="job" if d.schedule else "service",
                 description=d.description,
                 behavior=d.behavior,
                 stack=d.stack,
