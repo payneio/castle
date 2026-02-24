@@ -30,8 +30,8 @@ def _tool_summary(
     # Infer runner from source directory
     runner = None
     source = comp.source
-    if source and root:
-        source_dir = root / source
+    if source:
+        source_dir = Path(source)
         if (source_dir / "pyproject.toml").exists():
             runner = "python"
         elif source_dir.is_file():

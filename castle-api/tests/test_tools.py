@@ -29,7 +29,7 @@ class TestToolsList:
         data = response.json()
         tool = next(t for t in data if t["id"] == "test-tool")
         assert tool["description"] == "Test tool"
-        assert tool["source"] == "test-tool"
+        assert tool["source"].endswith("/test-tool")
         assert tool["system_dependencies"] == ["pandoc"]
 
     def test_installed_flag(self, client: TestClient) -> None:
@@ -57,7 +57,7 @@ class TestToolDetail:
         assert response.status_code == 200
         data = response.json()
         assert data["id"] == "test-tool"
-        assert data["source"] == "test-tool"
+        assert data["source"].endswith("/test-tool")
         assert data["system_dependencies"] == ["pandoc"]
 
     def test_no_docs(self, client: TestClient) -> None:
