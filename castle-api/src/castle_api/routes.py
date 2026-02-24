@@ -47,8 +47,11 @@ def _summary_from_deployed(name: str, deployed: object) -> ComponentSummary:
     if deployed.behavior == "tool":
         installed = shutil.which(name) is not None
 
+    category = "job" if deployed.schedule else "service"
+
     return ComponentSummary(
         id=name,
+        category=category,
         description=deployed.description,
         behavior=deployed.behavior,
         stack=deployed.stack,
@@ -96,6 +99,7 @@ def _summary_from_service(name: str, svc: ServiceSpec, config: object) -> Compon
 
     return ComponentSummary(
         id=name,
+        category="service",
         description=description,
         behavior="daemon",
         stack=stack,
@@ -131,6 +135,7 @@ def _summary_from_job(name: str, job: JobSpec, config: object) -> ComponentSumma
 
     return ComponentSummary(
         id=name,
+        category="job",
         description=description,
         behavior="tool",
         stack=stack,
@@ -173,6 +178,7 @@ def _summary_from_component(name: str, comp: ComponentSpec, root: Path) -> Compo
 
     return ComponentSummary(
         id=name,
+        category="component",
         description=comp.description,
         behavior=behavior,
         stack=comp.stack,
@@ -264,6 +270,7 @@ def list_components(include_remote: bool = False) -> list[ComponentSummary]:
                     summaries.append(
                         ComponentSummary(
                             id=name,
+                            category="job" if d.schedule else "service",
                             description=d.description,
                             behavior=d.behavior,
                             stack=d.stack,

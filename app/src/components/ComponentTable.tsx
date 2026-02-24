@@ -1,34 +1,25 @@
 import { useMemo, useState } from "react"
 import { Link } from "react-router-dom"
-import { ArrowDown, ArrowUp, ArrowUpDown, Download, Play, RefreshCw, Square, Trash2 } from "lucide-react"
-import type { ComponentSummary, HealthStatus } from "@/types"
-import { useServiceAction, useToolAction } from "@/services/api/hooks"
-import { HealthBadge } from "./HealthBadge"
+import { ArrowDown, ArrowUp, ArrowUpDown, Plug, Unplug } from "lucide-react"
+import type { ComponentSummary } from "@/types"
+import { useToolAction } from "@/services/api/hooks"
 import { BehaviorBadge } from "./BehaviorBadge"
 import { StackBadge } from "./StackBadge"
 
 interface ComponentTableProps {
   components: ComponentSummary[]
-  statuses: HealthStatus[]
 }
 
 type SortKey = "id" | "stack" | "behavior" | "status"
 type SortDir = "asc" | "desc"
 
-function statusRank(s: HealthStatus | undefined, installed: boolean | null): number {
-  if (s) {
-    if (s.status === "down") return 0
-    if (s.status === "up") return 3
-    return 2
-  }
-  if (installed === false) return 1
-  if (installed === true) return 3
+function installedRank(installed: boolean | null): number {
+  if (installed === false) return 0
+  if (installed === true) return 1
   return 2
 }
 
-export function ComponentTable({ components, statuses }: ComponentTableProps) {
-  const statusMap = useMemo(() => new Map(statuses.map((s) => [s.id, s])), [statuses])
-
+export function ComponentTable({ components }: ComponentTableProps) {
   const [search, setSearch] = useState("")
   const [sortKey, setSortKey] = useState<SortKey>("id")
   const [sortDir, setSortDir] = useState<SortDir>("asc")
@@ -63,12 +54,12 @@ export function ComponentTable({ components, statuses }: ComponentTableProps) {
         case "behavior":
           return dir * (a.behavior ?? "").localeCompare(b.behavior ?? "")
         case "status":
-          return dir * (statusRank(statusMap.get(a.id), a.installed) - statusRank(statusMap.get(b.id), b.installed))
+          return dir * (installedRank(a.installed) - installedRank(b.installed))
         default:
           return 0
       }
     })
-  }, [filtered, sortKey, sortDir, statusMap])
+  }, [filtered, sortKey, sortDir])
 
   return (
     <div>
@@ -97,7 +88,6 @@ export function ComponentTable({ components, statuses }: ComponentTableProps) {
               <ComponentRow
                 key={comp.id}
                 component={comp}
-                health={statusMap.get(comp.id)}
               />
             ))}
             {sorted.length === 0 && (
@@ -158,22 +148,17 @@ function InstalledBadge({ installed }: { installed: boolean }) {
 
 function ComponentRow({
   component,
-  health,
 }: {
   component: ComponentSummary
-  health?: HealthStatus
 }) {
-  const hasHttp = component.port != null
   const isTool = component.installed !== null
-  const { mutate: serviceAction, isPending: servicePending } = useServiceAction()
   const { mutate: toolAction, isPending: toolPending } = useToolAction()
-  const isDown = health?.status === "down"
 
   return (
     <tr className="border-b border-[var(--border)] last:border-b-0 hover:bg-[var(--card)]/50 transition-colors">
       <td className="px-3 py-2.5">
         <Link
-          to={`/component/${component.id}`}
+          to={`/components/${component.id}`}
           className="font-medium hover:text-[var(--primary)] transition-colors"
         >
           {component.id}
@@ -191,49 +176,14 @@ function ComponentRow({
         <BehaviorBadge behavior={component.behavior} />
       </td>
       <td className="px-3 py-2.5">
-        {health ? (
-          <HealthBadge status={health.status} latency={health.latency_ms} />
-        ) : hasHttp ? (
-          <HealthBadge status="unknown" />
-        ) : isTool ? (
+        {isTool ? (
           <InstalledBadge installed={component.installed!} />
         ) : (
           <span className="text-[var(--muted)]">—</span>
         )}
       </td>
       <td className="px-3 py-2.5">
-        {component.managed ? (
-          <div className="flex items-center gap-1">
-            {isDown && (
-              <button
-                onClick={() => serviceAction({ name: component.id, action: "start" })}
-                disabled={servicePending}
-                className="p-1 rounded hover:bg-green-800/30 text-green-400 transition-colors disabled:opacity-40"
-                title="Start"
-              >
-                <Play size={14} />
-              </button>
-            )}
-            <button
-              onClick={() => serviceAction({ name: component.id, action: "restart" })}
-              disabled={servicePending}
-              className="p-1 rounded hover:bg-blue-800/30 text-blue-400 transition-colors disabled:opacity-40"
-              title="Restart"
-            >
-              <RefreshCw size={14} />
-            </button>
-            {!isDown && (
-              <button
-                onClick={() => serviceAction({ name: component.id, action: "stop" })}
-                disabled={servicePending}
-                className="p-1 rounded hover:bg-red-800/30 text-red-400 transition-colors disabled:opacity-40"
-                title="Stop"
-              >
-                <Square size={14} />
-              </button>
-            )}
-          </div>
-        ) : isTool ? (
+        {isTool ? (
           <div className="flex items-center gap-1">
             {component.installed ? (
               <button
@@ -242,7 +192,7 @@ function ComponentRow({
                 className="p-1 rounded hover:bg-red-800/30 text-red-400 transition-colors disabled:opacity-40"
                 title="Uninstall from PATH"
               >
-                <Trash2 size={14} />
+                <Unplug size={14} />
               </button>
             ) : (
               <button
@@ -251,7 +201,7 @@ function ComponentRow({
                 className="p-1 rounded hover:bg-green-800/30 text-green-400 transition-colors disabled:opacity-40"
                 title="Install to PATH"
               >
-                <Download size={14} />
+                <Plug size={14} />
               </button>
             )}
           </div>

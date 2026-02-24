@@ -15,6 +15,7 @@ class ComponentSummary(BaseModel):
     """Summary of a single component."""
 
     id: str
+    category: str | None = None  # "component", "service", or "job"
     description: str | None = None
     behavior: str | None = None
     stack: str | None = None

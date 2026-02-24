@@ -32,7 +32,7 @@ export const STACK_LABELS: Record<string, string> = {
 
 export const SECTION_HEADERS: Record<string, { title: string; subtitle: string }> = {
   service: { title: "Services", subtitle: "Long-running processes" },
-  scheduled: { title: "Scheduled", subtitle: "Systemd timers" },
+  scheduled: { title: "Scheduled Jobs", subtitle: "Systemd timers" },
   component: { title: "Components", subtitle: "Software catalog" },
 }
 

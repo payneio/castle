@@ -17,10 +17,11 @@ export function Dashboard() {
   const { data: nodes } = useNodes()
   const { data: mesh } = useMeshStatus()
 
-  const { services, scheduled } = useMemo(() => {
-    const svc = (components ?? []).filter((c) => c.managed && !c.schedule)
-    const sch = (components ?? []).filter((c) => c.managed && c.schedule)
-    return { services: svc, scheduled: sch }
+  const { services, scheduled, catalog } = useMemo(() => {
+    const svc = (components ?? []).filter((c) => c.category === "service")
+    const sch = (components ?? []).filter((c) => c.category === "job")
+    const cat = (components ?? []).filter((c) => c.category === "component")
+    return { services: svc, scheduled: sch, catalog: cat }
   }, [components])
 
   const statuses = statusResp?.statuses ?? []
@@ -56,10 +57,10 @@ export function Dashboard() {
           {scheduled.length > 0 && (
             <ScheduledSection jobs={scheduled} statuses={statuses} />
           )}
-          {(components ?? []).length > 0 && (
+          {catalog.length > 0 && (
             <section>
               <SectionHeader section="component" />
-              <ComponentTable components={components ?? []} statuses={statuses} />
+              <ComponentTable components={catalog} />
             </section>
           )}
         </div>
