@@ -318,23 +318,20 @@ programs:
   my-tool:
     description: Does something useful
     source: components/my-tool
-    install:
-      path:
-        alias: my-tool
+    stack: python-cli
+    behavior: tool
 ```
 
-Tools with system dependencies declare them in the component:
+Tools with system dependencies declare them directly on the program:
 
 ```yaml
 programs:
   pdf2md:
     description: Convert PDF files to Markdown
     source: components/pdf2md
-    install:
-      path:
-        alias: pdf2md
-    tool:
-      system_dependencies: [pandoc, poppler-utils]
+    stack: python-cli
+    behavior: tool
+    system_dependencies: [pandoc, poppler-utils]
 ```
 
 Tools live in the `programs:` section. If a tool also runs on a schedule,

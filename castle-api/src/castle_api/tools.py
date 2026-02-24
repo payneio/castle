@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, status
@@ -16,18 +17,15 @@ router = APIRouter(tags=["tools"])
 
 
 def _is_tool(comp: ProgramSpec) -> bool:
-    """Check if a component is a tool (has install.path or tool spec)."""
-    return bool((comp.install and comp.install.path) or comp.tool)
+    """Check if a component is a tool."""
+    return comp.behavior == "tool"
 
 
 def _tool_summary(
     name: str, comp: ProgramSpec, root: Path | None = None
 ) -> ToolSummary:
     """Build a ToolSummary from a ProgramSpec that is a tool."""
-    t = comp.tool
-    installed = bool(
-        comp.install and comp.install.path and comp.install.path.enable
-    )
+    installed = shutil.which(name) is not None
 
     # Infer runner from source directory
     runner = None
@@ -43,9 +41,9 @@ def _tool_summary(
         id=name,
         description=comp.description,
         source=source,
-        version=t.version if t else None,
+        version=comp.version,
         runner=runner,
-        system_dependencies=t.system_dependencies if t else [],
+        system_dependencies=comp.system_dependencies,
         installed=installed,
     )
 

@@ -52,17 +52,15 @@ def run_info(args: argparse.Namespace) -> int:
     print(f"{'─' * 40}")
 
     # Determine behavior
-    if service:
-        print(f"  {BOLD}behavior{RESET}:    daemon")
+    behavior = None
+    if program and program.behavior:
+        behavior = program.behavior
+    elif service:
+        behavior = "daemon"
     elif job:
-        print(f"  {BOLD}behavior{RESET}:    tool")
-    elif program:
-        if program.tool or (program.install and program.install.path):
-            print(f"  {BOLD}behavior{RESET}:    tool")
-        elif program.build:
-            print(f"  {BOLD}behavior{RESET}:    frontend")
-        else:
-            print(f"  {BOLD}behavior{RESET}:    —")
+        behavior = "tool"
+    if behavior:
+        print(f"  {BOLD}behavior{RESET}:    {behavior}")
 
     # Show stack
     stack = None
@@ -81,13 +79,8 @@ def run_info(args: argparse.Namespace) -> int:
             print(f"  {BOLD}description{RESET}: {program.description}")
         if program.source:
             print(f"  {BOLD}source{RESET}:      {program.source}")
-        if program.install and program.install.path:
-            pi = program.install.path
-            print(f"  {BOLD}install{RESET}:     path" + (f" (alias: {pi.alias})" if pi.alias else ""))
-        if program.tool:
-            t = program.tool
-            if t.system_dependencies:
-                print(f"  {BOLD}requires{RESET}:    {', '.join(t.system_dependencies)}")
+        if program.system_dependencies:
+            print(f"  {BOLD}requires{RESET}:    {', '.join(program.system_dependencies)}")
         if program.tags:
             print(f"  {BOLD}tags{RESET}:        {', '.join(program.tags)}")
 
@@ -104,8 +97,8 @@ def run_info(args: argparse.Namespace) -> int:
 
         # Run spec
         print(f"  {BOLD}runner{RESET}:      {spec.run.runner}")
-        if hasattr(spec.run, "tool"):
-            print(f"  {BOLD}tool{RESET}:        {spec.run.tool}")
+        if hasattr(spec.run, "program"):
+            print(f"  {BOLD}program{RESET}:     {spec.run.program}")
         elif hasattr(spec.run, "argv"):
             print(f"  {BOLD}argv{RESET}:        {spec.run.argv}")
         elif hasattr(spec.run, "image"):
@@ -185,15 +178,14 @@ def _info_json(
         data["program"] = program.model_dump(exclude_none=True, exclude={"id"})
     if service:
         data["service"] = service.model_dump(exclude_none=True, exclude={"id"})
-        data["behavior"] = "daemon"
     if job:
         data["job"] = job.model_dump(exclude_none=True, exclude={"id"})
+    if program and program.behavior:
+        data["behavior"] = program.behavior
+    elif service:
+        data["behavior"] = "daemon"
+    elif job:
         data["behavior"] = "tool"
-    if not service and not job and program:
-        if program.tool or (program.install and program.install.path):
-            data["behavior"] = "tool"
-        elif program.build:
-            data["behavior"] = "frontend"
 
     # Resolve stack
     stack = None

@@ -70,8 +70,7 @@ class TestCreateCommand:
         assert (project_dir / "CLAUDE.md").exists()
         assert "my-tool2" in config.programs
         comp = config.programs["my-tool2"]
-        assert comp.tool is not None
-        assert comp.install is not None
+        assert comp.behavior == "tool"
 
     def test_create_duplicate_fails(self, castle_root: Path, capsys: object) -> None:
         """Creating a project with existing name fails."""

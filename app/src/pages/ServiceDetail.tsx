@@ -89,8 +89,8 @@ export function ServiceDetailPage() {
               <span className="flex items-center gap-1">
                 <Terminal size={12} />
                 {runnerLabel(runner)}
-                {(component.manifest.run as Record<string, string>)?.tool && (
-                  <> &middot; {(component.manifest.run as Record<string, string>).tool}</>
+                {(component.manifest.run as Record<string, string>)?.program && (
+                  <> &middot; {(component.manifest.run as Record<string, string>).program}</>
                 )}
               </span>
             </>

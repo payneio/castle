@@ -16,17 +16,16 @@ programs:
   my-tool:
     description: Does something useful
     source: programs/my-tool
-    install:
-      path: { alias: my-tool }
-    tool:
-      system_dependencies: [pandoc]
+    stack: python-cli
+    behavior: tool
+    system_dependencies: [pandoc]
 
 services:
   my-service:
     component: my-service
     run:
       runner: python
-      tool: my-service
+      program: my-service
     expose:
       http:
         internal: { port: 9001 }
@@ -51,7 +50,7 @@ jobs:
 
 | Section | Purpose | Category |
 |---------|---------|----------|
-| `programs:` | Software catalog — what exists | tool, frontend, program |
+| `programs:` | Software catalog — what exists | tool, frontend, daemon |
 | `services:` | Long-running daemons — how they run | service |
 | `jobs:` | Scheduled tasks — when they run | job |
 
@@ -61,7 +60,18 @@ fallthrough and source code linking. They can also exist independently
 
 ## Program blocks
 
-Programs define **what software exists** — identity, source, tools, builds.
+Programs define **what software exists** — identity, source, behavior, builds.
+
+### `behavior` — What role this program plays
+
+```yaml
+behavior: daemon    # or: tool, frontend
+```
+
+Explicit declaration of how the program is used:
+- **daemon** — long-running service (python-fastapi stack)
+- **tool** — CLI utility (python-cli stack)
+- **frontend** — web UI (react-vite stack)
 
 ### `source` — Where the source lives
 
@@ -71,28 +81,30 @@ source: programs/my-tool
 
 Relative path from repo root to the project directory.
 
-### `install` — How to install it
+### `stack` — Development toolchain
 
 ```yaml
-install:
-  path:
-    alias: my-tool       # Command name in PATH
+stack: python-fastapi   # or: python-cli, react-vite
 ```
 
-Creates a shim so the tool is available system-wide after
-`uv tool install --editable .`.
+Stacks define how programs get built, checked, and installed.
 
-### `tool` — Tool metadata
+### `system_dependencies` — Required system packages
 
 ```yaml
-tool:
-  version: "1.0.0"
-  system_dependencies: [pandoc, poppler-utils]
+system_dependencies: [pandoc, poppler-utils]
 ```
 
-This block provides metadata for `castle tool list` and the dashboard.
-It's separate from `install` (which handles PATH registration). The source
-directory is set via the top-level `source` field on the program, not here.
+System packages that must be installed for the program to work. Displayed
+in `castle tool list` and the dashboard.
+
+### `version` — Program version
+
+```yaml
+version: "1.0.0"
+```
+
+Optional version metadata.
 
 ### `build` — How to build it
 
@@ -104,7 +116,7 @@ build:
     - dist/
 ```
 
-Components with build outputs are categorized as **frontends** in the UI.
+Programs with build outputs are typically frontends.
 
 ## Service blocks
 
@@ -116,7 +128,7 @@ Discriminated union on `runner`:
 
 | Runner | Sync | Deploy | Key fields |
 |--------|------|--------|------------|
-| `python` | `uv sync` | `which(tool)` → installed binary | `tool`, `args` |
+| `python` | `uv sync` | `which(program)` → installed binary | `program`, `args` |
 | `command` | *(none)* | `which(argv[0])` → resolved path | `argv` |
 | `container` | *(none)* | `docker`/`podman` `run` | `image`, `command`, `ports`, `volumes` |
 | `node` | `package_manager install` | `package_manager run script` | `script`, `package_manager` |
@@ -125,7 +137,7 @@ Discriminated union on `runner`:
 ```yaml
 run:
   runner: python
-  tool: my-service        # name in [project.scripts]
+  program: my-service     # name in [project.scripts]
 ```
 
 ### `expose` — What it exposes
@@ -225,22 +237,23 @@ programs:
   my-tool:
     description: Does something useful
     source: programs/my-tool
-    install:
-      path:
-        alias: my-tool
+    stack: python-cli
+    behavior: tool
 
 # Service — needs both program and service entries
 programs:
   my-service:
     description: Does something useful
     source: programs/my-service
+    stack: python-fastapi
+    behavior: daemon
 
 services:
   my-service:
     component: my-service
     run:
       runner: python
-      tool: my-service
+      program: my-service
     expose:
       http:
         internal: { port: 9001 }
@@ -317,11 +330,11 @@ and a `.timer` file.
 
 The Pydantic models live in `core/src/castle_core/manifest.py`. Key classes:
 
-- `ProgramSpec` — software catalog entry (source, install, tool, build)
+- `ProgramSpec` — software catalog entry (source, behavior, stack, build, system_dependencies)
 - `ServiceSpec` — long-running daemon (run, expose, proxy, manage, defaults)
 - `JobSpec` — scheduled task (run, schedule, manage, defaults)
 - `RunSpec` — discriminated union (RunPython, RunCommand, RunContainer, RunNode, RunRemote)
-- `ExposeSpec`, `ProxySpec`, `ManageSpec`, `InstallSpec`, `ToolSpec`, `BuildSpec`
+- `ExposeSpec`, `ProxySpec`, `ManageSpec`, `BuildSpec`
 - `CaddySpec`, `SystemdSpec`, `HttpExposeSpec`, `HttpInternal`
 
 Config loading: `core/src/castle_core/config.py` — `load_config()` parses

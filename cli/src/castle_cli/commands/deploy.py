@@ -216,13 +216,13 @@ def _build_run_cmd(run: object, env: dict[str, str]) -> list[str]:
     """Build a run command list from a RunSpec."""
     match run.runner:
         case "python":
-            resolved = shutil.which(run.tool)
+            resolved = shutil.which(run.program)
             if not resolved:
                 print(
-                    f"  Warning: '{run.tool}' not on PATH. "
+                    f"  Warning: '{run.program}' not on PATH. "
                     f"Install with: uv tool install --editable <source>"
                 )
-            cmd = [resolved or run.tool]
+            cmd = [resolved or run.program]
             if run.args:
                 cmd.extend(run.args)
             return cmd

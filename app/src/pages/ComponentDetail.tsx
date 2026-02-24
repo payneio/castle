@@ -1,9 +1,10 @@
+import { useState } from "react"
 import { useParams } from "react-router-dom"
 import { useProgram, useEventStream, useToolDetail } from "@/services/api/hooks"
 import { runnerLabel } from "@/lib/labels"
 import { DetailHeader } from "@/components/detail/DetailHeader"
 import { ConfigPanel } from "@/components/detail/ConfigPanel"
-import { ProgramActions } from "@/components/ProgramActions"
+import { ProgramActions, ActionOutputPanel, type ActionOutput } from "@/components/ProgramActions"
 
 export function ComponentDetailPage() {
   useEventStream()
@@ -11,6 +12,7 @@ export function ComponentDetailPage() {
   const { data: component, isLoading, error, refetch } = useProgram(name ?? "")
   const isTool = component?.behavior === "tool"
   const { data: toolDetail } = useToolDetail(isTool ? (name ?? "") : "")
+  const [actionOutput, setActionOutput] = useState<ActionOutput | null>(null)
 
   if (isLoading) {
     return (
@@ -37,8 +39,14 @@ export function ComponentDetailPage() {
         stack={component.stack}
         source={component.source}
       >
-        <ProgramActions name={component.id} actions={component.actions} installed={component.installed} />
+        <ProgramActions name={component.id} actions={component.actions} installed={component.installed} onOutput={setActionOutput} />
       </DetailHeader>
+
+      {actionOutput && actionOutput.action && (
+        <div className="-mt-2 mb-6">
+          <ActionOutputPanel output={actionOutput} onDismiss={() => setActionOutput(null)} />
+        </div>
+      )}
 
       {component.description && (
         <p className="text-sm text-[var(--muted)] -mt-4 mb-6">{component.description}</p>

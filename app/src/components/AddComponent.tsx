@@ -5,7 +5,7 @@ const TEMPLATES: Record<string, Record<string, unknown>> = {
   service: {
     run: {
       runner: "python",
-      tool: "",
+      program: "",
       cwd: "",
       env: {},
     },
@@ -23,9 +23,7 @@ const TEMPLATES: Record<string, Record<string, unknown>> = {
     },
   },
   tool: {
-    install: {
-      path: { alias: "" },
-    },
+    behavior: "tool",
   },
   job: {
     run: {
@@ -72,7 +70,7 @@ export function AddComponent({ onAdd, existingNames }: AddComponentProps) {
       // Fill in template-specific fields
       if (template === "service") {
         const run = config.run as Record<string, unknown>
-        run.tool = name
+        run.program = name
         run.cwd = name
         const proxy = (config.proxy as Record<string, Record<string, string>>).caddy
         proxy.path_prefix = `/${name}`
@@ -81,8 +79,7 @@ export function AddComponent({ onAdd, existingNames }: AddComponentProps) {
           expose.http.internal.port = parseInt(port, 10)
         }
       } else if (template === "tool") {
-        const install = (config.install as Record<string, Record<string, string>>).path
-        install.alias = name
+        // tool template has behavior preset, no extra config needed
       }
 
       await onAdd(name, config)

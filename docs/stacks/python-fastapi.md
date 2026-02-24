@@ -103,13 +103,15 @@ programs:
   my-service:
     description: Does something useful
     source: components/my-service
+    stack: python-fastapi
+    behavior: daemon
 
 services:
   my-service:
     component: my-service
     run:
       runner: python
-      tool: my-service
+      program: my-service
     expose:
       http:
         internal: { port: 9001 }

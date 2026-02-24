@@ -53,11 +53,11 @@ class CastleConfig:
 
     @property
     def tools(self) -> dict[str, ProgramSpec]:
-        """Return programs that are tools (have install.path or tool spec)."""
+        """Return programs that are tools (behavior == 'tool')."""
         return {
             k: v
             for k, v in self.programs.items()
-            if (v.install and v.install.path) or v.tool
+            if v.behavior == "tool"
         }
 
     @property
@@ -180,9 +180,6 @@ def _clean_for_yaml(data: object, preserve_keys: set[str] | None = None) -> obje
 _STRUCTURAL_KEYS = {
     "manage",
     "systemd",
-    "install",
-    "path",
-    "tool",
     "expose",
     "proxy",
     "caddy",

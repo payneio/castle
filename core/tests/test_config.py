@@ -51,7 +51,7 @@ class TestLoadConfig:
         config = load_config(castle_root)
         svc = config.services["test-svc"]
         assert svc.run.runner == "python"
-        assert svc.run.tool == "test-svc"
+        assert svc.run.program == "test-svc"
 
     def test_service_component_ref(self, castle_root: Path) -> None:
         """Service references a component."""

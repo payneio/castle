@@ -29,7 +29,7 @@ def run_tool(args: argparse.Namespace) -> int:
 def _tool_list() -> int:
     """List all registered tools."""
     config = load_config()
-    tools = {k: v for k, v in config.programs.items() if v.tool}
+    tools = {k: v for k, v in config.programs.items() if v.behavior == "tool"}
 
     if not tools:
         print("No tools registered.")
@@ -40,8 +40,8 @@ def _tool_list() -> int:
     for name, manifest in sorted(tools.items()):
         desc = manifest.description or ""
         deps = ""
-        if manifest.tool and manifest.tool.system_dependencies:
-            deps = f"  {DIM}[{', '.join(manifest.tool.system_dependencies)}]{RESET}"
+        if manifest.system_dependencies:
+            deps = f"  {DIM}[{', '.join(manifest.system_dependencies)}]{RESET}"
         print(f"  {BOLD}{name:<20}{RESET} {desc}{deps}")
 
     print()
@@ -56,21 +56,20 @@ def _tool_info(name: str) -> int:
         return 1
 
     manifest = config.programs[name]
-    if not manifest.tool:
+    if manifest.behavior != "tool":
         print(f"Error: '{name}' is not a tool")
         return 1
-
-    t = manifest.tool
 
     print(f"\n{BOLD}{name}{RESET}")
     print(f"{'─' * 40}")
     if manifest.description:
         print(f"  {manifest.description}")
-    print(f"  {BOLD}version{RESET}:  {t.version}")
+    if manifest.version:
+        print(f"  {BOLD}version{RESET}:  {manifest.version}")
     if manifest.source:
         print(f"  {BOLD}source{RESET}:   {manifest.source}")
-    if t.system_dependencies:
-        print(f"  {BOLD}requires{RESET}: {', '.join(t.system_dependencies)}")
+    if manifest.system_dependencies:
+        print(f"  {BOLD}requires{RESET}: {', '.join(manifest.system_dependencies)}")
 
     print()
     return 0

@@ -23,21 +23,18 @@ def castle_root(tmp_path: Path) -> Generator[Path, None, None]:
     castle_yaml = tmp_path / "castle.yaml"
     config = {
         "gateway": {"port": 9000},
-        "components": {
+        "programs": {
             "test-tool": {
                 "description": "Test tool",
                 "source": "test-tool",
-                "install": {"path": {"alias": "test-tool"}},
-                "tool": {
-                    "system_dependencies": ["pandoc"],
-                },
+                "behavior": "tool",
+                "system_dependencies": ["pandoc"],
             },
             "test-tool-2": {
                 "description": "Another test tool",
                 "source": "test-tool-2",
-                "tool": {
-                    "version": "2.0.0",
-                },
+                "behavior": "tool",
+                "version": "2.0.0",
             },
         },
         "services": {
@@ -46,7 +43,7 @@ def castle_root(tmp_path: Path) -> Generator[Path, None, None]:
                 "description": "Test service",
                 "run": {
                     "runner": "python",
-                    "tool": "test-svc",
+                    "program": "test-svc",
                 },
                 "expose": {
                     "http": {

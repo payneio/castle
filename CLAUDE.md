@@ -9,7 +9,7 @@ Castle is a personal software platform — a monorepo of independent projects
 (services, tools, libraries) managed by the `castle` CLI. The registry
 (`castle.yaml`) has three top-level sections:
 
-- **`programs:`** — Software catalog (source, install, tool metadata, build)
+- **`programs:`** — Software catalog (source, behavior, stack, system_dependencies, build)
 - **`services:`** — Long-running daemons (run, expose, proxy, systemd)
 - **`jobs:`** — Scheduled tasks (run, cron schedule, systemd timer)
 
