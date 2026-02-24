@@ -6,29 +6,35 @@ components:
     description: Content storage API useful to get context into my data dir from anywhere
       on the LAN
     source: components/central-context
+    stack: python-fastapi
   notification-bridge:
     description: Desktop notification forwarder. This taps into your notifications
       system on the desktop and will forward all notifications the the central context
       server.
     source: components/notification-bridge
+    stack: python-fastapi
   castle-api:
     description: Castle API
     source: castle-api
+    stack: python-fastapi
   protonmail:
     description: ProtonMail email sync via Bridge
     source: components/protonmail
+    stack: python-cli
     install:
       path:
         alias: protonmail
   backup-collect:
     description: Collect files from various sources into backup directory
     source: components/backup-collect
+    stack: python-cli
     tool:
       system_dependencies:
       - rsync
   castle-app:
     description: Castle web app
     source: app
+    stack: react-vite
     build:
       commands:
       - - pnpm
@@ -38,18 +44,21 @@ components:
   devbox-connect:
     description: SSH tunnel manager with auto-reconnect
     source: components/devbox-connect
+    stack: python-cli
     install:
       path:
         alias: devbox-connect
   mbox2eml:
     description: MBOX to EML email converter
     source: components/mbox2eml
+    stack: python-cli
     install:
       path:
         alias: mbox2eml
   android-backup:
     description: Backup Android device using ADB
     source: components/android-backup
+    stack: python-cli
     install:
       path:
         alias: android-backup
@@ -59,12 +68,14 @@ components:
   browser:
     description: Browse the web using natural language via browser-use
     source: components/browser
+    stack: python-cli
     install:
       path:
         alias: browser
   docx-extractor:
     description: Extract content and metadata from Word .docx files
     source: components/docx-extractor
+    stack: python-cli
     install:
       path:
         alias: docx-extractor
@@ -74,6 +85,7 @@ components:
   docx2md:
     description: Convert Word .docx files to Markdown
     source: components/docx2md
+    stack: python-cli
     install:
       path:
         alias: docx2md
@@ -83,18 +95,21 @@ components:
   gpt:
     description: OpenAI text generation utility
     source: components/gpt
+    stack: python-cli
     install:
       path:
         alias: gpt
   html2text:
     description: Convert HTML content to plain text
     source: components/html2text
+    stack: python-cli
     install:
       path:
         alias: html2text
   md2pdf:
     description: Convert Markdown files to PDF
     source: components/md2pdf
+    stack: python-cli
     install:
       path:
         alias: md2pdf
@@ -105,18 +120,21 @@ components:
   mdscraper:
     description: Combine text files into a single markdown document
     source: components/mdscraper
+    stack: python-cli
     install:
       path:
         alias: mdscraper
   pdf-extractor:
     description: Extract content and metadata from PDF files
     source: components/pdf-extractor
+    stack: python-cli
     install:
       path:
         alias: pdf-extractor
   pdf2md:
     description: Convert PDF files to Markdown
     source: components/pdf2md
+    stack: python-cli
     install:
       path:
         alias: pdf2md
@@ -127,18 +145,21 @@ components:
   schedule:
     description: Manage systemd user timers and scheduled tasks
     source: components/schedule
+    stack: python-cli
     install:
       path:
         alias: schedule
   search:
     description: Manage self-contained searchable collections of files
     source: components/search
+    stack: python-cli
     install:
       path:
         alias: search
   text-extractor:
     description: Extract content and metadata from text files
     source: components/text-extractor
+    stack: python-cli
     install:
       path:
         alias: text-extractor

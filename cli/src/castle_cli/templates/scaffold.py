@@ -9,19 +9,17 @@ def scaffold_project(
     project_dir: Path,
     name: str,
     package_name: str,
-    proj_type: str,
+    stack: str,
     description: str,
     port: int | None = None,
 ) -> None:
-    """Scaffold a new project from templates."""
-    if proj_type == "service":
+    """Scaffold a new project from templates based on stack."""
+    if stack == "python-fastapi":
         _scaffold_service(project_dir, name, package_name, description, port or 9000)
-    elif proj_type == "tool":
+    elif stack == "python-cli":
         _scaffold_tool(project_dir, name, package_name, description)
-    elif proj_type == "library":
-        _scaffold_library(project_dir, name, package_name, description)
     else:
-        raise ValueError(f"Unknown project type: {proj_type}")
+        raise ValueError(f"No scaffold template for stack: {stack}")
 
 
 def _scaffold_service(

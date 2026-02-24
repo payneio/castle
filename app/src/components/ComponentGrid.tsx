@@ -1,8 +1,8 @@
 import type { ComponentSummary, HealthStatus } from "@/types"
-import { CATEGORY_LABELS } from "@/lib/labels"
+import { BEHAVIOR_LABELS } from "@/lib/labels"
 import { ComponentCard } from "./ComponentCard"
 
-const CATEGORY_ORDER = ["service", "job", "tool", "frontend", "component"]
+const BEHAVIOR_ORDER = ["daemon", "tool", "frontend"]
 
 interface ComponentGridProps {
   components: ComponentSummary[]
@@ -12,24 +12,24 @@ interface ComponentGridProps {
 export function ComponentGrid({ components, statuses }: ComponentGridProps) {
   const statusMap = new Map(statuses.map((s) => [s.id, s]))
 
-  // Group by category
+  // Group by behavior
   const groups = new Map<string, ComponentSummary[]>()
   for (const comp of components) {
-    const cat = comp.category
-    const list = groups.get(cat) ?? []
+    const key = comp.behavior ?? "other"
+    const list = groups.get(key) ?? []
     list.push(comp)
-    groups.set(cat, list)
+    groups.set(key, list)
   }
 
   return (
     <div className="space-y-8">
-      {CATEGORY_ORDER.map((cat) => {
-        const items = groups.get(cat)
+      {BEHAVIOR_ORDER.map((key) => {
+        const items = groups.get(key)
         if (!items?.length) return null
         return (
-          <section key={cat}>
+          <section key={key}>
             <h2 className="text-lg font-semibold mb-3 text-[var(--muted)]">
-              {CATEGORY_LABELS[cat] ?? cat}
+              {BEHAVIOR_LABELS[key] ?? key}
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {items.map((comp) => (

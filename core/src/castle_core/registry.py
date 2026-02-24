@@ -35,7 +35,8 @@ class DeployedComponent:
     run_cmd: list[str]
     env: dict[str, str] = field(default_factory=dict)
     description: str | None = None
-    category: str = "service"
+    behavior: str = "daemon"
+    stack: str | None = None
     port: int | None = None
     health_path: str | None = None
     proxy_path: str | None = None
@@ -77,12 +78,18 @@ def load_registry(path: Path | None = None) -> NodeRegistry:
 
     deployed: dict[str, DeployedComponent] = {}
     for name, comp_data in data.get("deployed", {}).items():
+        # Support both old "category" and new "behavior" keys for migration
+        behavior = comp_data.get("behavior")
+        if behavior is None:
+            category = comp_data.get("category", "service")
+            behavior = "daemon" if category == "service" else "tool" if category in ("job", "tool") else "frontend" if category == "frontend" else category
         deployed[name] = DeployedComponent(
             runner=comp_data.get("runner", "command"),
             run_cmd=comp_data.get("run_cmd", []),
             env=comp_data.get("env", {}),
             description=comp_data.get("description"),
-            category=comp_data.get("category", "service"),
+            behavior=behavior,
+            stack=comp_data.get("stack"),
             port=comp_data.get("port"),
             health_path=comp_data.get("health_path"),
             proxy_path=comp_data.get("proxy_path"),
@@ -120,7 +127,9 @@ def save_registry(registry: NodeRegistry, path: Path | None = None) -> None:
             entry["env"] = comp.env
         if comp.description:
             entry["description"] = comp.description
-        entry["category"] = comp.category
+        entry["behavior"] = comp.behavior
+        if comp.stack:
+            entry["stack"] = comp.stack
         if comp.port is not None:
             entry["port"] = comp.port
         if comp.health_path:

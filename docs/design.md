@@ -20,9 +20,10 @@ is self-sufficient. The mesh is optional.
    Castle service is just a well-behaved Unix daemon that happens to
    be registered in a manifest.
 
-3. **Section is category.** Components, services, and jobs live in
-   separate sections of `castle.yaml`. The section determines the
-   category — no role derivation needed.
+3. **Stack and behavior.** Each component has a *stack* (development
+   toolchain: python-fastapi, python-cli, react-vite) and a *behavior*
+   (runtime role: daemon, tool, frontend). Scheduling, systemd management,
+   and proxying are orthogonal operations — not behaviors.
 
 4. **Language-agnostic above the build line.** Below the build line,
    every language is different (uv, pnpm, cargo, go). Above it,
@@ -210,7 +211,8 @@ deployed:
     env:
       CENTRAL_CONTEXT_DATA_DIR: /data/castle/central-context
       CENTRAL_CONTEXT_PORT: "9001"
-    category: service
+    behavior: daemon
+    stack: python-fastapi
     port: 9001
     health_path: /health
     proxy_path: /central-context
@@ -321,32 +323,36 @@ Personal software platform
 │ /devbox-api       devbox-api          9020  devbox ● up │
 └─────────────────────────────────────────────────────────┘
 
-Services · Long-running daemons managed by systemd
+┌─────────────────────────────────────────────────────────┐
+│ Mesh  ● connected     mqtt://localhost:1883   0 peers   │
+└─────────────────────────────────────────────────────────┘
+
+Daemons · Long-running processes that expose ports
 ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
 │ castle-api   │ │ central-ctx  │ │ notif-bridge │
 │ ● up 5ms     │ │ ● up 12ms    │ │ ● up 8ms     │
 │ :9020        │ │ :9001        │ │ :9002        │
 └──────────────┘ └──────────────┘ └──────────────┘
 
-Jobs · Scheduled tasks with cron timers
-  Name               Schedule        Timer
-  protonmail-sync    */5 * * * *     active
-  backup-collect     0 2 * * *       active
-
-Tools · CLI utilities installed to PATH
-  Name               Status
-  pdf2md             ● installed
-  gpt                ● installed
+Components · Software catalog
+  Name             Stack            Behavior  Schedule     Status
+  pdf2md           Python / CLI     tool      —            installed
+  protonmail       Python / CLI     tool      */5 * * * *  installed
+  castle-app       React / Vite     frontend  —            —
+  backup-collect   Python / CLI     tool      0 2 * * *    —
 ```
 
 **Key components:**
 - **GatewayPanel** — Route table with live health badges, reload button,
   collapsible Caddyfile viewer. Node column appears when multi-node.
+- **MeshPanel** — MQTT connection status (connected/disconnected badge),
+  broker address, mDNS status, peer count with links. Hidden when mesh
+  is disabled.
 - **NodeBar** — Horizontal list of discovered nodes. Hidden in single-node
   mode. Each node links to `/node/{hostname}`.
-- **ServiceSection** — Service cards in a responsive grid.
-- **JobSection** — Sortable table of scheduled tasks.
-- **ToolSection** — Sortable table of CLI tools with install/uninstall.
+- **ServiceSection** — Daemon cards in a responsive grid.
+- **ComponentTable** — Unified sortable table for all non-daemon components
+  (tools, frontends) with Stack, Behavior, Schedule, and Status columns.
 
 **Real-time updates:**
 - SSE stream at `/stream` pushes `health`, `service-action`, and `mesh`
@@ -523,10 +529,15 @@ What exists today:
 - **Mesh infrastructure** — MQTT client (paho-mqtt), mDNS discovery
   (python-zeroconf), MeshStateManager, all wired into API lifespan.
   Opt-in via `CASTLE_API_MQTT_ENABLED` / `CASTLE_API_MDNS_ENABLED`.
-- **Node API** — `GET /nodes`, `GET /nodes/{hostname}` endpoints.
+- **MQTT broker** — Mosquitto running as `castle-mqtt` Docker container
+  on port 1883, managed by systemd. Config and data in
+  `/data/castle/castle-mqtt/`.
+- **Node API** — `GET /mesh/status`, `GET /nodes`, `GET /nodes/{hostname}`.
   `GET /components?include_remote=true` for cross-node component listing.
 - **Gateway panel** — Dedicated UI showing route table, health per route,
   reload button, Caddyfile viewer. Cross-node routes shown when multi-node.
+- **Mesh panel** — Dashboard UI showing MQTT connection status, broker
+  address, mDNS state, peer count. Hidden when mesh is disabled.
 - **Node-aware UI** — NodeBar (hidden single-node), node detail page,
   mesh SSE events for live node discovery updates.
 - **Cross-node routing** — Caddyfile generator accepts remote registries,
@@ -538,9 +549,8 @@ What doesn't exist yet:
   support them via `command` runner, but no examples exist yet)
 - **Build automation** — Castle records build specs but doesn't
   orchestrate builds (each project builds independently)
-- **Mosquitto deployment** — Registered in castle.yaml as `castle-mqtt`
-  container service, but not yet deployed (needs `castle deploy` +
-  container runtime)
+- **Multi-machine testing** — Mesh infrastructure is built and running
+  on one node, but not yet tested with a second Castle node
 
 ## Technology Map
 

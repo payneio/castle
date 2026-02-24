@@ -208,6 +208,7 @@ class ComponentSpec(BaseModel):
     description: str | None = None
 
     source: str | None = None
+    stack: str | None = None
 
     install: InstallSpec | None = None
     tool: ToolSpec | None = None

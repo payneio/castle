@@ -51,18 +51,29 @@ def run_info(args: argparse.Namespace) -> int:
     print(f"\n{BOLD}{name}{RESET}")
     print(f"{'─' * 40}")
 
-    # Determine category
+    # Determine behavior
     if service:
-        print(f"  {BOLD}category{RESET}:    service")
+        print(f"  {BOLD}behavior{RESET}:    daemon")
     elif job:
-        print(f"  {BOLD}category{RESET}:    job")
+        print(f"  {BOLD}behavior{RESET}:    tool")
     elif component:
         if component.tool or (component.install and component.install.path):
-            print(f"  {BOLD}category{RESET}:    tool")
+            print(f"  {BOLD}behavior{RESET}:    tool")
         elif component.build:
-            print(f"  {BOLD}category{RESET}:    frontend")
+            print(f"  {BOLD}behavior{RESET}:    frontend")
         else:
-            print(f"  {BOLD}category{RESET}:    component")
+            print(f"  {BOLD}behavior{RESET}:    —")
+
+    # Show stack
+    stack = None
+    if component and component.stack:
+        stack = component.stack
+    elif service and service.component and service.component in config.components:
+        stack = config.components[service.component].stack
+    elif job and job.component and job.component in config.components:
+        stack = config.components[job.component].stack
+    if stack:
+        print(f"  {BOLD}stack{RESET}:       {stack}")
 
     # Component info
     if component:
@@ -174,17 +185,26 @@ def _info_json(
         data["component"] = component.model_dump(exclude_none=True, exclude={"id"})
     if service:
         data["service"] = service.model_dump(exclude_none=True, exclude={"id"})
-        data["category"] = "service"
+        data["behavior"] = "daemon"
     if job:
         data["job"] = job.model_dump(exclude_none=True, exclude={"id"})
-        data["category"] = "job"
+        data["behavior"] = "tool"
     if not service and not job and component:
         if component.tool or (component.install and component.install.path):
-            data["category"] = "tool"
+            data["behavior"] = "tool"
         elif component.build:
-            data["category"] = "frontend"
-        else:
-            data["category"] = "component"
+            data["behavior"] = "frontend"
+
+    # Resolve stack
+    stack = None
+    if component and component.stack:
+        stack = component.stack
+    elif service and service.component and service.component in config.components:
+        stack = config.components[service.component].stack
+    elif job and job.component and job.component in config.components:
+        stack = config.components[job.component].stack
+    if stack:
+        data["stack"] = stack
 
     if deployed:
         data["deployed"] = {

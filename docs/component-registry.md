@@ -118,7 +118,7 @@ Discriminated union on `runner`:
 |--------|------|--------|------------|
 | `python` | `uv sync` | `which(tool)` → installed binary | `tool`, `args` |
 | `command` | *(none)* | `which(argv[0])` → resolved path | `argv` |
-| `container` | *(none)* | `podman run` | `image`, `command`, `ports`, `volumes` |
+| `container` | *(none)* | `docker`/`podman` `run` | `image`, `command`, `ports`, `volumes` |
 | `node` | `package_manager install` | `package_manager run script` | `script`, `package_manager` |
 | `remote` | *(none)* | *(none — no local process)* | `base_url`, `health_url` |
 
@@ -209,10 +209,10 @@ semantics as services.
 
 ```bash
 # Service — scaffolds project, assigns port, registers in castle.yaml
-castle create my-service --type service --description "Does something"
+castle create my-service --stack python-fastapi --description "Does something"
 
 # Tool — scaffolds under components/
-castle create my-tool --type tool --description "Does something"
+castle create my-tool --stack python-cli --description "Does something"
 ```
 
 ### Manually
@@ -256,7 +256,7 @@ services:
 ### Service lifecycle
 
 ```bash
-castle create my-service --type service   # 1. Scaffold + register
+castle create my-service --stack python-fastapi   # 1. Scaffold + register
 cd components/my-service && uv sync       # 2. Install deps
 # ... implement ...
 castle test my-service                    # 3. Run tests
@@ -276,7 +276,7 @@ castle service disable my-service # Stop and remove systemd unit
 ### Tool lifecycle
 
 ```bash
-castle create my-tool --type tool        # 1. Scaffold + register
+castle create my-tool --stack python-cli        # 1. Scaffold + register
 cd components/my-tool && uv sync         # 2. Install deps
 # ... implement ...
 castle test my-tool                      # 3. Run tests

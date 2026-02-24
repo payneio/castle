@@ -1,7 +1,8 @@
 import { useParams, Link } from "react-router-dom"
 import { ArrowLeft, Server } from "lucide-react"
 import { useNode } from "@/services/api/hooks"
-import { RoleBadge } from "@/components/RoleBadge"
+import { BehaviorBadge } from "@/components/BehaviorBadge"
+import { StackBadge } from "@/components/StackBadge"
 import { cn } from "@/lib/utils"
 
 export function NodeDetailPage() {
@@ -62,7 +63,8 @@ export function NodeDetailPage() {
             <thead>
               <tr className="bg-[var(--card)] border-b border-[var(--border)] text-left">
                 <th className="px-3 py-2 font-medium text-[var(--muted)]">Component</th>
-                <th className="px-3 py-2 font-medium text-[var(--muted)]">Category</th>
+                <th className="px-3 py-2 font-medium text-[var(--muted)]">Behavior</th>
+                <th className="px-3 py-2 font-medium text-[var(--muted)]">Stack</th>
                 <th className="px-3 py-2 font-medium text-[var(--muted)]">Runner</th>
                 <th className="px-3 py-2 font-medium text-[var(--muted)]">Port</th>
               </tr>
@@ -85,7 +87,10 @@ export function NodeDetailPage() {
                     )}
                   </td>
                   <td className="px-3 py-2.5">
-                    <RoleBadge role={comp.category} />
+                    <BehaviorBadge behavior={comp.behavior} />
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <StackBadge stack={comp.stack} />
                   </td>
                   <td className="px-3 py-2.5 text-[var(--muted)]">
                     {comp.runner ?? "—"}

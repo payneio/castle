@@ -4,7 +4,8 @@ import type { ComponentSummary, HealthStatus } from "@/types"
 import { useServiceAction } from "@/services/api/hooks"
 import { runnerLabel } from "@/lib/labels"
 import { HealthBadge } from "./HealthBadge"
-import { RoleBadge } from "./RoleBadge"
+import { BehaviorBadge } from "./BehaviorBadge"
+import { StackBadge } from "./StackBadge"
 
 interface ComponentCardProps {
   component: ComponentSummary
@@ -37,8 +38,9 @@ export function ComponentCard({ component, health }: ComponentCardProps) {
         ) : null}
       </div>
 
-      <div className="flex gap-1 mb-2">
-        <RoleBadge role={component.category} />
+      <div className="flex gap-1.5 mb-2">
+        <BehaviorBadge behavior={component.behavior} />
+        <StackBadge stack={component.stack} />
       </div>
 
       {component.description && (

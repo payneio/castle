@@ -2,7 +2,8 @@ import { useState } from "react"
 import { ChevronDown, ChevronRight } from "lucide-react"
 import type { ComponentDetail } from "@/types"
 import { ComponentFields } from "./ComponentFields"
-import { RoleBadge } from "./RoleBadge"
+import { BehaviorBadge } from "./BehaviorBadge"
+import { StackBadge } from "./StackBadge"
 
 interface ComponentEditorProps {
   component: ComponentDetail
@@ -25,7 +26,8 @@ export function ComponentEditor({ component, onSave, onDelete }: ComponentEditor
           <span className="text-sm text-[var(--muted)]">{component.description}</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <RoleBadge role={component.category} />
+          <BehaviorBadge behavior={component.behavior} />
+          <StackBadge stack={component.stack} />
         </div>
       </button>
 

@@ -42,7 +42,7 @@ Examples: `components/pdf2md/`, `components/gpt/`, `components/protonmail/`
 ## Creating a new tool
 
 ```bash
-castle create my-tool --type tool --description "Does something"
+castle create my-tool --stack python-cli --description "Does something"
 cd components/my-tool && uv sync
 ```
 

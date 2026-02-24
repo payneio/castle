@@ -433,8 +433,8 @@ uv run ruff format .        # Format
 `castle create` generates all of this automatically:
 
 ```bash
-castle create my-service --type service --description "Does something useful"
+castle create my-service --stack python-fastapi --description "Does something useful"
 ```
 
-See @docs/component-registry.md for manifest fields, role derivation, and
-the full service lifecycle (enable, logs, gateway reload).
+See @docs/component-registry.md for manifest fields, castle.yaml structure,
+and the full service lifecycle (enable, logs, gateway reload).

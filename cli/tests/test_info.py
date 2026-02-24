@@ -25,7 +25,7 @@ class TestInfoCommand:
         assert result == 0
         output = capsys.readouterr().out
         assert "test-svc" in output
-        assert "service" in output
+        assert "daemon" in output
         assert "19000" in output
 
     def test_info_tool(self, castle_root: Path, capsys) -> None:
@@ -73,7 +73,7 @@ class TestInfoCommand:
         assert result == 0
         output = capsys.readouterr().out
         data = json.loads(output)
-        assert data["category"] == "service"
+        assert data["behavior"] == "daemon"
         assert data["service"]["expose"]["http"]["internal"]["port"] == 19000
 
     def test_info_shows_env(self, castle_root: Path, capsys) -> None:
@@ -91,8 +91,8 @@ class TestInfoCommand:
         output = capsys.readouterr().out
         assert "TEST_SVC_DATA_DIR" in output
 
-    def test_info_shows_category(self, castle_root: Path, capsys) -> None:
-        """Info displays category instead of roles."""
+    def test_info_shows_behavior(self, castle_root: Path, capsys) -> None:
+        """Info displays behavior."""
         from castle_cli.config import load_config
 
         with patch("castle_cli.commands.info.load_config") as mock_load:
@@ -104,5 +104,5 @@ class TestInfoCommand:
 
         assert result == 0
         output = capsys.readouterr().out
-        assert "category" in output
-        assert "service" in output
+        assert "behavior" in output
+        assert "daemon" in output

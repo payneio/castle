@@ -116,7 +116,7 @@ handles serving directly from the build output.
 components:
   my-frontend:
     description: Web dashboard
-    source: my-frontend
+    source: components/my-frontend
     build:
       commands:
         - ["pnpm", "build"]
@@ -124,8 +124,10 @@ components:
         - dist/
 ```
 
-For production, Caddy serves the static files — add a service entry with a
-proxy spec:
+For production, Caddy serves the static `dist/` output directly — no
+Node process needed. See [Serving with Caddy](#serving-with-caddy) below.
+
+For development with Vite's dev server, add a service entry:
 
 ```yaml
 services:
