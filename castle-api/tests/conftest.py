@@ -101,12 +101,14 @@ def registry_path(tmp_path: Path, castle_root: Path) -> Generator[Path, None, No
 
     # Patch the registry path and helper functions
     import castle_core.registry as reg_mod
+    import castle_api.routes as routes_mod
+    import castle_api.services as services_mod
+    import castle_api.nodes as nodes_mod
+    import castle_api.stream as stream_mod
+    import castle_api.config_editor as config_editor_mod
 
     original_path = reg_mod.REGISTRY_PATH
     reg_mod.REGISTRY_PATH = reg_path
-
-    original_get_registry = api_config.get_registry
-    original_get_castle_root = api_config.get_castle_root
 
     def _get_registry() -> NodeRegistry:
         from castle_core.registry import load_registry
@@ -116,14 +118,39 @@ def registry_path(tmp_path: Path, castle_root: Path) -> Generator[Path, None, No
     def _get_castle_root() -> Path | None:
         return castle_root
 
-    api_config.get_registry = _get_registry
-    api_config.get_castle_root = _get_castle_root
+    # Save originals and patch everywhere these are imported
+    originals = {
+        "api_config.get_registry": api_config.get_registry,
+        "api_config.get_castle_root": api_config.get_castle_root,
+        "routes.get_registry": routes_mod.get_registry,
+        "routes.get_castle_root": routes_mod.get_castle_root,
+        "services.get_registry": services_mod.get_registry,
+        "services.get_castle_root": services_mod.get_castle_root,
+        "nodes.get_registry": nodes_mod.get_registry,
+        "stream.get_registry": stream_mod.get_registry,
+        "config_editor.get_registry": config_editor_mod.get_registry,
+        "config_editor.get_castle_root": config_editor_mod.get_castle_root,
+    }
+
+    for mod in [api_config, routes_mod, services_mod, nodes_mod, stream_mod, config_editor_mod]:
+        if hasattr(mod, "get_registry"):
+            mod.get_registry = _get_registry
+        if hasattr(mod, "get_castle_root"):
+            mod.get_castle_root = _get_castle_root
 
     yield reg_path
 
     reg_mod.REGISTRY_PATH = original_path
-    api_config.get_registry = original_get_registry
-    api_config.get_castle_root = original_get_castle_root
+    api_config.get_registry = originals["api_config.get_registry"]
+    api_config.get_castle_root = originals["api_config.get_castle_root"]
+    routes_mod.get_registry = originals["routes.get_registry"]
+    routes_mod.get_castle_root = originals["routes.get_castle_root"]
+    services_mod.get_registry = originals["services.get_registry"]
+    services_mod.get_castle_root = originals["services.get_castle_root"]
+    nodes_mod.get_registry = originals["nodes.get_registry"]
+    stream_mod.get_registry = originals["stream.get_registry"]
+    config_editor_mod.get_registry = originals["config_editor.get_registry"]
+    config_editor_mod.get_castle_root = originals["config_editor.get_castle_root"]
 
 
 @pytest.fixture
