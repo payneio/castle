@@ -7,34 +7,36 @@ programs:
       on the LAN
     source: components/central-context
     stack: python-fastapi
+    behavior: daemon
   notification-bridge:
     description: Desktop notification forwarder. This taps into your notifications
       system on the desktop and will forward all notifications the the central context
       server.
     source: components/notification-bridge
     stack: python-fastapi
+    behavior: daemon
   castle-api:
     description: Castle API
     source: castle-api
     stack: python-fastapi
+    behavior: daemon
   protonmail:
     description: ProtonMail email sync via Bridge
     source: components/protonmail
     stack: python-cli
-    install:
-      path:
-        alias: protonmail
+    behavior: tool
   backup-collect:
     description: Collect files from various sources into backup directory
     source: components/backup-collect
     stack: python-cli
-    tool:
-      system_dependencies:
-      - rsync
+    behavior: tool
+    system_dependencies:
+    - rsync
   castle-app:
     description: Castle web app
     source: app
     stack: react-vite
+    behavior: frontend
     build:
       commands:
       - - pnpm
@@ -45,124 +47,89 @@ programs:
     description: SSH tunnel manager with auto-reconnect
     source: components/devbox-connect
     stack: python-cli
-    install:
-      path:
-        alias: devbox-connect
+    behavior: tool
   mbox2eml:
     description: MBOX to EML email converter
     source: components/mbox2eml
     stack: python-cli
-    install:
-      path:
-        alias: mbox2eml
+    behavior: tool
   android-backup:
     description: Backup Android device using ADB
     source: components/android-backup
     stack: python-cli
-    install:
-      path:
-        alias: android-backup
-    tool:
-      system_dependencies:
-      - adb
+    behavior: tool
+    system_dependencies:
+    - adb
   browser:
     description: Browse the web using natural language via browser-use
     source: components/browser
     stack: python-cli
-    install:
-      path:
-        alias: browser
+    behavior: tool
   docx-extractor:
     description: Extract content and metadata from Word .docx files
     source: components/docx-extractor
     stack: python-cli
-    install:
-      path:
-        alias: docx-extractor
-    tool:
-      system_dependencies:
-      - pandoc
+    behavior: tool
+    system_dependencies:
+    - pandoc
   docx2md:
     description: Convert Word .docx files to Markdown
     source: components/docx2md
     stack: python-cli
-    install:
-      path:
-        alias: docx2md
-    tool:
-      system_dependencies:
-      - pandoc
+    behavior: tool
+    system_dependencies:
+    - pandoc
   gpt:
     description: OpenAI text generation utility
     source: components/gpt
     stack: python-cli
-    install:
-      path:
-        alias: gpt
+    behavior: tool
   html2text:
     description: Convert HTML content to plain text
     source: components/html2text
     stack: python-cli
-    install:
-      path:
-        alias: html2text
+    behavior: tool
   md2pdf:
     description: Convert Markdown files to PDF
     source: components/md2pdf
     stack: python-cli
-    install:
-      path:
-        alias: md2pdf
-    tool:
-      system_dependencies:
-      - pandoc
-      - texlive-latex-base
+    behavior: tool
+    system_dependencies:
+    - pandoc
+    - texlive-latex-base
   mdscraper:
     description: Combine text files into a single markdown document
     source: components/mdscraper
     stack: python-cli
-    install:
-      path:
-        alias: mdscraper
+    behavior: tool
   pdf-extractor:
     description: Extract content and metadata from PDF files
     source: components/pdf-extractor
     stack: python-cli
-    install:
-      path:
-        alias: pdf-extractor
+    behavior: tool
   pdf2md:
     description: Convert PDF files to Markdown
     source: components/pdf2md
     stack: python-cli
-    install:
-      path:
-        alias: pdf2md
-    tool:
-      system_dependencies:
-      - pandoc
-      - poppler-utils
+    behavior: tool
+    system_dependencies:
+    - pandoc
+    - poppler-utils
   schedule:
     description: Manage systemd user timers and scheduled tasks
     source: components/schedule
     stack: python-cli
-    install:
-      path:
-        alias: schedule
+    behavior: tool
   search:
     description: Manage self-contained searchable collections of files
     source: components/search
     stack: python-cli
-    install:
-      path:
-        alias: search
+    behavior: tool
   text-extractor:
     description: Extract content and metadata from text files
     source: components/text-extractor
     stack: python-cli
-    install:
-      path:
-        alias: text-extractor
+    behavior: tool
 
 services:
   castle-gateway:
@@ -189,7 +156,7 @@ services:
     component: central-context
     run:
       runner: python
-      tool: central-context
+      program: central-context
     manage:
       systemd: {}
     expose:
@@ -204,7 +171,7 @@ services:
     component: notification-bridge
     run:
       runner: python
-      tool: notification-bridge
+      program: notification-bridge
     defaults:
       env:
         CENTRAL_CONTEXT_URL: http://localhost:9001
@@ -224,7 +191,7 @@ services:
     component: castle-api
     run:
       runner: python
-      tool: castle-api
+      program: castle-api
     manage:
       systemd: {}
     expose:

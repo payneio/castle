@@ -156,17 +156,6 @@ def _summary_from_job(name: str, job: JobSpec, config: object) -> ComponentSumma
 
 def _summary_from_program(name: str, comp: ProgramSpec, root: Path) -> ComponentSummary:
     """Build a ComponentSummary from a ProgramSpec (tools/frontends)."""
-    # Determine behavior
-    is_tool = bool((comp.install and comp.install.path) or comp.tool)
-    is_frontend = bool(comp.build and (comp.build.outputs or comp.build.commands))
-
-    if is_tool:
-        behavior = "tool"
-    elif is_frontend:
-        behavior = "frontend"
-    else:
-        behavior = None
-
     source = comp.source
 
     # Infer runner from source directory
@@ -179,20 +168,19 @@ def _summary_from_program(name: str, comp: ProgramSpec, root: Path) -> Component
             runner = "command"
 
     installed: bool | None = None
-    if comp.install and comp.install.path:
-        alias = comp.install.path.alias or name
-        installed = shutil.which(alias) is not None
+    if comp.source and comp.stack:
+        installed = shutil.which(name) is not None
 
     return ComponentSummary(
         id=name,
         category="program",
         description=comp.description,
-        behavior=behavior,
+        behavior=comp.behavior,
         stack=comp.stack,
         runner=runner,
-        version=comp.tool.version if comp.tool else None,
+        version=comp.version,
         source=source,
-        system_dependencies=comp.tool.system_dependencies if comp.tool else [],
+        system_dependencies=comp.system_dependencies,
         installed=installed,
     )
 
@@ -325,29 +313,6 @@ def _program_from_spec(
     name: str, comp: ProgramSpec, root: Path, config: object | None = None
 ) -> ProgramSummary:
     """Build a ProgramSummary from a ProgramSpec."""
-    is_tool = bool((comp.install and comp.install.path) or comp.tool)
-    is_frontend = bool(comp.build and (comp.build.outputs or comp.build.commands))
-
-    if is_tool:
-        behavior = "tool"
-    elif is_frontend:
-        behavior = "frontend"
-    else:
-        behavior = None
-
-    # Derive behavior from backing service/job
-    if behavior is None and config is not None:
-        svc_components = {
-            s.component for s in config.services.values() if s.component
-        }
-        job_components = {
-            j.component for j in config.jobs.values() if j.component
-        }
-        if name in svc_components or name in config.services:
-            behavior = "daemon"
-        elif name in job_components or name in config.jobs:
-            behavior = "tool"
-
     source = comp.source
     runner = None
     if source:
@@ -358,24 +323,18 @@ def _program_from_spec(
             runner = "command"
 
     installed: bool | None = None
-    if comp.install and comp.install.path:
-        alias = comp.install.path.alias or name
-        installed = shutil.which(alias) is not None
-    elif config is not None:
-        # Daemons: check if the service's run.tool binary is on PATH
-        svc = config.services.get(name)
-        if svc and hasattr(svc.run, "tool"):
-            installed = shutil.which(svc.run.tool) is not None
+    if comp.source and comp.stack:
+        installed = shutil.which(name) is not None
 
     return ProgramSummary(
         id=name,
         description=comp.description,
-        behavior=behavior,
+        behavior=comp.behavior,
         stack=comp.stack,
         runner=runner,
-        version=comp.tool.version if comp.tool else None,
+        version=comp.version,
         source=source,
-        system_dependencies=comp.tool.system_dependencies if comp.tool else [],
+        system_dependencies=comp.system_dependencies,
         installed=installed,
         actions=available_actions(comp),
     )
@@ -701,21 +660,11 @@ def list_components(include_remote: bool = False) -> list[ComponentSummary]:
                     if ref and ref in config.programs:
                         s.source = config.programs[ref].source
 
-            # Programs — always include entries from the programs
-            # section as catalog items.  Derive behavior from backing
-            # service/job when the program has no install/build spec.
-            svc_components = {s.component for s in config.services.values() if s.component}
-            job_components = {j.component for j in config.jobs.values() if j.component}
-
+            # Programs from the software catalog
             for name, comp in config.programs.items():
                 summary = _summary_from_program(name, comp, root)
                 if summary.behavior is None:
-                    if name in svc_components or name in config.services:
-                        summary.behavior = "daemon"
-                    elif name in job_components or name in config.jobs:
-                        summary.behavior = "tool"
-                    else:
-                        continue
+                    continue
                 summary.node = local_hostname
                 summaries.append(summary)
         except FileNotFoundError:

@@ -5,7 +5,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Annotated, Literal, Union
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 EnvMap = dict[str, str]
 
@@ -38,7 +38,7 @@ class RunCommand(RunBase):
 
 class RunPython(RunBase):
     runner: Literal["python"]
-    tool: str
+    program: str
     args: list[str] = Field(default_factory=list)
 
 
@@ -100,33 +100,6 @@ class SystemdSpec(BaseModel):
 
 class ManageSpec(BaseModel):
     systemd: SystemdSpec | None = None
-
-
-# ---------------------
-# Install (PATH shims)
-# ---------------------
-
-
-class PathInstallSpec(BaseModel):
-    enable: bool = True
-    alias: str | None = None
-    shim: bool = True
-
-
-class InstallSpec(BaseModel):
-    path: PathInstallSpec | None = None
-
-
-# ---------------------
-# Tool spec
-# ---------------------
-
-
-class ToolSpec(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-
-    version: str = "1.0.0"
-    system_dependencies: list[str] = Field(default_factory=list)
 
 
 # ---------------------
@@ -206,12 +179,13 @@ class ProgramSpec(BaseModel):
 
     id: str = ""
     description: str | None = None
+    behavior: str | None = None
 
     source: str | None = None
     stack: str | None = None
 
-    install: InstallSpec | None = None
-    tool: ToolSpec | None = None
+    system_dependencies: list[str] = Field(default_factory=list)
+    version: str | None = None
     build: BuildSpec | None = None
 
     provides: list[Capability] = Field(default_factory=list)

@@ -10,17 +10,14 @@ from castle_core.manifest import (
     ExposeSpec,
     HttpExposeSpec,
     HttpInternal,
-    InstallSpec,
     JobSpec,
     ManageSpec,
-    PathInstallSpec,
     ProxySpec,
     RunCommand,
     RunPython,
     RunRemote,
     ServiceSpec,
     SystemdSpec,
-    ToolSpec,
 )
 
 
@@ -32,26 +29,27 @@ class TestProgramSpec:
         c = ProgramSpec(id="bare")
         assert c.description is None
         assert c.source is None
-        assert c.install is None
-        assert c.tool is None
+        assert c.behavior is None
         assert c.build is None
 
     def test_tool_component(self) -> None:
-        """Component with tool and install specs."""
+        """Component with tool behavior and system_dependencies."""
         c = ProgramSpec(
             id="my-tool",
             description="A tool",
             source="my-tool/",
-            tool=ToolSpec(),
-            install=InstallSpec(path=PathInstallSpec(alias="my-tool")),
+            behavior="tool",
+            system_dependencies=["pandoc"],
         )
         assert c.source == "my-tool/"
-        assert c.install.path.alias == "my-tool"
+        assert c.behavior == "tool"
+        assert c.system_dependencies == ["pandoc"]
 
     def test_frontend_component(self) -> None:
         """Component with build spec."""
         c = ProgramSpec(
             id="my-app",
+            behavior="frontend",
             build=BuildSpec(commands=[["pnpm", "build"]], outputs=["dist/"]),
         )
         assert c.build.outputs == ["dist/"]
@@ -74,7 +72,7 @@ class TestServiceSpec:
         """Service with run and expose."""
         s = ServiceSpec(
             id="svc",
-            run=RunPython(runner="python", tool="svc"),
+            run=RunPython(runner="python", program="svc"),
             expose=ExposeSpec(http=HttpExposeSpec(internal=HttpInternal(port=8000))),
         )
         assert s.run.runner == "python"
@@ -85,7 +83,7 @@ class TestServiceSpec:
         s = ServiceSpec(
             id="svc",
             component="my-component",
-            run=RunPython(runner="python", tool="svc"),
+            run=RunPython(runner="python", program="svc"),
         )
         assert s.component == "my-component"
 
@@ -93,7 +91,7 @@ class TestServiceSpec:
         """Service with proxy spec."""
         s = ServiceSpec(
             id="svc",
-            run=RunPython(runner="python", tool="svc"),
+            run=RunPython(runner="python", program="svc"),
             proxy=ProxySpec(caddy=CaddySpec(path_prefix="/svc")),
         )
         assert s.proxy.caddy.path_prefix == "/svc"
@@ -174,15 +172,14 @@ class TestModelSerialization:
         c = ProgramSpec(id="test", description="Test")
         data = c.model_dump(exclude_none=True, exclude={"id"})
         assert "description" in data
-        assert "install" not in data
-        assert "tool" not in data
+        assert "build" not in data
 
     def test_dump_service(self) -> None:
         """Full service serializes correctly."""
         s = ServiceSpec(
             id="svc",
             description="A service",
-            run=RunPython(runner="python", tool="svc"),
+            run=RunPython(runner="python", program="svc"),
             expose=ExposeSpec(
                 http=HttpExposeSpec(
                     internal=HttpInternal(port=9001), health_path="/health"

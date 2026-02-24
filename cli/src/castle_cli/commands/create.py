@@ -11,14 +11,11 @@ from castle_cli.manifest import (
     ExposeSpec,
     HttpExposeSpec,
     HttpInternal,
-    InstallSpec,
     ManageSpec,
-    PathInstallSpec,
     ProxySpec,
     RunPython,
     ServiceSpec,
     SystemdSpec,
-    ToolSpec,
 )
 from castle_cli.templates.scaffold import scaffold_project
 
@@ -82,19 +79,18 @@ def run_create(args: argparse.Namespace) -> int:
     )
 
     # Build entries
+    config.programs[name] = ProgramSpec(
+        id=name,
+        description=args.description or f"A castle {stack} program",
+        source=f"programs/{name}",
+        stack=stack,
+        behavior=behavior,
+    )
     if behavior == "daemon":
-        # Program for software identity
-        config.programs[name] = ProgramSpec(
-            id=name,
-            description=args.description or f"A castle {stack} program",
-            source=f"programs/{name}",
-            stack=stack,
-        )
-        # Service for deployment
         config.services[name] = ServiceSpec(
             id=name,
             component=name,
-            run=RunPython(runner="python", tool=name),
+            run=RunPython(runner="python", program=name),
             expose=ExposeSpec(
                 http=HttpExposeSpec(
                     internal=HttpInternal(port=port),
@@ -103,23 +99,6 @@ def run_create(args: argparse.Namespace) -> int:
             ),
             proxy=ProxySpec(caddy=CaddySpec(path_prefix=f"/{name}")),
             manage=ManageSpec(systemd=SystemdSpec()),
-        )
-    elif behavior == "tool":
-        config.programs[name] = ProgramSpec(
-            id=name,
-            description=args.description or f"A castle {stack} program",
-            source=f"programs/{name}",
-            stack=stack,
-            tool=ToolSpec(),
-            install=InstallSpec(path=PathInstallSpec(alias=name)),
-        )
-    else:
-        # frontend or other
-        config.programs[name] = ProgramSpec(
-            id=name,
-            description=args.description or f"A castle {stack} program",
-            source=f"programs/{name}",
-            stack=stack,
         )
 
     save_config(config)

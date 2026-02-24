@@ -115,7 +115,7 @@ export function ComponentFields({ component, onSave, onDelete }: ComponentFields
         <Field label="Runner">
           <span className="text-sm font-mono text-[var(--muted)]">
             {runnerLabel(runner)}
-            {(m.run as Record<string, string>)?.tool && (
+            {(m.run as Record<string, string>)?.program && (
               <> &middot; {(m.run as Record<string, string>).tool}</>
             )}
           </span>
