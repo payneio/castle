@@ -161,7 +161,7 @@ def _summary_from_program(name: str, comp: ProgramSpec, root: Path) -> Component
     # Infer runner from source directory
     runner = None
     if source:
-        source_dir = root / source
+        source_dir = Path(source)
         if (source_dir / "pyproject.toml").exists():
             runner = "python"
         elif source_dir.is_file():
@@ -316,7 +316,7 @@ def _program_from_spec(
     source = comp.source
     runner = None
     if source:
-        source_dir = root / source
+        source_dir = Path(source)
         if (source_dir / "pyproject.toml").exists():
             runner = "python"
         elif source_dir.is_file():
