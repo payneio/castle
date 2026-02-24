@@ -15,7 +15,7 @@ class ComponentSummary(BaseModel):
     """Summary of a single component."""
 
     id: str
-    category: str | None = None  # "component", "service", or "job"
+    category: str | None = None  # "program", "service", or "job"
     description: str | None = None
     behavior: str | None = None
     stack: str | None = None
@@ -35,6 +35,70 @@ class ComponentSummary(BaseModel):
 
 class ComponentDetail(ComponentSummary):
     """Full detail for a single component, including raw manifest."""
+
+    manifest: dict
+
+
+class ServiceSummary(BaseModel):
+    """Summary of a service (long-running daemon)."""
+
+    id: str
+    description: str | None = None
+    stack: str | None = None
+    runner: str | None = None
+    port: int | None = None
+    health_path: str | None = None
+    proxy_path: str | None = None
+    managed: bool = False
+    systemd: SystemdInfo | None = None
+    source: str | None = None
+    node: str | None = None
+
+
+class ServiceDetail(ServiceSummary):
+    """Full detail for a service, including raw manifest."""
+
+    manifest: dict
+
+
+class JobSummary(BaseModel):
+    """Summary of a job (scheduled task)."""
+
+    id: str
+    description: str | None = None
+    stack: str | None = None
+    runner: str | None = None
+    schedule: str | None = None
+    managed: bool = False
+    systemd: SystemdInfo | None = None
+    source: str | None = None
+    node: str | None = None
+
+
+class JobDetail(JobSummary):
+    """Full detail for a job, including raw manifest."""
+
+    manifest: dict
+
+
+class ProgramSummary(BaseModel):
+    """Summary of a program (software catalog entry)."""
+
+    id: str
+    description: str | None = None
+    behavior: str | None = None
+    stack: str | None = None
+    runner: str | None = None
+    version: str | None = None
+    source: str | None = None
+    system_dependencies: list[str] = []
+    installed: bool | None = None
+    actions: list[str] = []
+    node: str | None = None
+
+
+class ProgramDetail(ProgramSummary):
+    """Full detail for a program, including raw manifest."""
 
     manifest: dict
 

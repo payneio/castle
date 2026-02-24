@@ -1,4 +1,4 @@
-"""Castle manifest models — component specs, service specs, job specs."""
+"""Castle manifest models — program specs, service specs, job specs."""
 
 from __future__ import annotations
 
@@ -197,11 +197,11 @@ class DefaultsSpec(BaseModel):
 
 
 # ---------------------
-# Component spec — software identity
+# Program spec — software identity
 # ---------------------
 
 
-class ComponentSpec(BaseModel):
+class ProgramSpec(BaseModel):
     """Software catalog entry — what exists."""
 
     id: str = ""

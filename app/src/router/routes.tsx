@@ -20,7 +20,7 @@ export const router = createBrowserRouter([
     element: <ScheduledDetailPage />,
   },
   {
-    path: "/components/:name",
+    path: "/programs/:name",
     element: <ComponentDetailPage />,
   },
   {

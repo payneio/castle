@@ -19,3 +19,15 @@
 - Add amplifier to make a component builder
 
 -  What's this about? "I need to add the MQTT env vars to the systemd unit. Let me add them via a drop-in override so the deploy command doesn't overwrite them."
+
+
+- python-tool
+- golang-tool
+- rust-tool
+- bash-tool
+- python-daemon
+- golang-daemon
+- rust-daemon
+- react-frontend
+- python-webserver
+

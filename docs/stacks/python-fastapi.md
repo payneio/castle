@@ -99,7 +99,7 @@ settings = Settings()
 Castle passes config via env vars in castle.yaml:
 
 ```yaml
-components:
+programs:
   my-service:
     description: Does something useful
     source: components/my-service

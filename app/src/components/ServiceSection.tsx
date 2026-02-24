@@ -1,10 +1,10 @@
 import { useMemo } from "react"
-import type { ComponentSummary, HealthStatus } from "@/types"
+import type { ServiceSummary, HealthStatus } from "@/types"
 import { ComponentCard } from "./ComponentCard"
 import { SectionHeader } from "./SectionHeader"
 
 interface ServiceSectionProps {
-  services: ComponentSummary[]
+  services: ServiceSummary[]
   statuses: HealthStatus[]
 }
 

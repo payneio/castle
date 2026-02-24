@@ -153,7 +153,7 @@ These map to two files:
 **`castle.yaml`** (in the repo, version-controlled) — Three sections:
 
 ```yaml
-components:
+programs:
   central-context:
     description: Content storage API
     source: components/central-context
@@ -185,7 +185,7 @@ jobs:
       systemd: {}
 ```
 
-Components define *what software exists* (identity, source, install, tools).
+Programs define *what software exists* (identity, source, install, tools).
 Services define *how daemons run* (run config, expose, proxy, systemd).
 Jobs define *how scheduled tasks run* (run config, cron schedule, systemd).
 

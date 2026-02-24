@@ -1,14 +1,13 @@
 import { ExternalLink, Play, RefreshCw, Server, Square, Terminal } from "lucide-react"
 import { Link } from "react-router-dom"
-import type { ComponentSummary, HealthStatus } from "@/types"
+import type { ServiceSummary, HealthStatus } from "@/types"
 import { useServiceAction } from "@/services/api/hooks"
 import { runnerLabel } from "@/lib/labels"
 import { HealthBadge } from "./HealthBadge"
-import { BehaviorBadge } from "./BehaviorBadge"
 import { StackBadge } from "./StackBadge"
 
 interface ComponentCardProps {
-  component: ComponentSummary
+  component: ServiceSummary
   health?: HealthStatus
 }
 
@@ -39,7 +38,6 @@ export function ComponentCard({ component, health }: ComponentCardProps) {
       </div>
 
       <div className="flex gap-1.5 mb-2">
-        <BehaviorBadge behavior={component.behavior} />
         <StackBadge stack={component.stack} />
       </div>
 

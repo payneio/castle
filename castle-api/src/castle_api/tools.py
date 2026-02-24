@@ -1,13 +1,13 @@
-"""Tools router — browse and inspect tool components."""
+"""Tools router and program actions."""
 
 from __future__ import annotations
 
-import asyncio
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, status
 
-from castle_core.manifest import ComponentSpec
+from castle_core.manifest import ProgramSpec
+from castle_core.stacks import available_actions, get_handler
 
 from castle_api.config import get_config
 from castle_api.models import ToolDetail, ToolSummary
@@ -15,15 +15,15 @@ from castle_api.models import ToolDetail, ToolSummary
 router = APIRouter(tags=["tools"])
 
 
-def _is_tool(comp: ComponentSpec) -> bool:
+def _is_tool(comp: ProgramSpec) -> bool:
     """Check if a component is a tool (has install.path or tool spec)."""
     return bool((comp.install and comp.install.path) or comp.tool)
 
 
 def _tool_summary(
-    name: str, comp: ComponentSpec, root: Path | None = None
+    name: str, comp: ProgramSpec, root: Path | None = None
 ) -> ToolSummary:
-    """Build a ToolSummary from a ComponentSpec that is a tool."""
+    """Build a ToolSummary from a ProgramSpec that is a tool."""
     t = comp.tool
     installed = bool(
         comp.install and comp.install.path and comp.install.path.enable
@@ -54,7 +54,7 @@ def _tool_summary(
 def list_tools() -> list[ToolSummary]:
     """List all registered tools (requires repo access)."""
     config = get_config()
-    tools = {k: v for k, v in config.components.items() if _is_tool(v)}
+    tools = {k: v for k, v in config.programs.items() if _is_tool(v)}
 
     return sorted(
         [
@@ -70,13 +70,13 @@ def get_tool(name: str) -> ToolDetail:
     """Get detailed info for a single tool."""
     config = get_config()
 
-    if name not in config.components:
+    if name not in config.programs:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Component '{name}' not found",
         )
 
-    comp = config.components[name]
+    comp = config.programs[name]
     if not _is_tool(comp):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -87,82 +87,54 @@ def get_tool(name: str) -> ToolDetail:
     return ToolDetail(**summary.model_dump())
 
 
-@router.post("/tools/{name}/install")
-async def install_tool(name: str) -> dict:
-    """Install a tool to PATH via uv tool install."""
+# ---------------------------------------------------------------------------
+# Unified program action endpoint
+# ---------------------------------------------------------------------------
+
+_VALID_ACTIONS = {"build", "test", "lint", "type-check", "check", "install", "uninstall"}
+
+
+@router.post("/programs/{name}/{action}")
+async def program_action(name: str, action: str) -> dict:
+    """Run a lifecycle action on a program via its stack handler."""
+    if action not in _VALID_ACTIONS:
+        raise HTTPException(status_code=400, detail=f"Unknown action: {action}")
+
     config = get_config()
-    if name not in config.components:
+    if name not in config.programs:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=f"'{name}' not found"
         )
 
-    comp = config.components[name]
+    comp = config.programs[name]
     if not comp.source:
+        raise HTTPException(status_code=400, detail=f"'{name}' has no source directory")
+
+    actions = available_actions(comp)
+    if action not in actions:
         raise HTTPException(
-            status_code=400, detail=f"'{name}' has no source to install"
+            status_code=400,
+            detail=f"Action '{action}' not available for '{name}' (stack: {comp.stack})",
         )
 
-    source_dir = config.root / comp.source
-    if not (source_dir / "pyproject.toml").exists():
+    handler = get_handler(comp.stack)
+    if handler is None:
         raise HTTPException(
-            status_code=400, detail=f"No pyproject.toml in {comp.source}"
+            status_code=400, detail=f"No handler for stack '{comp.stack}'"
         )
 
-    proc = await asyncio.create_subprocess_exec(
-        "uv",
-        "tool",
-        "install",
-        "--editable",
-        str(source_dir),
-        "--force",
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    stdout, stderr = await proc.communicate()
-    output = (stdout or stderr or b"").decode().strip()
+    # Map hyphenated action names to method names (type-check → type_check)
+    method_name = action.replace("-", "_")
+    method = getattr(handler, method_name)
 
-    if proc.returncode != 0:
-        raise HTTPException(status_code=500, detail=output or "Install failed")
+    result = await method(name, comp, config.root)
 
-    return {"component": name, "action": "install", "status": "ok"}
+    if result.status != "ok":
+        raise HTTPException(status_code=500, detail=result.output or f"{action} failed")
 
-
-@router.post("/tools/{name}/uninstall")
-async def uninstall_tool(name: str) -> dict:
-    """Uninstall a tool from PATH via uv tool uninstall."""
-    config = get_config()
-    if name not in config.components:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=f"'{name}' not found"
-        )
-
-    comp = config.components[name]
-    if not comp.source:
-        raise HTTPException(status_code=400, detail=f"'{name}' has no source")
-
-    # uv tool uninstall uses the package name from pyproject.toml
-    source_dir = config.root / comp.source
-    pkg_name = source_dir.name
-    pyproject = source_dir / "pyproject.toml"
-    if pyproject.exists():
-        import tomllib
-
-        with open(pyproject, "rb") as f:
-            data = tomllib.load(f)
-        pkg_name = data.get("project", {}).get("name", pkg_name)
-
-    proc = await asyncio.create_subprocess_exec(
-        "uv",
-        "tool",
-        "uninstall",
-        pkg_name,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    stdout, stderr = await proc.communicate()
-    output = (stdout or stderr or b"").decode().strip()
-
-    if proc.returncode != 0:
-        raise HTTPException(status_code=500, detail=output or "Uninstall failed")
-
-    return {"component": name, "action": "uninstall", "status": "ok"}
+    return {
+        "component": result.component,
+        "action": result.action,
+        "status": result.status,
+        "output": result.output,
+    }

@@ -1,17 +1,16 @@
 import { useParams } from "react-router-dom"
-import { Plug, Unplug } from "lucide-react"
-import { useComponent, useEventStream, useToolDetail, useToolAction } from "@/services/api/hooks"
+import { useProgram, useEventStream, useToolDetail } from "@/services/api/hooks"
 import { runnerLabel } from "@/lib/labels"
 import { DetailHeader } from "@/components/detail/DetailHeader"
 import { ConfigPanel } from "@/components/detail/ConfigPanel"
+import { ProgramActions } from "@/components/ProgramActions"
 
 export function ComponentDetailPage() {
   useEventStream()
   const { name } = useParams<{ name: string }>()
-  const { data: component, isLoading, error, refetch } = useComponent(name ?? "")
+  const { data: component, isLoading, error, refetch } = useProgram(name ?? "")
   const isTool = component?.behavior === "tool"
   const { data: toolDetail } = useToolDetail(isTool ? (name ?? "") : "")
-  const { mutate: toolAction, isPending: toolPending } = useToolAction()
 
   if (isLoading) {
     return (
@@ -23,7 +22,7 @@ export function ComponentDetailPage() {
     return (
       <div className="max-w-3xl mx-auto px-6 py-8">
         <DetailHeader backTo="/" backLabel="Back" name={name ?? ""} />
-        <p className="text-red-400">Component not found</p>
+        <p className="text-red-400">Program not found</p>
       </div>
     )
   }
@@ -32,33 +31,13 @@ export function ComponentDetailPage() {
     <div className="max-w-3xl mx-auto px-6 py-8">
       <DetailHeader
         backTo="/"
-        backLabel="Back to Components"
+        backLabel="Back to Programs"
         name={component.id}
         behavior={component.behavior}
         stack={component.stack}
         source={component.source}
       >
-        {isTool && (
-          <div className="flex items-center gap-2">
-            {component.installed ? (
-              <button
-                onClick={() => toolAction({ name: component.id, action: "uninstall" })}
-                disabled={toolPending}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded border border-red-800 text-red-400 hover:bg-red-800/20 transition-colors disabled:opacity-40"
-              >
-                <Unplug size={14} /> Uninstall
-              </button>
-            ) : (
-              <button
-                onClick={() => toolAction({ name: component.id, action: "install" })}
-                disabled={toolPending}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded border border-green-800 text-green-400 hover:bg-green-800/20 transition-colors disabled:opacity-40"
-              >
-                <Plug size={14} /> Install to PATH
-              </button>
-            )}
-          </div>
-        )}
+        <ProgramActions name={component.id} actions={component.actions} installed={component.installed} />
       </DetailHeader>
 
       {component.description && (
@@ -121,7 +100,7 @@ export function ComponentDetailPage() {
         </div>
       )}
 
-      <ConfigPanel component={component} configSection="components" onRefetch={refetch} />
+      <ConfigPanel component={component} configSection="programs" onRefetch={refetch} />
     </div>
   )
 }

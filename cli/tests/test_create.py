@@ -32,7 +32,7 @@ class TestCreateCommand:
             result = run_create(args)
 
         assert result == 0
-        project_dir = castle_root / "components" / "my-api"
+        project_dir = castle_root / "programs" / "my-api"
         assert project_dir.exists()
         assert (project_dir / "pyproject.toml").exists()
         assert (project_dir / "src" / "my_api" / "main.py").exists()
@@ -41,8 +41,8 @@ class TestCreateCommand:
         assert (project_dir / "tests" / "test_health.py").exists()
         assert (project_dir / "CLAUDE.md").exists()
 
-        # Verify registered as ComponentSpec + ServiceSpec
-        assert "my-api" in config.components
+        # Verify registered as ProgramSpec + ServiceSpec
+        assert "my-api" in config.programs
         assert "my-api" in config.services
         svc = config.services["my-api"]
         assert svc.expose.http.internal.port == 9050
@@ -64,12 +64,12 @@ class TestCreateCommand:
             result = run_create(args)
 
         assert result == 0
-        project_dir = castle_root / "components" / "my-tool2"
+        project_dir = castle_root / "programs" / "my-tool2"
         assert project_dir.exists()
         assert (project_dir / "src" / "my_tool2" / "main.py").exists()
         assert (project_dir / "CLAUDE.md").exists()
-        assert "my-tool2" in config.components
-        comp = config.components["my-tool2"]
+        assert "my-tool2" in config.programs
+        comp = config.programs["my-tool2"]
         assert comp.tool is not None
         assert comp.install is not None
 

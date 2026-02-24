@@ -1,21 +1,21 @@
-# Component Registry
+# Registry
 
-How castle tracks, configures, and manages components. This is the central
-reference for `castle.yaml` structure and the registry architecture.
+How castle tracks, configures, and manages programs, services, and jobs.
+This is the central reference for `castle.yaml` structure and the registry
+architecture.
 
 ## castle.yaml
 
-The single source of truth for all components. Lives at the repo root.
-Three top-level sections:
+The single source of truth. Lives at the repo root. Three top-level sections:
 
 ```yaml
 gateway:
   port: 9000
 
-components:
+programs:
   my-tool:
     description: Does something useful
-    source: components/my-tool
+    source: programs/my-tool
     install:
       path: { alias: my-tool }
     tool:
@@ -51,22 +51,22 @@ jobs:
 
 | Section | Purpose | Category |
 |---------|---------|----------|
-| `components:` | Software catalog — what exists | tool, frontend, component |
+| `programs:` | Software catalog — what exists | tool, frontend, program |
 | `services:` | Long-running daemons — how they run | service |
 | `jobs:` | Scheduled tasks — when they run | job |
 
-Services and jobs can reference a component via `component:` for description
+Services and jobs can reference a program via `component:` for description
 fallthrough and source code linking. They can also exist independently
 (e.g., `castle-gateway` runs Caddy — not our software).
 
-## Component blocks
+## Program blocks
 
-Components define **what software exists** — identity, source, tools, builds.
+Programs define **what software exists** — identity, source, tools, builds.
 
 ### `source` — Where the source lives
 
 ```yaml
-source: components/my-tool
+source: programs/my-tool
 ```
 
 Relative path from repo root to the project directory.
@@ -92,7 +92,7 @@ tool:
 
 This block provides metadata for `castle tool list` and the dashboard.
 It's separate from `install` (which handles PATH registration). The source
-directory is set via the top-level `source` field on the component, not here.
+directory is set via the top-level `source` field on the program, not here.
 
 ### `build` — How to build it
 
@@ -203,7 +203,7 @@ Castle generates a systemd `.timer` file alongside the `.service` unit.
 Jobs also support `run` (required), `manage`, and `defaults` — same
 semantics as services.
 
-## Registering a new component
+## Registering a new program
 
 ### Via `castle create` (recommended)
 
@@ -211,7 +211,7 @@ semantics as services.
 # Service — scaffolds project, assigns port, registers in castle.yaml
 castle create my-service --stack python-fastapi --description "Does something"
 
-# Tool — scaffolds under components/
+# Tool — scaffolds under programs/
 castle create my-tool --stack python-cli --description "Does something"
 ```
 
@@ -220,20 +220,20 @@ castle create my-tool --stack python-cli --description "Does something"
 Add entries to the appropriate sections of `castle.yaml`:
 
 ```yaml
-# Tool — only needs a component entry
-components:
+# Tool — only needs a program entry
+programs:
   my-tool:
     description: Does something useful
-    source: components/my-tool
+    source: programs/my-tool
     install:
       path:
         alias: my-tool
 
-# Service — needs both component and service entries
-components:
+# Service — needs both program and service entries
+programs:
   my-service:
     description: Does something useful
-    source: components/my-service
+    source: programs/my-service
 
 services:
   my-service:
@@ -257,7 +257,7 @@ services:
 
 ```bash
 castle create my-service --stack python-fastapi   # 1. Scaffold + register
-cd components/my-service && uv sync       # 2. Install deps
+cd programs/my-service && uv sync         # 2. Install deps
 # ... implement ...
 castle test my-service                    # 3. Run tests
 castle service enable my-service          # 4. Generate systemd unit, start
@@ -277,10 +277,10 @@ castle service disable my-service # Stop and remove systemd unit
 
 ```bash
 castle create my-tool --stack python-cli        # 1. Scaffold + register
-cd components/my-tool && uv sync         # 2. Install deps
+cd programs/my-tool && uv sync           # 2. Install deps
 # ... implement ...
 castle test my-tool                      # 3. Run tests
-uv tool install --editable components/my-tool/  # 4. Install to PATH
+uv tool install --editable programs/my-tool/    # 4. Install to PATH
 ```
 
 ### Job lifecycle
@@ -306,7 +306,7 @@ and a `.timer` file.
 
 | What | Where |
 |------|-------|
-| Component registry | `castle.yaml` (repo root) |
+| Registry | `castle.yaml` (repo root) |
 | Service data | `/data/castle/<name>/` |
 | Secrets | `~/.castle/secrets/<NAME>` |
 | Generated Caddyfile | `~/.castle/generated/Caddyfile` |
@@ -317,7 +317,7 @@ and a `.timer` file.
 
 The Pydantic models live in `core/src/castle_core/manifest.py`. Key classes:
 
-- `ComponentSpec` — software catalog entry (source, install, tool, build)
+- `ProgramSpec` — software catalog entry (source, install, tool, build)
 - `ServiceSpec` — long-running daemon (run, expose, proxy, manage, defaults)
 - `JobSpec` — scheduled task (run, schedule, manage, defaults)
 - `RunSpec` — discriminated union (RunPython, RunCommand, RunContainer, RunNode, RunRemote)
@@ -325,7 +325,7 @@ The Pydantic models live in `core/src/castle_core/manifest.py`. Key classes:
 - `CaddySpec`, `SystemdSpec`, `HttpExposeSpec`, `HttpInternal`
 
 Config loading: `core/src/castle_core/config.py` — `load_config()` parses
-castle.yaml into `CastleConfig` with typed `components`, `services`, and
+castle.yaml into `CastleConfig` with typed `programs`, `services`, and
 `jobs` dicts.
 
 Infrastructure generators: `core/src/castle_core/generators/` — systemd unit/timer

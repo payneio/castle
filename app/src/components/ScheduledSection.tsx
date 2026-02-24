@@ -1,12 +1,12 @@
 import { Link } from "react-router-dom"
 import { Play, RefreshCw, Square } from "lucide-react"
-import type { ComponentSummary, HealthStatus } from "@/types"
+import type { JobSummary, HealthStatus } from "@/types"
 import { useServiceAction } from "@/services/api/hooks"
 import { SectionHeader } from "./SectionHeader"
 import { StackBadge } from "./StackBadge"
 
 interface ScheduledSectionProps {
-  jobs: ComponentSummary[]
+  jobs: JobSummary[]
   statuses: HealthStatus[]
 }
 
@@ -38,7 +38,7 @@ export function ScheduledSection({ jobs, statuses }: ScheduledSectionProps) {
   )
 }
 
-function ScheduledRow({ job, health }: { job: ComponentSummary; health?: HealthStatus }) {
+function ScheduledRow({ job, health }: { job: JobSummary; health?: HealthStatus }) {
   const { mutate, isPending } = useServiceAction()
   const isDown = health?.status === "down"
 

@@ -1,11 +1,11 @@
 import { useMemo, useState } from "react"
 import { Check, Loader2, Save, Trash2 } from "lucide-react"
-import type { ComponentDetail } from "@/types"
+import type { AnyDetail } from "@/types"
 import { runnerLabel } from "@/lib/labels"
 import { SecretsEditor } from "./SecretsEditor"
 
 interface ComponentFieldsProps {
-  component: ComponentDetail
+  component: AnyDetail
   onSave: (name: string, config: Record<string, unknown>) => Promise<void>
   onDelete?: (name: string) => Promise<void>
 }
@@ -122,7 +122,7 @@ export function ComponentFields({ component, onSave, onDelete }: ComponentFields
         </Field>
       )}
 
-      {(component.managed || port) && (
+      {("managed" in component && component.managed || port) && (
         <Field label="Port">
           <input
             value={port}
@@ -133,7 +133,7 @@ export function ComponentFields({ component, onSave, onDelete }: ComponentFields
         </Field>
       )}
 
-      {(component.managed || healthPath) && (
+      {("managed" in component && component.managed || healthPath) && (
         <Field label="Health path">
           <input
             value={healthPath}
@@ -205,11 +205,13 @@ export function ComponentFields({ component, onSave, onDelete }: ComponentFields
         </Field>
       )}
 
-      <Field label="Systemd">
-        <span className="text-sm text-[var(--muted)]">
-          {component.managed ? "Yes" : "No"}
-        </span>
-      </Field>
+      {"managed" in component && (
+        <Field label="Systemd">
+          <span className="text-sm text-[var(--muted)]">
+            {component.managed ? "Yes" : "No"}
+          </span>
+        </Field>
+      )}
 
       <div className="flex items-center justify-between pt-3 border-t border-[var(--border)]">
         {onDelete ? (

@@ -9,7 +9,7 @@ from pathlib import Path
 
 import yaml
 
-from castle_core.manifest import ComponentSpec, JobSpec, ServiceSpec
+from castle_core.manifest import ProgramSpec, JobSpec, ServiceSpec
 
 
 def find_castle_root() -> Path:
@@ -47,25 +47,25 @@ class CastleConfig:
 
     root: Path
     gateway: GatewayConfig
-    components: dict[str, ComponentSpec]
+    programs: dict[str, ProgramSpec]
     services: dict[str, ServiceSpec]
     jobs: dict[str, JobSpec]
 
     @property
-    def tools(self) -> dict[str, ComponentSpec]:
-        """Return components that are tools (have install.path or tool spec)."""
+    def tools(self) -> dict[str, ProgramSpec]:
+        """Return programs that are tools (have install.path or tool spec)."""
         return {
             k: v
-            for k, v in self.components.items()
+            for k, v in self.programs.items()
             if (v.install and v.install.path) or v.tool
         }
 
     @property
-    def frontends(self) -> dict[str, ComponentSpec]:
-        """Return components that are frontends (have build outputs)."""
+    def frontends(self) -> dict[str, ProgramSpec]:
+        """Return programs that are frontends (have build outputs)."""
         return {
             k: v
-            for k, v in self.components.items()
+            for k, v in self.programs.items()
             if v.build and (v.build.outputs or v.build.commands)
         }
 
@@ -94,11 +94,11 @@ def _read_secret(name: str) -> str:
     return f"<MISSING_SECRET:{name}>"
 
 
-def _parse_component(name: str, data: dict) -> ComponentSpec:
-    """Parse a components: entry into a ComponentSpec."""
+def _parse_program(name: str, data: dict) -> ProgramSpec:
+    """Parse a programs: entry into a ProgramSpec."""
     data_copy = dict(data)
     data_copy["id"] = name
-    return ComponentSpec.model_validate(data_copy)
+    return ProgramSpec.model_validate(data_copy)
 
 
 def _parse_service(name: str, data: dict) -> ServiceSpec:
@@ -130,9 +130,11 @@ def load_config(root: Path | None = None) -> CastleConfig:
     gateway_data = data.get("gateway", {})
     gateway = GatewayConfig(port=gateway_data.get("port", 9000))
 
-    components: dict[str, ComponentSpec] = {}
-    for name, comp_data in data.get("components", {}).items():
-        components[name] = _parse_component(name, comp_data)
+    programs: dict[str, ProgramSpec] = {}
+    # Support both "programs:" and legacy "components:" key
+    programs_data = data.get("programs") or data.get("components") or {}
+    for name, comp_data in programs_data.items():
+        programs[name] = _parse_program(name, comp_data)
 
     services: dict[str, ServiceSpec] = {}
     for name, svc_data in data.get("services", {}).items():
@@ -145,7 +147,7 @@ def load_config(root: Path | None = None) -> CastleConfig:
     return CastleConfig(
         root=root,
         gateway=gateway,
-        components=components,
+        programs=programs,
         services=services,
         jobs=jobs,
     )
@@ -187,7 +189,7 @@ _STRUCTURAL_KEYS = {
 }
 
 
-def _spec_to_yaml_dict(spec: ComponentSpec | ServiceSpec | JobSpec) -> dict:
+def _spec_to_yaml_dict(spec: ProgramSpec | ServiceSpec | JobSpec) -> dict:
     """Serialize a spec to a YAML-friendly dict, preserving structural presence."""
     exclude_fields = {"id"}
     full = spec.model_dump(mode="json", exclude_none=True, exclude=exclude_fields)
@@ -228,10 +230,10 @@ def save_config(config: CastleConfig) -> None:
     """Save castle configuration to castle.yaml."""
     data: dict = {"gateway": {"port": config.gateway.port}}
 
-    if config.components:
-        data["components"] = {}
-        for name, spec in config.components.items():
-            data["components"][name] = _spec_to_yaml_dict(spec)
+    if config.programs:
+        data["programs"] = {}
+        for name, spec in config.programs.items():
+            data["programs"][name] = _spec_to_yaml_dict(spec)
 
     if config.services:
         data["services"] = {}

@@ -4,9 +4,65 @@ export interface SystemdInfo {
   timer: boolean
 }
 
+export interface ServiceSummary {
+  id: string
+  description: string | null
+  stack: string | null
+  runner: string | null
+  port: number | null
+  health_path: string | null
+  proxy_path: string | null
+  managed: boolean
+  systemd: SystemdInfo | null
+  source: string | null
+  node: string | null
+}
+
+export interface ServiceDetail extends ServiceSummary {
+  manifest: Record<string, unknown>
+}
+
+export interface JobSummary {
+  id: string
+  description: string | null
+  stack: string | null
+  runner: string | null
+  schedule: string | null
+  managed: boolean
+  systemd: SystemdInfo | null
+  source: string | null
+  node: string | null
+}
+
+export interface JobDetail extends JobSummary {
+  manifest: Record<string, unknown>
+}
+
+export interface ProgramSummary {
+  id: string
+  description: string | null
+  behavior: string | null
+  stack: string | null
+  runner: string | null
+  version: string | null
+  source: string | null
+  system_dependencies: string[]
+  installed: boolean | null
+  actions: string[]
+  node: string | null
+}
+
+export interface ProgramDetail extends ProgramSummary {
+  manifest: Record<string, unknown>
+}
+
+// Union for shared detail components (ConfigPanel, ComponentFields)
+export type AnyDetail = ServiceDetail | JobDetail | ProgramDetail
+
+// Legacy unified type — kept for NodeDetail.deployed and compat endpoint
 export interface ComponentSummary {
   id: string
-  category: "component" | "service" | "job" | null
+  category: "program" | "service" | "job" | null
   description: string | null
   behavior: string | null
   stack: string | null

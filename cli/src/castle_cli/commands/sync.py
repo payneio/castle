@@ -28,7 +28,7 @@ def run_sync(args: argparse.Namespace) -> int:
     all_ok = True
     synced_dirs: set[Path] = set()
 
-    for name, comp in config.components.items():
+    for name, comp in config.programs.items():
         source_dir = comp.source_dir
         if not source_dir:
             continue
@@ -63,7 +63,7 @@ def run_sync(args: argparse.Namespace) -> int:
     installed_dirs: set[Path] = set()
 
     # Install components with install.path
-    for name, comp in config.components.items():
+    for name, comp in config.programs.items():
         if not (comp.install and comp.install.path):
             continue
         source = comp.source_dir
@@ -77,8 +77,8 @@ def run_sync(args: argparse.Namespace) -> int:
             continue
         # Find source from component reference
         source = None
-        if svc.component and svc.component in config.components:
-            source = config.components[svc.component].source_dir
+        if svc.component and svc.component in config.programs:
+            source = config.programs[svc.component].source_dir
         if not source:
             continue
         source_dir = config.root / source

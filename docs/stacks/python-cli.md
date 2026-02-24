@@ -314,7 +314,7 @@ uv run ruff format .        # Format
 ## Registering in castle.yaml
 
 ```yaml
-components:
+programs:
   my-tool:
     description: Does something useful
     source: components/my-tool
@@ -326,7 +326,7 @@ components:
 Tools with system dependencies declare them in the component:
 
 ```yaml
-components:
+programs:
   pdf2md:
     description: Convert PDF files to Markdown
     source: components/pdf2md
@@ -337,7 +337,7 @@ components:
       system_dependencies: [pandoc, poppler-utils]
 ```
 
-Tools live in the `components:` section. If a tool also runs on a schedule,
+Tools live in the `programs:` section. If a tool also runs on a schedule,
 add a separate entry in the `jobs:` section referencing the component.
 
 See @docs/component-registry.md for the full registry reference.

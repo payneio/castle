@@ -1,4 +1,4 @@
-"""castle list - show all registered components."""
+"""castle list - show all registered programs, services, and jobs."""
 
 from __future__ import annotations
 
@@ -50,27 +50,27 @@ def _load_deployed() -> dict[str, object] | None:
 
 
 def _resolve_stack(config: object, name: str) -> str | None:
-    """Resolve stack from component reference or direct component."""
-    # Check services for component ref
+    """Resolve stack from program reference or direct program."""
+    # Check services for program ref
     if name in config.services:
         svc = config.services[name]
         comp_name = svc.component
-        if comp_name and comp_name in config.components:
-            return config.components[comp_name].stack
-    # Check jobs for component ref
+        if comp_name and comp_name in config.programs:
+            return config.programs[comp_name].stack
+    # Check jobs for program ref
     if name in config.jobs:
         job = config.jobs[name]
         comp_name = job.component
-        if comp_name and comp_name in config.components:
-            return config.components[comp_name].stack
-    # Direct component
-    if name in config.components:
-        return config.components[name].stack
+        if comp_name and comp_name in config.programs:
+            return config.programs[comp_name].stack
+    # Direct program
+    if name in config.programs:
+        return config.programs[name].stack
     return None
 
 
 def run_list(args: argparse.Namespace) -> int:
-    """List all components, services, and jobs."""
+    """List all programs, services, and jobs."""
     config = load_config()
     deployed = _load_deployed()
 
@@ -123,12 +123,12 @@ def run_list(args: argparse.Namespace) -> int:
                 sched = f"  {DIM}[{job.schedule}]{RESET}"
                 print(f"  {status} {BOLD}{name}{RESET}{sched}{desc}")
 
-    # Components (tools, frontends, etc.)
+    # Programs (tools, frontends, etc.)
     show_tools = not filter_behavior or filter_behavior == "tool"
     show_frontends = not filter_behavior or filter_behavior == "frontend"
 
     if show_tools or show_frontends:
-        # Collect non-daemon components
+        # Collect non-daemon programs
         comps: dict[str, tuple[str, str | None, str | None]] = {}
 
         if show_tools:
@@ -147,7 +147,7 @@ def run_list(args: argparse.Namespace) -> int:
         if comps:
             any_output = True
             color = CYAN
-            print(f"\n{BOLD}{color}Components{RESET}")
+            print(f"\n{BOLD}{color}Programs{RESET}")
             print(f"{color}{'─' * 40}{RESET}")
             for name, (behavior, stack, description) in comps.items():
                 stack_str = f"  {DIM}{stack}{RESET}" if stack else ""
@@ -156,7 +156,7 @@ def run_list(args: argparse.Namespace) -> int:
                 print(f"  {BOLD}{name}{RESET}{stack_str}{behavior_str}{desc}")
 
     if not any_output:
-        print("No components found.")
+        print("No programs found.")
 
     if deployed is None:
         print(f"\n{DIM}(no registry — run 'castle deploy' to generate){RESET}")

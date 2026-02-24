@@ -3,37 +3,44 @@
 from __future__ import annotations
 
 import argparse
-import subprocess
-from pathlib import Path
+import asyncio
+
+from castle_core.stacks import get_handler
 
 from castle_cli.config import CastleConfig, load_config
 
 
-def _get_project_dir(config: CastleConfig, project_name: str) -> Path:
-    """Get the directory for a component."""
-    if project_name not in config.components:
-        raise ValueError(f"Unknown component: {project_name}")
-    manifest = config.components[project_name]
-    working_dir = manifest.source_dir or project_name
-    return config.root / working_dir
+def _run_action(config: CastleConfig, project_name: str, action: str) -> bool:
+    """Run a stack action for a single project. Returns True on success."""
+    if project_name not in config.programs:
+        print(f"Unknown component: {project_name}")
+        return False
 
+    comp = config.programs[project_name]
+    if not comp.source:
+        print(f"  {project_name}: no source directory, skipping")
+        return True
 
-def _has_pyproject(project_dir: Path) -> bool:
-    """Check if a project directory has a pyproject.toml."""
-    return (project_dir / "pyproject.toml").exists()
+    handler = get_handler(comp.stack)
+    if handler is None:
+        print(f"  {project_name}: unsupported stack '{comp.stack}', skipping")
+        return True
 
-
-def _run_in_project(project_dir: Path, cmd: list[str], label: str) -> bool:
-    """Run a command in a project directory. Returns True on success."""
-    if not _has_pyproject(project_dir):
-        return True  # Skip projects without pyproject.toml
+    method_name = action.replace("-", "_")
+    method = getattr(handler, method_name, None)
+    if method is None:
+        print(f"  {project_name}: action '{action}' not supported")
+        return False
 
     print(f"\n{'─' * 40}")
-    print(f"  {label}: {project_dir.name}")
+    print(f"  {action}: {project_name}")
     print(f"{'─' * 40}")
 
-    result = subprocess.run(cmd, cwd=project_dir)
-    return result.returncode == 0
+    result = asyncio.run(method(project_name, comp, config.root))
+    if result.output:
+        print(result.output)
+
+    return result.status == "ok"
 
 
 def run_test(args: argparse.Namespace) -> int:
@@ -41,34 +48,23 @@ def run_test(args: argparse.Namespace) -> int:
     config = load_config()
 
     if args.project:
-        project_dir = _get_project_dir(config, args.project)
-        tests_dir = project_dir / "tests"
-        if not tests_dir.exists():
-            print(f"No tests directory found for {args.project}")
-            return 1
-        success = _run_in_project(
-            project_dir,
-            ["uv", "run", "pytest", "tests/", "-v"],
-            "Testing",
-        )
+        success = _run_action(config, args.project, "test")
         return 0 if success else 1
 
     # Run all
     all_passed = True
-    for name, manifest in config.components.items():
-        working_dir = manifest.source_dir or name
-        project_dir = config.root / working_dir
-        tests_dir = project_dir / "tests"
-        if not tests_dir.exists():
+    for name, comp in config.programs.items():
+        if not comp.source:
             continue
-        if not _has_pyproject(project_dir):
+        handler = get_handler(comp.stack)
+        if handler is None:
             continue
-        success = _run_in_project(
-            project_dir,
-            ["uv", "run", "pytest", "tests/", "-v"],
-            "Testing",
-        )
-        if not success:
+        # Skip projects without a tests directory (python) or test script (node)
+        source_dir = config.root / comp.source
+        if comp.stack in ("python-cli", "python-fastapi"):
+            if not (source_dir / "tests").exists():
+                continue
+        if not _run_action(config, name, "test"):
             all_passed = False
 
     if all_passed:
@@ -83,27 +79,18 @@ def run_lint(args: argparse.Namespace) -> int:
     config = load_config()
 
     if args.project:
-        project_dir = _get_project_dir(config, args.project)
-        success = _run_in_project(
-            project_dir,
-            ["uv", "run", "ruff", "check", "."],
-            "Linting",
-        )
+        success = _run_action(config, args.project, "lint")
         return 0 if success else 1
 
     # Run all
     all_passed = True
-    for name, manifest in config.components.items():
-        working_dir = manifest.source_dir or name
-        project_dir = config.root / working_dir
-        if not _has_pyproject(project_dir):
+    for name, comp in config.programs.items():
+        if not comp.source:
             continue
-        success = _run_in_project(
-            project_dir,
-            ["uv", "run", "ruff", "check", "."],
-            "Linting",
-        )
-        if not success:
+        handler = get_handler(comp.stack)
+        if handler is None:
+            continue
+        if not _run_action(config, name, "lint"):
             all_passed = False
 
     if all_passed:

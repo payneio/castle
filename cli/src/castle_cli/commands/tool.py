@@ -29,7 +29,7 @@ def run_tool(args: argparse.Namespace) -> int:
 def _tool_list() -> int:
     """List all registered tools."""
     config = load_config()
-    tools = {k: v for k, v in config.components.items() if v.tool}
+    tools = {k: v for k, v in config.programs.items() if v.tool}
 
     if not tools:
         print("No tools registered.")
@@ -51,11 +51,11 @@ def _tool_list() -> int:
 def _tool_info(name: str) -> int:
     """Show detailed info about a tool, including .md documentation."""
     config = load_config()
-    if name not in config.components:
+    if name not in config.programs:
         print(f"Error: '{name}' not found")
         return 1
 
-    manifest = config.components[name]
+    manifest = config.programs[name]
     if not manifest.tool:
         print(f"Error: '{name}' is not a tool")
         return 1

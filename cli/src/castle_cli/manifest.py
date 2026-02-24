@@ -5,7 +5,7 @@ from castle_core.manifest import (  # noqa: F401 — explicit re-exports for typ
     BuildSpec,
     CaddySpec,
     Capability,
-    ComponentSpec,
+    ProgramSpec,
     DefaultsSpec,
     EnvMap,
     ExposeSpec,
