@@ -212,10 +212,6 @@ services:
       volumes:
       - /data/castle/castle-mqtt/config:/mosquitto/config
       - /data/castle/castle-mqtt/data:/mosquitto/data
-    expose:
-      http:
-        internal:
-          port: 1883
     manage:
       systemd: {}
 jobs:
