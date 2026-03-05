@@ -185,6 +185,7 @@ class ProgramSpec(BaseModel):
     stack: str | None = None
 
     system_dependencies: list[str] = Field(default_factory=list)
+    install_extras: list[str] = Field(default_factory=list)
     version: str | None = None
     build: BuildSpec | None = None
 

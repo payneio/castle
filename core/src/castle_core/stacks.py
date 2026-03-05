@@ -139,8 +139,11 @@ class PythonHandler(StackHandler):
 
     async def install(self, name: str, comp: ProgramSpec, root: Path) -> ActionResult:
         src = _source_dir(comp, root)
+        pkg_spec = str(src)
+        if comp.install_extras:
+            pkg_spec += "[" + ",".join(comp.install_extras) + "]"
         rc, output = await _run(
-            ["uv", "tool", "install", "--editable", str(src), "--force"], src
+            ["uv", "tool", "install", "--editable", pkg_spec, "--force"], src
         )
         return ActionResult(
             component=name, action="install", status="ok" if rc == 0 else "error", output=output
