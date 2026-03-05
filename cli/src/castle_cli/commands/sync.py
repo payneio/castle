@@ -86,8 +86,13 @@ def run_sync(args: argparse.Namespace) -> int:
             continue
         if (source_dir / "pyproject.toml").exists():
             print(f"\nInstalling {name}...")
+            prog = config.programs.get(svc.component or "") if svc.component else None
+            extras = prog.install_extras if prog else []
+            pkg_spec = str(source_dir)
+            if extras:
+                pkg_spec += "[" + ",".join(extras) + "]"
             result = subprocess.run(
-                [uv_path, "tool", "install", "--editable", str(source_dir), "--force"],
+                [uv_path, "tool", "install", "--editable", pkg_spec, "--force"],
                 capture_output=True,
                 text=True,
             )
@@ -122,8 +127,12 @@ def _try_install(
 
     if (source_dir / "pyproject.toml").exists():
         print(f"\nInstalling {name}...")
+        extras = getattr(comp, "install_extras", [])
+        pkg_spec = str(source_dir)
+        if extras:
+            pkg_spec += "[" + ",".join(extras) + "]"
         result = subprocess.run(
-            [uv_path, "tool", "install", "--editable", str(source_dir), "--force"],
+            [uv_path, "tool", "install", "--editable", pkg_spec, "--force"],
             capture_output=True,
             text=True,
         )

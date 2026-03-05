@@ -1,42 +1,43 @@
 gateway:
   port: 9000
-
 programs:
   central-context:
     description: Content storage API useful to get context into my data dir from anywhere
       on the LAN
+    behavior: daemon
     source: components/central-context
     stack: python-fastapi
-    behavior: daemon
   notification-bridge:
     description: Desktop notification forwarder. This taps into your notifications
       system on the desktop and will forward all notifications the the central context
       server.
+    behavior: daemon
     source: components/notification-bridge
     stack: python-fastapi
-    behavior: daemon
+    install_extras:
+      - linux
   castle-api:
     description: Castle API
+    behavior: daemon
     source: castle-api
     stack: python-fastapi
-    behavior: daemon
   protonmail:
     description: ProtonMail email sync via Bridge
+    behavior: tool
     source: components/protonmail
     stack: python-cli
-    behavior: tool
   backup-collect:
     description: Collect files from various sources into backup directory
+    behavior: tool
     source: components/backup-collect
     stack: python-cli
-    behavior: tool
     system_dependencies:
     - rsync
   castle-app:
     description: Castle web app
+    behavior: frontend
     source: app
     stack: react-vite
-    behavior: frontend
     build:
       commands:
       - - pnpm
@@ -45,92 +46,91 @@ programs:
       - dist/
   devbox-connect:
     description: SSH tunnel manager with auto-reconnect
+    behavior: tool
     source: components/devbox-connect
     stack: python-cli
-    behavior: tool
   mbox2eml:
     description: MBOX to EML email converter
+    behavior: tool
     source: components/mbox2eml
     stack: python-cli
-    behavior: tool
   android-backup:
     description: Backup Android device using ADB
+    behavior: tool
     source: components/android-backup
     stack: python-cli
-    behavior: tool
     system_dependencies:
     - adb
   browser:
     description: Browse the web using natural language via browser-use
+    behavior: tool
     source: components/browser
     stack: python-cli
-    behavior: tool
   docx-extractor:
     description: Extract content and metadata from Word .docx files
+    behavior: tool
     source: components/docx-extractor
     stack: python-cli
-    behavior: tool
     system_dependencies:
     - pandoc
   docx2md:
     description: Convert Word .docx files to Markdown
+    behavior: tool
     source: components/docx2md
     stack: python-cli
-    behavior: tool
     system_dependencies:
     - pandoc
   gpt:
     description: OpenAI text generation utility
+    behavior: tool
     source: components/gpt
     stack: python-cli
-    behavior: tool
   html2text:
     description: Convert HTML content to plain text
+    behavior: tool
     source: components/html2text
     stack: python-cli
-    behavior: tool
   md2pdf:
     description: Convert Markdown files to PDF
+    behavior: tool
     source: components/md2pdf
     stack: python-cli
-    behavior: tool
     system_dependencies:
     - pandoc
     - texlive-latex-base
   mdscraper:
     description: Combine text files into a single markdown document
+    behavior: tool
     source: components/mdscraper
     stack: python-cli
-    behavior: tool
   pdf-extractor:
     description: Extract content and metadata from PDF files
+    behavior: tool
     source: components/pdf-extractor
     stack: python-cli
-    behavior: tool
   pdf2md:
     description: Convert PDF files to Markdown
+    behavior: tool
     source: components/pdf2md
     stack: python-cli
-    behavior: tool
     system_dependencies:
     - pandoc
     - poppler-utils
   schedule:
     description: Manage systemd user timers and scheduled tasks
+    behavior: tool
     source: components/schedule
     stack: python-cli
-    behavior: tool
   search:
     description: Manage self-contained searchable collections of files
+    behavior: tool
     source: components/search
     stack: python-cli
-    behavior: tool
   text-extractor:
     description: Extract content and metadata from text files
+    behavior: tool
     source: components/text-extractor
     stack: python-cli
-    behavior: tool
-
 services:
   castle-gateway:
     description: Caddy reverse proxy gateway
@@ -143,22 +143,20 @@ services:
       - /home/payne/.castle/generated/Caddyfile
       - --adapter
       - caddyfile
-    manage:
-      systemd:
-        exec_reload: caddy reload --config /home/payne/.castle/generated/Caddyfile
-          --adapter caddyfile
     expose:
       http:
         internal:
           port: 9000
         health_path: /
+    manage:
+      systemd:
+        exec_reload: caddy reload --config /home/payne/.castle/generated/Caddyfile
+          --adapter caddyfile
   central-context:
     component: central-context
     run:
       runner: python
       program: central-context
-    manage:
-      systemd: {}
     expose:
       http:
         internal:
@@ -167,18 +165,13 @@ services:
     proxy:
       caddy:
         path_prefix: /central-context
+    manage:
+      systemd: {}
   notification-bridge:
     component: notification-bridge
     run:
       runner: python
       program: notification-bridge
-    defaults:
-      env:
-        CENTRAL_CONTEXT_URL: http://localhost:9001
-        BUCKET_NAME: notifications
-        PORT: '9002'
-    manage:
-      systemd: {}
     expose:
       http:
         internal:
@@ -187,13 +180,18 @@ services:
     proxy:
       caddy:
         path_prefix: /notifications
+    manage:
+      systemd: {}
+    defaults:
+      env:
+        CENTRAL_CONTEXT_URL: http://localhost:9001
+        BUCKET_NAME: notifications
+        PORT: '9002'
   castle-api:
     component: castle-api
     run:
       runner: python
       program: castle-api
-    manage:
-      systemd: {}
     expose:
       http:
         internal:
@@ -202,24 +200,24 @@ services:
     proxy:
       caddy:
         path_prefix: /api
-
+    manage:
+      systemd: {}
   castle-mqtt:
     description: MQTT broker for inter-node mesh coordination
     run:
       runner: container
       image: eclipse-mosquitto:2
       ports:
-        1883: 1883
+        '1883': 1883
       volumes:
       - /data/castle/castle-mqtt/config:/mosquitto/config
       - /data/castle/castle-mqtt/data:/mosquitto/data
-    manage:
-      systemd: {}
     expose:
       http:
         internal:
           port: 1883
-
+    manage:
+      systemd: {}
 jobs:
   protonmail-sync:
     component: protonmail
@@ -230,12 +228,12 @@ jobs:
       - protonmail
       - sync
     schedule: '*/5 * * * *'
+    manage:
+      systemd: {}
     defaults:
       env:
         PROTONMAIL_USERNAME: paul@payne.io
         PROTONMAIL_API_KEY: ${secret:PROTONMAIL_API_KEY}
-    manage:
-      systemd: {}
   backup-collect:
     component: backup-collect
     description: Collect files from various sources into backup directory
@@ -244,11 +242,11 @@ jobs:
       argv:
       - backup-collect
     schedule: 0 2 * * *
+    manage:
+      systemd: {}
     defaults:
       env:
         DBACKUP: /data/backup
-    manage:
-      systemd: {}
   backup-data:
     description: Nightly restic backup of /data to /storage
     run:
@@ -256,9 +254,9 @@ jobs:
       argv:
       - backup-data
     schedule: 30 3 * * *
+    manage:
+      systemd: {}
     defaults:
       env:
         RESTIC_REPOSITORY: /storage/restic-data
         RESTIC_PASSWORD_FILE: /home/payne/.config/restic-password
-    manage:
-      systemd: {}

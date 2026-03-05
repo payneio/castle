@@ -134,7 +134,11 @@ def load_config(root: Path | None = None) -> CastleConfig:
     # Support both "programs:" and legacy "components:" key
     programs_data = data.get("programs") or data.get("components") or {}
     for name, comp_data in programs_data.items():
-        programs[name] = _parse_program(name, comp_data)
+        prog = _parse_program(name, comp_data)
+        # Resolve relative source paths to absolute
+        if prog.source and not Path(prog.source).is_absolute():
+            prog.source = str(root / prog.source)
+        programs[name] = prog
 
     services: dict[str, ServiceSpec] = {}
     for name, svc_data in data.get("services", {}).items():
@@ -230,7 +234,14 @@ def save_config(config: CastleConfig) -> None:
     if config.programs:
         data["programs"] = {}
         for name, spec in config.programs.items():
-            data["programs"][name] = _spec_to_yaml_dict(spec)
+            d = _spec_to_yaml_dict(spec)
+            # Store relative source paths in YAML
+            if d.get("source") and Path(d["source"]).is_absolute():
+                try:
+                    d["source"] = str(Path(d["source"]).relative_to(config.root))
+                except ValueError:
+                    pass  # not under root — keep absolute
+            data["programs"][name] = d
 
     if config.services:
         data["services"] = {}
