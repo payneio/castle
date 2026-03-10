@@ -3,8 +3,13 @@
 from castle_core.config import *  # noqa: F401, F403
 from castle_core.config import (  # noqa: F401 — explicit re-exports for type checkers
     CASTLE_HOME,
-    GENERATED_DIR,
+    CODE_DIR,
+    ARTIFACTS_DIR,
+    SPECS_DIR,
+    CONTENT_DIR,
+    DATA_DIR,
     SECRETS_DIR,
+    GENERATED_DIR,
     STATIC_DIR,
     CastleConfig,
     GatewayConfig,

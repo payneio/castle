@@ -12,9 +12,9 @@ from castle_core.registry import DeployedComponent, NodeConfig, NodeRegistry
 
 
 @pytest.fixture(autouse=True)
-def _isolate_static_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Use a temp dir for STATIC_DIR so tests don't depend on real ~/.castle."""
-    monkeypatch.setattr(caddyfile_mod, "STATIC_DIR", tmp_path / "static")
+def _isolate_content_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Use a temp dir for CONTENT_DIR so tests don't depend on real ~/.castle."""
+    monkeypatch.setattr(caddyfile_mod, "CONTENT_DIR", tmp_path / "content")
 
 
 def _make_registry(

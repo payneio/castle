@@ -274,11 +274,11 @@ async def apply_config() -> ApplyResponse:
             errors.append(f"Failed to restart {name}: {output}")
 
     # Reload gateway
-    from castle_core.config import GENERATED_DIR, ensure_dirs
+    from castle_core.config import SPECS_DIR, ensure_dirs
     from castle_core.generators.caddyfile import generate_caddyfile_from_registry
 
     ensure_dirs()
-    caddyfile_path = GENERATED_DIR / "Caddyfile"
+    caddyfile_path = SPECS_DIR / "Caddyfile"
     caddyfile_path.write_text(generate_caddyfile_from_registry(registry))
     actions.append("Generated Caddyfile")
 

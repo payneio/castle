@@ -8,10 +8,10 @@ from pathlib import Path
 
 import yaml
 
-from castle_core.config import CASTLE_HOME
+from castle_core.config import CONTENT_DIR, SPECS_DIR
 
-REGISTRY_PATH = CASTLE_HOME / "registry.yaml"
-STATIC_DIR = CASTLE_HOME / "static"
+REGISTRY_PATH = SPECS_DIR / "registry.yaml"
+STATIC_DIR = CONTENT_DIR  # backwards-compat alias
 
 
 @dataclass

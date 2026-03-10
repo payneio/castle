@@ -1,2 +1,8 @@
 .venv
 __pycache__
+.ruff_cache
+.pytest_cache
+.claude
+node_modules
+castle.yaml
+

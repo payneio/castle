@@ -9,7 +9,7 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
-from castle_core.config import STATIC_DIR
+from castle_core.config import CONTENT_DIR
 from castle_core.manifest import ProgramSpec
 
 DEV_ACTIONS = ["build", "test", "lint", "type-check", "check"]
@@ -214,19 +214,19 @@ class ReactViteHandler(StackHandler):
         for output_dir in outputs:
             src_path = src / output_dir
             if src_path.exists():
-                dest = STATIC_DIR / name
+                dest = CONTENT_DIR / name
                 if dest.exists():
                     shutil.rmtree(dest)
                 shutil.copytree(src_path, dest)
 
         return ActionResult(
             component=name, action="install", status="ok",
-            output=f"Built and deployed to {STATIC_DIR / name}",
+            output=f"Built and deployed to {CONTENT_DIR / name}",
         )
 
     async def uninstall(self, name: str, comp: ProgramSpec, root: Path) -> ActionResult:
         """Remove static assets from ~/.castle/static/{name}/."""
-        dest = STATIC_DIR / name
+        dest = CONTENT_DIR / name
         if dest.exists():
             shutil.rmtree(dest)
             return ActionResult(

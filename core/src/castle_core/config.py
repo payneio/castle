@@ -12,26 +12,39 @@ import yaml
 from castle_core.manifest import ProgramSpec, JobSpec, ServiceSpec
 
 
+CASTLE_HOME = Path.home() / ".castle"
+CODE_DIR = CASTLE_HOME / "code"
+ARTIFACTS_DIR = CASTLE_HOME / "artifacts"
+SPECS_DIR = ARTIFACTS_DIR / "specs"
+CONTENT_DIR = ARTIFACTS_DIR / "content"
+DATA_DIR = CASTLE_HOME / "data"
+SECRETS_DIR = CASTLE_HOME / "secrets"
+
+# Backwards-compat aliases (used by existing imports)
+GENERATED_DIR = SPECS_DIR
+STATIC_DIR = CONTENT_DIR
+
+
 def find_castle_root() -> Path:
-    """Find the castle repository root by walking up from cwd looking for castle.yaml."""
+    """Find the castle config root (directory containing castle.yaml).
+
+    Search order:
+    1. ~/.castle/castle.yaml (the canonical instance location)
+    2. Walk up from cwd (for development/testing)
+    """
+    # Canonical location first
+    if (CASTLE_HOME / "castle.yaml").exists():
+        return CASTLE_HOME
+    # Fallback: walk up from cwd
     current = Path.cwd()
     while current != current.parent:
         if (current / "castle.yaml").exists():
             return current
         current = current.parent
-    # Fallback: check if castle.yaml is in a well-known location
-    default = Path("/data/repos/castle")
-    if (default / "castle.yaml").exists():
-        return default
     raise FileNotFoundError(
-        "Could not find castle.yaml. Run castle from within the castle repository."
+        "Could not find castle.yaml.\n"
+        f"Expected at: {CASTLE_HOME / 'castle.yaml'}"
     )
-
-
-CASTLE_HOME = Path.home() / ".castle"
-GENERATED_DIR = CASTLE_HOME / "generated"
-SECRETS_DIR = CASTLE_HOME / "secrets"
-STATIC_DIR = CASTLE_HOME / "static"
 
 
 @dataclass
@@ -47,6 +60,7 @@ class CastleConfig:
 
     root: Path
     gateway: GatewayConfig
+    repo: Path | None
     programs: dict[str, ProgramSpec]
     services: dict[str, ServiceSpec]
     jobs: dict[str, JobSpec]
@@ -130,14 +144,23 @@ def load_config(root: Path | None = None) -> CastleConfig:
     gateway_data = data.get("gateway", {})
     gateway = GatewayConfig(port=gateway_data.get("port", 9000))
 
+    # repo: field points to the git repo for repo-relative sources
+    repo_path: Path | None = None
+    if data.get("repo"):
+        repo_path = Path(data["repo"]).expanduser()
+
     programs: dict[str, ProgramSpec] = {}
     # Support both "programs:" and legacy "components:" key
     programs_data = data.get("programs") or data.get("components") or {}
     for name, comp_data in programs_data.items():
         prog = _parse_program(name, comp_data)
-        # Resolve relative source paths to absolute
-        if prog.source and not Path(prog.source).is_absolute():
-            prog.source = str(root / prog.source)
+        # Resolve source paths to absolute
+        if prog.source:
+            if prog.source.startswith("repo:") and repo_path:
+                # repo:castle-api → /data/repos/castle/castle-api
+                prog.source = str(repo_path / prog.source[5:])
+            elif not Path(prog.source).is_absolute():
+                prog.source = str(root / prog.source)
         programs[name] = prog
 
     services: dict[str, ServiceSpec] = {}
@@ -150,6 +173,7 @@ def load_config(root: Path | None = None) -> CastleConfig:
 
     return CastleConfig(
         root=root,
+        repo=repo_path,
         gateway=gateway,
         programs=programs,
         services=services,
@@ -231,14 +255,27 @@ def save_config(config: CastleConfig) -> None:
     """Save castle configuration to castle.yaml."""
     data: dict = {"gateway": {"port": config.gateway.port}}
 
+    if config.repo:
+        data["repo"] = str(config.repo)
+
     if config.programs:
         data["programs"] = {}
         for name, spec in config.programs.items():
             d = _spec_to_yaml_dict(spec)
             # Store relative source paths in YAML
             if d.get("source") and Path(d["source"]).is_absolute():
+                src = Path(d["source"])
+                # If source is under repo, store as repo:relative
+                if config.repo:
+                    try:
+                        d["source"] = "repo:" + str(src.relative_to(config.repo))
+                        data["programs"][name] = d
+                        continue
+                    except ValueError:
+                        pass
+                # Otherwise store relative to config root
                 try:
-                    d["source"] = str(Path(d["source"]).relative_to(config.root))
+                    d["source"] = str(src.relative_to(config.root))
                 except ValueError:
                     pass  # not under root — keep absolute
             data["programs"][name] = d
@@ -261,7 +298,9 @@ def save_config(config: CastleConfig) -> None:
 def ensure_dirs() -> None:
     """Ensure castle directories exist."""
     CASTLE_HOME.mkdir(parents=True, exist_ok=True)
-    GENERATED_DIR.mkdir(parents=True, exist_ok=True)
+    CODE_DIR.mkdir(parents=True, exist_ok=True)
+    SPECS_DIR.mkdir(parents=True, exist_ok=True)
+    CONTENT_DIR.mkdir(parents=True, exist_ok=True)
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
     SECRETS_DIR.mkdir(parents=True, exist_ok=True)
-    STATIC_DIR.mkdir(parents=True, exist_ok=True)
     os.chmod(SECRETS_DIR, 0o700)

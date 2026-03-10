@@ -8,8 +8,9 @@ import subprocess
 from pathlib import Path
 
 from castle_core.config import (
-    GENERATED_DIR,
-    STATIC_DIR,
+    CONTENT_DIR,
+    DATA_DIR,
+    SPECS_DIR,
     CastleConfig,
     ensure_dirs,
     load_config,
@@ -31,8 +32,6 @@ from castle_core.registry import (
     load_registry,
     save_registry,
 )
-
-DATA_ROOT = Path("/data/castle")
 SYSTEMD_USER_DIR = Path.home() / ".config" / "systemd" / "user"
 
 
@@ -88,7 +87,7 @@ def run_deploy(args: argparse.Namespace) -> int:
     _generate_systemd_units(config, registry)
 
     # Generate Caddyfile from registry
-    caddyfile_path = GENERATED_DIR / "Caddyfile"
+    caddyfile_path = SPECS_DIR / "Caddyfile"
     caddyfile_content = generate_caddyfile_from_registry(registry)
     caddyfile_path.write_text(caddyfile_content)
     print(f"Caddyfile written: {caddyfile_path}")
@@ -130,7 +129,7 @@ def _build_deployed_service(
     if svc.manage and svc.manage.systemd and not svc.manage.systemd.enable:
         managed = False
     if managed:
-        env[f"{prefix}_DATA_DIR"] = str(DATA_ROOT / name)
+        env[f"{prefix}_DATA_DIR"] = str(DATA_DIR / name)
 
     # Port convention (if exposed)
     port = None
@@ -183,7 +182,7 @@ def _build_deployed_job(
     env: dict[str, str] = {}
 
     # Data dir convention
-    env[f"{prefix}_DATA_DIR"] = str(DATA_ROOT / name)
+    env[f"{prefix}_DATA_DIR"] = str(DATA_DIR / name)
 
     # Merge defaults.env (overrides conventions)
     if job.defaults and job.defaults.env:
@@ -274,23 +273,22 @@ def _print_deployed(name: str, deployed: DeployedComponent) -> None:
 
 
 def _copy_app_static(config: CastleConfig) -> None:
-    """Copy castle-app build output to ~/.castle/static/castle-app/."""
-    if "castle-app" not in config.programs:
-        return
+    """Copy frontend build outputs to ~/.castle/static/<name>/."""
+    for name, comp in config.programs.items():
+        if comp.behavior != "frontend":
+            continue
+        if not (comp.build and comp.build.outputs):
+            continue
 
-    comp = config.programs["castle-app"]
-    if not (comp.build and comp.build.outputs):
-        return
-
-    source_dir = comp.source_dir or "app"
-    for output in comp.build.outputs:
-        src = config.root / source_dir / output
-        if src.exists():
-            dest = STATIC_DIR / "castle-app"
-            if dest.exists():
-                shutil.rmtree(dest)
-            shutil.copytree(src, dest)
-            print(f"  Static: {src} → {dest}")
+        source_dir = comp.source_dir or name
+        for output in comp.build.outputs:
+            src = config.root / source_dir / output
+            if src.exists():
+                dest = CONTENT_DIR / name
+                if dest.exists():
+                    shutil.rmtree(dest)
+                shutil.copytree(src, dest)
+                print(f"  Static: {src} → {dest}")
 
 
 def _generate_systemd_units(config: CastleConfig, registry: NodeRegistry) -> None:

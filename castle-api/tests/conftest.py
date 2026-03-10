@@ -86,7 +86,7 @@ def registry_path(tmp_path: Path, castle_root: Path) -> Generator[Path, None, No
                 run_cmd=["uv", "run", "test-svc"],
                 env={
                     "TEST_SVC_PORT": "19000",
-                    "TEST_SVC_DATA_DIR": "/data/castle/test-svc",
+                    "TEST_SVC_DATA_DIR": "/home/user/.castle/data/test-svc",
                 },
                 description="Test service",
                 behavior="daemon",

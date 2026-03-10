@@ -49,11 +49,11 @@ class TestUnitFromDeployed:
         deployed = DeployedComponent(
             runner="python",
             run_cmd=["/home/user/.local/bin/uv", "run", "test-svc"],
-            env={"TEST_SVC_DATA_DIR": "/data/castle/test-svc"},
+            env={"TEST_SVC_DATA_DIR": "/home/user/.castle/data/test-svc"},
             description="Test service",
         )
         unit = generate_unit_from_deployed("test-svc", deployed)
-        assert "Environment=TEST_SVC_DATA_DIR=/data/castle/test-svc" in unit
+        assert "Environment=TEST_SVC_DATA_DIR=/home/user/.castle/data/test-svc" in unit
 
     def test_contains_restart_policy(self) -> None:
         """Unit file has restart configuration."""
@@ -82,14 +82,14 @@ class TestUnitFromDeployed:
         deployed = DeployedComponent(
             runner="python",
             run_cmd=["/home/user/.local/bin/uv", "run", "my-svc"],
-            env={"MY_SVC_PORT": "9001", "MY_SVC_DATA_DIR": "/data/castle/my-svc"},
+            env={"MY_SVC_PORT": "9001", "MY_SVC_DATA_DIR": "/home/user/.castle/data/my-svc"},
             description="My service",
         )
         unit = generate_unit_from_deployed("my-svc", deployed)
         assert "Description=Castle: My service" in unit
         assert "ExecStart=/home/user/.local/bin/uv run my-svc" in unit
         assert "Environment=MY_SVC_PORT=9001" in unit
-        assert "Environment=MY_SVC_DATA_DIR=/data/castle/my-svc" in unit
+        assert "Environment=MY_SVC_DATA_DIR=/home/user/.castle/data/my-svc" in unit
         assert "WorkingDirectory" not in unit
         assert "Restart=on-failure" in unit
 
@@ -111,7 +111,7 @@ class TestUnitFromDeployed:
         deployed = DeployedComponent(
             runner="python",
             run_cmd=["/home/user/.local/bin/uv", "run", "my-svc"],
-            env={"DATA_DIR": "/data/castle/my-svc"},
+            env={"DATA_DIR": "/home/user/.castle/data/my-svc"},
             description="Test",
         )
         unit = generate_unit_from_deployed("my-svc", deployed)

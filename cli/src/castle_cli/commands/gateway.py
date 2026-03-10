@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import subprocess
 
-from castle_core.config import GENERATED_DIR
+from castle_core.config import SPECS_DIR
 from castle_core.generators.caddyfile import generate_caddyfile_from_registry
 from castle_core.registry import REGISTRY_PATH, load_registry
 
@@ -24,7 +24,7 @@ def _write_generated_files() -> None:
         return
 
     registry = load_registry()
-    caddyfile_path = GENERATED_DIR / "Caddyfile"
+    caddyfile_path = SPECS_DIR / "Caddyfile"
     caddyfile_path.write_text(generate_caddyfile_from_registry(registry))
     print(f"  Generated {caddyfile_path}")
 

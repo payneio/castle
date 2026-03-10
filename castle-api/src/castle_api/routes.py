@@ -8,7 +8,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, status
 
-from castle_core.config import GENERATED_DIR
+from castle_core.config import SPECS_DIR
 from castle_core.generators.caddyfile import generate_caddyfile_from_registry
 from castle_core.manifest import ProgramSpec, JobSpec, ServiceSpec
 from castle_core.stacks import available_actions
@@ -834,8 +834,8 @@ def get_caddyfile() -> dict[str, str]:
 async def reload_gateway() -> dict[str, str]:
     """Regenerate Caddyfile and reload Caddy."""
     registry = get_registry()
-    GENERATED_DIR.mkdir(parents=True, exist_ok=True)
-    caddyfile_path = GENERATED_DIR / "Caddyfile"
+    SPECS_DIR.mkdir(parents=True, exist_ok=True)
+    caddyfile_path = SPECS_DIR / "Caddyfile"
 
     # Include remote registries for cross-node routing
     remote_regs = {h: n.registry for h, n in mesh_state.all_nodes().items()}
