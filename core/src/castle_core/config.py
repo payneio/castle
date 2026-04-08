@@ -4,12 +4,28 @@ from __future__ import annotations
 
 import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
 
-from castle_core.manifest import ProgramSpec, JobSpec, ServiceSpec
+from castle_core.manifest import (
+    CaddySpec,
+    DefaultsSpec,
+    ExposeSpec,
+    HttpExposeSpec,
+    HttpInternal,
+    JobSpec,
+    ManageSpec,
+    ProgramSpec,
+    ProxySpec,
+    RunCommand,
+    RunPython,
+    ServiceSpec,
+    SystemdSpec,
+    UnitKind,
+    UnitSpec,
+)
 
 
 CASTLE_HOME = Path.home() / ".castle"
@@ -64,6 +80,8 @@ class CastleConfig:
     programs: dict[str, ProgramSpec]
     services: dict[str, ServiceSpec]
     jobs: dict[str, JobSpec]
+    _unit_names: set[str] = field(default_factory=set)
+    _units_raw: dict[str, dict] = field(default_factory=dict)
 
     @property
     def tools(self) -> dict[str, ProgramSpec]:
@@ -129,6 +147,102 @@ def _parse_job(name: str, data: dict) -> JobSpec:
     return JobSpec.model_validate(data_copy)
 
 
+def _parse_unit(name: str, data: dict) -> UnitSpec:
+    """Parse a units: entry into a UnitSpec."""
+    data_copy = dict(data)
+    data_copy["id"] = name
+    return UnitSpec.model_validate(data_copy)
+
+
+# Stack convention defaults used during unit expansion.
+_STACK_DEFAULTS: dict[str, dict[str, str]] = {
+    "python-fastapi": {"runner": "python", "health_path": "/health"},
+    "python-cli": {"runner": "command"},
+    "react-vite": {},
+}
+
+# Kind → ProgramSpec.behavior mapping.
+_KIND_BEHAVIOR: dict[str, str] = {
+    "tool": "tool",
+    "service": "daemon",
+    "site": "frontend",
+    "job": "tool",
+}
+
+
+def _expand_units(
+    units: dict[str, UnitSpec],
+    programs: dict[str, ProgramSpec],
+    services: dict[str, ServiceSpec],
+    jobs: dict[str, JobSpec],
+) -> None:
+    """Expand units: entries into programs/services/jobs dicts (in-place)."""
+    for name, unit in units.items():
+        if name in programs or name in services or name in jobs:
+            raise ValueError(
+                f"Unit '{name}' conflicts with existing entry in "
+                f"programs/services/jobs"
+            )
+
+        defaults = _STACK_DEFAULTS.get(unit.stack or "", {})
+
+        # Always create a ProgramSpec
+        programs[name] = ProgramSpec(
+            id=name,
+            description=unit.description,
+            behavior=_KIND_BEHAVIOR[unit.kind.value],
+            source=unit.source,
+            stack=unit.stack,
+            system_dependencies=unit.system_dependencies,
+            install_extras=unit.install_extras,
+            version=unit.version,
+            build=unit.build,
+            tags=unit.tags,
+        )
+
+        if unit.kind == UnitKind.SERVICE:
+            assert unit.port is not None  # guaranteed by validator
+            runner = defaults.get("runner", "python")
+            run_spec: RunCommand | RunPython
+            if runner == "python":
+                run_spec = RunPython(runner="python", program=name)
+            else:
+                run_spec = RunCommand(runner="command", argv=[name])
+
+            health = unit.health_path or defaults.get("health_path")
+
+            services[name] = ServiceSpec(
+                id=name,
+                component=name,
+                run=run_spec,
+                expose=ExposeSpec(
+                    http=HttpExposeSpec(
+                        internal=HttpInternal(port=unit.port),
+                        health_path=health,
+                    )
+                ),
+                proxy=ProxySpec(caddy=CaddySpec(path_prefix=unit.path_prefix))
+                if unit.path_prefix
+                else None,
+                manage=ManageSpec(systemd=SystemdSpec()),
+                defaults=DefaultsSpec(env=dict(unit.env)) if unit.env else None,
+            )
+
+        elif unit.kind == UnitKind.JOB:
+            assert unit.schedule is not None  # guaranteed by validator
+            assert unit.argv is not None  # guaranteed by validator
+            jobs[name] = JobSpec(
+                id=name,
+                component=name,
+                description=unit.description,
+                run=RunCommand(runner="command", argv=list(unit.argv)),
+                schedule=unit.schedule,
+                timezone=unit.timezone,
+                manage=ManageSpec(systemd=SystemdSpec()),
+                defaults=DefaultsSpec(env=dict(unit.env)) if unit.env else None,
+            )
+
+
 def load_config(root: Path | None = None) -> CastleConfig:
     """Load castle.yaml and return parsed configuration."""
     if root is None:
@@ -171,6 +285,25 @@ def load_config(root: Path | None = None) -> CastleConfig:
     for name, job_data in data.get("jobs", {}).items():
         jobs[name] = _parse_job(name, job_data)
 
+    # Expand units: section into programs/services/jobs
+    units_data = data.get("units") or {}
+    units: dict[str, UnitSpec] = {}
+    for name, unit_data in units_data.items():
+        units[name] = _parse_unit(name, unit_data)
+
+    unit_names: set[str] = set()
+    if units:
+        _expand_units(units, programs, services, jobs)
+        unit_names = set(units.keys())
+        # Resolve source paths for unit-generated programs
+        for name in unit_names:
+            prog = programs[name]
+            if prog.source:
+                if prog.source.startswith("repo:") and repo_path:
+                    prog.source = str(repo_path / prog.source[5:])
+                elif not Path(prog.source).is_absolute():
+                    prog.source = str(root / prog.source)
+
     return CastleConfig(
         root=root,
         repo=repo_path,
@@ -178,6 +311,8 @@ def load_config(root: Path | None = None) -> CastleConfig:
         programs=programs,
         services=services,
         jobs=jobs,
+        _unit_names=unit_names,
+        _units_raw=dict(units_data),
     )
 
 
@@ -258,9 +393,17 @@ def save_config(config: CastleConfig) -> None:
     if config.repo:
         data["repo"] = str(config.repo)
 
-    if config.programs:
+    # Write units: section (raw roundtrip preserves user's original YAML)
+    if config._units_raw:
+        data["units"] = dict(config._units_raw)
+
+    # Write programs: (excluding unit-expanded ones)
+    non_unit_programs = {
+        k: v for k, v in config.programs.items() if k not in config._unit_names
+    }
+    if non_unit_programs:
         data["programs"] = {}
-        for name, spec in config.programs.items():
+        for name, spec in non_unit_programs.items():
             d = _spec_to_yaml_dict(spec)
             # Store relative source paths in YAML
             if d.get("source") and Path(d["source"]).is_absolute():
@@ -280,14 +423,22 @@ def save_config(config: CastleConfig) -> None:
                     pass  # not under root — keep absolute
             data["programs"][name] = d
 
-    if config.services:
+    # Write services: (excluding unit-expanded ones)
+    non_unit_services = {
+        k: v for k, v in config.services.items() if k not in config._unit_names
+    }
+    if non_unit_services:
         data["services"] = {}
-        for name, spec in config.services.items():
+        for name, spec in non_unit_services.items():
             data["services"][name] = _spec_to_yaml_dict(spec)
 
-    if config.jobs:
+    # Write jobs: (excluding unit-expanded ones)
+    non_unit_jobs = {
+        k: v for k, v in config.jobs.items() if k not in config._unit_names
+    }
+    if non_unit_jobs:
         data["jobs"] = {}
-        for name, spec in config.jobs.items():
+        for name, spec in non_unit_jobs.items():
             data["jobs"][name] = _spec_to_yaml_dict(spec)
 
     config_path = config.root / "castle.yaml"
