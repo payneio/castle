@@ -58,20 +58,10 @@ def run_sync(args: argparse.Namespace) -> int:
             print("  OK")
         synced_dirs.add(project_dir)
 
-    # Install components and python-runner services as uv tools
+    # Install python-runner services as uv tools
     uv_path = shutil.which("uv") or "uv"
     installed_dirs: set[Path] = set()
 
-    # Install components with install.path
-    for name, comp in config.programs.items():
-        if not (comp.install and comp.install.path):
-            continue
-        source = comp.source_dir
-        if not source:
-            continue
-        _try_install(config.root / source, name, comp, uv_path, installed_dirs)
-
-    # Install python-runner services
     for name, svc in config.services.items():
         if svc.run.runner != "python":
             continue
@@ -112,51 +102,3 @@ def run_sync(args: argparse.Namespace) -> int:
         print("\nSync completed with warnings.")
 
     return 0
-
-
-def _try_install(
-    source_dir: Path,
-    name: str,
-    comp: object,
-    uv_path: str,
-    installed_dirs: set[Path],
-) -> bool:
-    """Try to install a component. Returns True if installed."""
-    if source_dir in installed_dirs:
-        return False
-
-    if (source_dir / "pyproject.toml").exists():
-        print(f"\nInstalling {name}...")
-        extras = getattr(comp, "install_extras", [])
-        pkg_spec = str(source_dir)
-        if extras:
-            pkg_spec += "[" + ",".join(extras) + "]"
-        result = subprocess.run(
-            [uv_path, "tool", "install", "--editable", pkg_spec, "--force"],
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode != 0:
-            if "already installed" in result.stderr.lower():
-                print(f"  {name}: already installed")
-            else:
-                print(f"  Warning: {result.stderr.strip()}")
-                return False
-        else:
-            print(f"  {name}: OK")
-        installed_dirs.add(source_dir)
-        return True
-
-    elif source_dir.is_file():
-        alias = name
-        if comp.install and comp.install.path and comp.install.path.alias:
-            alias = comp.install.path.alias
-        if not shutil.which(alias):
-            link = Path.home() / ".local" / "bin" / alias
-            link.parent.mkdir(parents=True, exist_ok=True)
-            if not link.exists():
-                link.symlink_to(source_dir)
-                print(f"\n  Linked {alias} → {source_dir}")
-        return True
-
-    return False
