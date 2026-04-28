@@ -73,7 +73,9 @@ def _summary_from_deployed(name: str, deployed: object) -> ComponentSummary:
     )
 
 
-def _summary_from_service(name: str, svc: ServiceSpec, config: object) -> ComponentSummary:
+def _summary_from_service(
+    name: str, svc: ServiceSpec, config: object
+) -> ComponentSummary:
     """Build a ComponentSummary from a ServiceSpec (non-deployed)."""
     port = None
     health_path = None
@@ -90,7 +92,9 @@ def _summary_from_service(name: str, svc: ServiceSpec, config: object) -> Compon
     if managed:
         unit_name = f"castle-{name}.service"
         unit_path = str(Path("~/.config/systemd/user") / unit_name)
-        systemd_info = SystemdInfo(unit_name=unit_name, unit_path=unit_path, timer=False)
+        systemd_info = SystemdInfo(
+            unit_name=unit_name, unit_path=unit_path, timer=False
+        )
 
     description = svc.description
     source = None
@@ -226,9 +230,7 @@ def _service_from_deployed(name: str, deployed: object) -> ServiceSummary:
     )
 
 
-def _service_from_spec(
-    name: str, svc: ServiceSpec, config: object
-) -> ServiceSummary:
+def _service_from_spec(name: str, svc: ServiceSpec, config: object) -> ServiceSummary:
     """Build a ServiceSummary from a ServiceSpec."""
     port = None
     health_path = None
@@ -268,9 +270,7 @@ def _service_from_spec(
 
 def _job_from_deployed(name: str, deployed: object) -> JobSummary:
     """Build a JobSummary from a DeployedComponent."""
-    systemd_info = (
-        _make_systemd_info(name, timer=True) if deployed.managed else None
-    )
+    systemd_info = _make_systemd_info(name, timer=True) if deployed.managed else None
     return JobSummary(
         id=name,
         description=deployed.description,
@@ -553,8 +553,11 @@ def get_job(name: str) -> JobDetail:
 
 
 @router.get("/programs", response_model=list[ProgramSummary], tags=["programs"])
-def list_programs() -> list[ProgramSummary]:
-    """List all programs from the software catalog (castle.yaml programs section)."""
+def list_programs(behavior: str | None = None) -> list[ProgramSummary]:
+    """List all programs from the software catalog (castle.yaml programs section).
+
+    Optionally filter by behavior: daemon, tool, or frontend.
+    """
     root = get_castle_root()
     if not root:
         return []
@@ -572,6 +575,8 @@ def list_programs() -> list[ProgramSummary]:
     for name, comp in config.programs.items():
         summary = _program_from_spec(name, comp, root, config)
         if summary.behavior is None:
+            continue
+        if behavior and summary.behavior != behavior:
             continue
         summary.node = hostname
         summaries.append(summary)
@@ -840,11 +845,16 @@ async def reload_gateway() -> dict[str, str]:
     # Include remote registries for cross-node routing
     remote_regs = {h: n.registry for h, n in mesh_state.all_nodes().items()}
     caddyfile_path.write_text(
-        generate_caddyfile_from_registry(registry, remote_registries=remote_regs or None)
+        generate_caddyfile_from_registry(
+            registry, remote_registries=remote_regs or None
+        )
     )
 
     proc = await asyncio.create_subprocess_exec(
-        "systemctl", "--user", "reload", "castle-castle-gateway.service",
+        "systemctl",
+        "--user",
+        "reload",
+        "castle-castle-gateway.service",
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )

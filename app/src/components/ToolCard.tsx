@@ -1,10 +1,10 @@
 import { Link } from "react-router-dom"
 import { Terminal } from "lucide-react"
-import type { ToolSummary } from "@/types"
+import type { ProgramSummary } from "@/types"
 import { runnerLabel } from "@/lib/labels"
 
 interface ToolCardProps {
-  tool: ToolSummary
+  tool: ProgramSummary
 }
 
 export function ToolCard({ tool }: ToolCardProps) {

@@ -1,10 +1,10 @@
 import { Link } from "react-router-dom"
 import { ArrowLeft } from "lucide-react"
-import { useTools } from "@/services/api/hooks"
+import { usePrograms } from "@/services/api/hooks"
 import { ToolCard } from "@/components/ToolCard"
 
 export function ToolsPage() {
-  const { data: tools, isLoading } = useTools()
+  const { data: tools, isLoading } = usePrograms("tool")
 
   return (
     <div className="max-w-6xl mx-auto px-6 py-8">

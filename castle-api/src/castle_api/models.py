@@ -174,21 +174,3 @@ class ServiceActionResponse(BaseModel):
     component: str
     action: str
     status: str
-
-
-class ToolSummary(BaseModel):
-    """Summary of a single tool."""
-
-    id: str
-    description: str | None = None
-    source: str | None = None
-    version: str | None = None
-    runner: str | None = None
-    system_dependencies: list[str] = []
-    installed: bool = False
-
-
-class ToolDetail(ToolSummary):
-    """Full detail for a single tool, including documentation."""
-
-    docs: str | None = None
