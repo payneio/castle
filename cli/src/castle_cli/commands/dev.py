@@ -1,4 +1,4 @@
-"""castle test / castle lint - run dev commands across projects."""
+"""castle build / castle test / castle lint - run dev commands across projects."""
 
 from __future__ import annotations
 
@@ -97,4 +97,30 @@ def run_lint(args: argparse.Namespace) -> int:
         print("\nAll lint checks passed.")
     else:
         print("\nSome lint checks failed.")
+    return 0 if all_passed else 1
+
+
+def run_build(args: argparse.Namespace) -> int:
+    """Run build for one or all projects."""
+    config = load_config()
+
+    if args.project:
+        success = _run_action(config, args.project, "build")
+        return 0 if success else 1
+
+    # Run all buildable projects
+    all_passed = True
+    for name, comp in config.programs.items():
+        if not comp.source:
+            continue
+        handler = get_handler(comp.stack)
+        if handler is None:
+            continue
+        if not _run_action(config, name, "build"):
+            all_passed = False
+
+    if all_passed:
+        print("\nAll builds succeeded.")
+    else:
+        print("\nSome builds failed.")
     return 0 if all_passed else 1

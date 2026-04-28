@@ -55,6 +55,10 @@ def build_parser() -> argparse.ArgumentParser:
     lint_parser = subparsers.add_parser("lint", help="Run linter")
     lint_parser.add_argument("project", nargs="?", help="Project to lint (default: all)")
 
+    # castle build
+    build_parser = subparsers.add_parser("build", help="Build projects")
+    build_parser.add_argument("project", nargs="?", help="Project to build (default: all)")
+
     # castle sync
     subparsers.add_parser("sync", help="Sync submodules and install dependencies")
 
@@ -106,9 +110,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     # castle deploy
-    deploy_parser = subparsers.add_parser(
-        "deploy", help="Deploy to ~/.castle/ (spec → runtime)"
-    )
+    deploy_parser = subparsers.add_parser("deploy", help="Deploy to ~/.castle/ (spec → runtime)")
     deploy_parser.add_argument("name", nargs="?", help="Service or job to deploy (default: all)")
 
     # castle tool
@@ -155,6 +157,11 @@ def main() -> int:
         from castle_cli.commands.dev import run_lint
 
         return run_lint(args)
+
+    elif args.command == "build":
+        from castle_cli.commands.dev import run_build
+
+        return run_build(args)
 
     elif args.command == "sync":
         from castle_cli.commands.sync import run_sync
