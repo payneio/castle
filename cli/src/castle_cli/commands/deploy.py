@@ -122,7 +122,7 @@ def _build_deployed_service(config: CastleConfig, name: str, svc: ServiceSpec) -
     env: dict[str, str] = {}
 
     # Data dir convention (for managed services)
-    managed = True  # Services are always managed by default
+    managed = run.runner != "remote"  # Remote services have no local process
     if svc.manage and svc.manage.systemd and not svc.manage.systemd.enable:
         managed = False
     if managed:
@@ -159,6 +159,9 @@ def _build_deployed_service(config: CastleConfig, name: str, svc: ServiceSpec) -
     if svc.component and svc.component in config.programs:
         stack = config.programs[svc.component].stack
 
+    # Remote services proxy to an external base_url
+    base_url = getattr(run, "base_url", None)
+
     return DeployedComponent(
         runner=run.runner,
         run_cmd=run_cmd,
@@ -169,6 +172,7 @@ def _build_deployed_service(config: CastleConfig, name: str, svc: ServiceSpec) -
         port=port,
         health_path=health_path,
         proxy_path=proxy_path,
+        base_url=base_url,
         managed=managed,
     )
 
@@ -322,6 +326,8 @@ def _build_run_cmd(run: object, env: dict[str, str]) -> list[str]:
             if run.args:
                 cmd.extend(run.args)
             return cmd
+        case "remote":
+            return []  # No local process for remote services
         case _:
             raise ValueError(f"Unsupported runner: {run.runner}")
 

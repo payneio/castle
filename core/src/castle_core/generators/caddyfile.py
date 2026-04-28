@@ -24,12 +24,16 @@ def generate_caddyfile_from_registry(
     local_paths: set[str] = set()
 
     for name, deployed in registry.deployed.items():
-        if not deployed.proxy_path or not deployed.port:
+        if not deployed.proxy_path:
+            continue
+        # Need either a local port or a remote base_url to proxy to
+        if not deployed.port and not deployed.base_url:
             continue
 
         local_paths.add(deployed.proxy_path)
+        target = deployed.base_url or f"localhost:{deployed.port}"
         lines.append(f"    handle_path {deployed.proxy_path}/* {{")
-        lines.append(f"        reverse_proxy localhost:{deployed.port}")
+        lines.append(f"        reverse_proxy {target}")
         lines.append("    }")
         lines.append("")
 
