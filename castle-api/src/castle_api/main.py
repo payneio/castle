@@ -14,6 +14,7 @@ from starlette.responses import StreamingResponse
 
 from castle_api.config import get_registry, settings
 from castle_api.config_editor import router as config_router
+from castle_api.deploy_routes import router as deploy_router
 from castle_api.logs import router as logs_router
 from castle_api.routes import router as dashboard_router
 from castle_api.secrets import router as secrets_router
@@ -121,6 +122,7 @@ app.include_router(nodes_router)
 app.include_router(secrets_router)
 app.include_router(services_router)
 app.include_router(programs_router)
+app.include_router(deploy_router)
 
 
 @app.get("/health")

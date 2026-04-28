@@ -1,0 +1,76 @@
+{
+	"folders": [
+		{
+			"name": "root",
+			"path": "."
+		},
+		{
+			"name": "core",
+			"path": "core"
+		},
+		{
+			"name": "cli",
+			"path": "cli"
+		},
+		{
+			"name": "castle-api",
+			"path": "castle-api"
+		},
+		{
+			"name": "app (frontend)",
+			"path": "app"
+		},
+		{
+			"name": "docs",
+			"path": "docs"
+		}
+	],
+	"settings": {
+		"python.defaultInterpreterPath": "${workspaceFolder:root}/.venv/bin/python",
+		"python.analysis.typeCheckingMode": "standard",
+		"python.analysis.extraPaths": [
+			"${workspaceFolder:core}/src",
+			"${workspaceFolder:cli}/src",
+			"${workspaceFolder:castle-api}/src"
+		],
+		"[python]": {
+			"editor.defaultFormatter": "charliermarsh.ruff",
+			"editor.formatOnSave": true,
+			"editor.codeActionsOnSave": {
+				"source.organizeImports.ruff": "explicit"
+			}
+		},
+		"ruff.configurationPreference": "filesystemFirst",
+		"[typescript]": {
+			"editor.defaultFormatter": "esbenp.prettier-vscode",
+			"editor.formatOnSave": true
+		},
+		"[typescriptreact]": {
+			"editor.defaultFormatter": "esbenp.prettier-vscode",
+			"editor.formatOnSave": true
+		},
+		"files.exclude": {
+			"**/__pycache__": true,
+			"**/.pytest_cache": true,
+			"**/.ruff_cache": true,
+			"**/node_modules": true,
+			"**/*.egg-info": true
+		},
+		"search.exclude": {
+			"**/.venv": true,
+			"**/node_modules": true,
+			"**/uv.lock": true,
+			"**/pnpm-lock.yaml": true,
+			"**/dist": true
+		}
+	},
+	"extensions": {
+		"recommendations": [
+			"ms-python.python",
+			"charliermarsh.ruff",
+			"ms-python.vscode-pylance",
+			"esbenp.prettier-vscode",
+			"dbaeumer.vscode-eslint"
+		]
+	}
+}

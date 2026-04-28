@@ -196,6 +196,8 @@ When enabled, the API publishes the node's registry to `castle/{hostname}/regist
 | `GET /gateway/caddyfile` | Generated Caddyfile content |
 | `POST /gateway/reload` | Regenerate Caddyfile and reload Caddy |
 | `GET /status` | Live health for all services |
+| **Deploy** | |
+| `POST /deploy` | Deploy all services and jobs (spec to runtime) |
 | **Config** | |
 | `GET /config` | Read castle.yaml |
 | `PUT /config` | Write castle.yaml |
