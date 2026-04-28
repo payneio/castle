@@ -14,6 +14,7 @@ from castle_api.config import get_config
 from castle_api.models import ToolDetail, ToolSummary
 
 router = APIRouter(tags=["tools"])
+programs_router = APIRouter(tags=["programs"])
 
 
 def _is_tool(comp: ProgramSpec) -> bool:
@@ -55,10 +56,7 @@ def list_tools() -> list[ToolSummary]:
     tools = {k: v for k, v in config.programs.items() if _is_tool(v)}
 
     return sorted(
-        [
-            _tool_summary(name, comp, config.root)
-            for name, comp in tools.items()
-        ],
+        [_tool_summary(name, comp, config.root) for name, comp in tools.items()],
         key=lambda t: t.id,
     )
 
@@ -89,10 +87,18 @@ def get_tool(name: str) -> ToolDetail:
 # Unified program action endpoint
 # ---------------------------------------------------------------------------
 
-_VALID_ACTIONS = {"build", "test", "lint", "type-check", "check", "install", "uninstall"}
+_VALID_ACTIONS = {
+    "build",
+    "test",
+    "lint",
+    "type-check",
+    "check",
+    "install",
+    "uninstall",
+}
 
 
-@router.post("/programs/{name}/{action}")
+@programs_router.post("/programs/{name}/{action}")
 async def program_action(name: str, action: str) -> dict:
     """Run a lifecycle action on a program via its stack handler."""
     if action not in _VALID_ACTIONS:
