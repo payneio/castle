@@ -59,9 +59,6 @@ def build_parser() -> argparse.ArgumentParser:
     build_parser = subparsers.add_parser("build", help="Build projects")
     build_parser.add_argument("project", nargs="?", help="Project to build (default: all)")
 
-    # castle sync
-    subparsers.add_parser("sync", help="Sync submodules and install dependencies")
-
     # castle gateway
     gateway_parser = subparsers.add_parser("gateway", help="Manage the Caddy gateway")
     gateway_sub = gateway_parser.add_subparsers(dest="gateway_command")
@@ -162,11 +159,6 @@ def main() -> int:
         from castle_cli.commands.dev import run_build
 
         return run_build(args)
-
-    elif args.command == "sync":
-        from castle_cli.commands.sync import run_sync
-
-        return run_sync(args)
 
     elif args.command == "gateway":
         from castle_cli.commands.gateway import run_gateway

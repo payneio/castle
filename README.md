@@ -21,9 +21,6 @@ services: {}
 jobs: {}
 EOF
 
-# Sync all projects (git submodules + dependencies)
-castle sync
-
 # See what's here
 castle list
 
@@ -64,7 +61,6 @@ castle test [NAME]                    Run tests (one or all)
 castle lint [NAME]                    Run linter (one or all)
 castle deploy [NAME]                  Deploy to ~/.castle/ (spec -> runtime)
 castle run NAME                       Run a service in the foreground
-castle sync                           Sync submodules + install deps
 castle logs NAME [-f] [-n 50]         View service/job logs
 castle gateway start|stop|reload      Manage Caddy reverse proxy
 castle service enable|disable NAME    Manage a systemd service
