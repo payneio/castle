@@ -1,7 +1,7 @@
 import { useParams, Navigate } from "react-router-dom"
 import { useComponent } from "@/services/api/hooks"
 
-export function ComponentRedirect() {
+export function ProgramRedirect() {
   const { name } = useParams<{ name: string }>()
   const { data: component, isLoading, error } = useComponent(name ?? "")
 
