@@ -26,7 +26,7 @@ from castle_api.stream import (
     unsubscribe,
 )
 from castle_api.nodes import router as nodes_router
-from castle_api.tools import programs_router
+from castle_api.programs import programs_router
 
 logger = logging.getLogger(__name__)
 
