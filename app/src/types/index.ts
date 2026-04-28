@@ -152,16 +152,4 @@ export interface MeshStatus {
   peers: string[]
 }
 
-export interface ToolSummary {
-  id: string
-  description: string | null
-  source: string | null
-  version: string | null
-  runner: string | null
-  system_dependencies: string[]
-  installed: boolean
-}
 
-export interface ToolDetail extends ToolSummary {
-  docs: string | null
-}

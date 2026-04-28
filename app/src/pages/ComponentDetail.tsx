@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { useParams } from "react-router-dom"
-import { useProgram, useEventStream, useToolDetail } from "@/services/api/hooks"
+import { useProgram, useEventStream } from "@/services/api/hooks"
 import { runnerLabel } from "@/lib/labels"
 import { DetailHeader } from "@/components/detail/DetailHeader"
 import { ConfigPanel } from "@/components/detail/ConfigPanel"
@@ -11,7 +11,6 @@ export function ComponentDetailPage() {
   const { name } = useParams<{ name: string }>()
   const { data: component, isLoading, error, refetch } = useProgram(name ?? "")
   const isTool = component?.behavior === "tool"
-  const { data: toolDetail } = useToolDetail(isTool ? (name ?? "") : "")
   const [actionOutput, setActionOutput] = useState<ActionOutput | null>(null)
 
   if (isLoading) {
@@ -52,7 +51,7 @@ export function ComponentDetailPage() {
         <p className="text-sm text-[var(--muted)] -mt-4 mb-6">{component.description}</p>
       )}
 
-      {toolDetail && (
+      {isTool && (
         <div className="bg-[var(--card)] border border-[var(--border)] rounded-lg p-5 mb-6">
           <h2 className="text-sm font-semibold text-[var(--muted)] uppercase tracking-wider mb-1">
             Tool Info
@@ -61,32 +60,32 @@ export function ComponentDetailPage() {
             How this tool is packaged and what it depends on.
           </p>
           <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm mb-4">
-            {toolDetail.source && (
+            {component.source && (
               <>
                 <span className="text-[var(--muted)]">Source</span>
-                <span className="font-mono">{toolDetail.source}</span>
+                <span className="font-mono">{component.source}</span>
               </>
             )}
-            {toolDetail.version && (
+            {component.version && (
               <>
                 <span className="text-[var(--muted)]">Version</span>
-                <span>{toolDetail.version}</span>
+                <span>{component.version}</span>
               </>
             )}
-            {toolDetail.runner && (
+            {component.runner && (
               <>
                 <span className="text-[var(--muted)]">Runner</span>
-                <span>{runnerLabel(toolDetail.runner)}</span>
+                <span>{runnerLabel(component.runner)}</span>
               </>
             )}
             <span className="text-[var(--muted)]">Installed</span>
             <span>{component.installed ? "Yes" : "No"}</span>
           </div>
-          {toolDetail.system_dependencies.length > 0 && (
+          {component.system_dependencies.length > 0 && (
             <div className="mb-4">
               <span className="text-sm text-[var(--muted)] block mb-1">System Dependencies</span>
               <div className="flex flex-wrap gap-1">
-                {toolDetail.system_dependencies.map((dep) => (
+                {component.system_dependencies.map((dep) => (
                   <span
                     key={dep}
                     className="text-xs px-2 py-0.5 rounded bg-amber-900/30 text-amber-400 border border-amber-800"
@@ -95,14 +94,6 @@ export function ComponentDetailPage() {
                   </span>
                 ))}
               </div>
-            </div>
-          )}
-          {toolDetail.docs && (
-            <div>
-              <span className="text-sm text-[var(--muted)] block mb-1">Documentation</span>
-              <pre className="text-sm whitespace-pre-wrap bg-[var(--background)] rounded p-3 border border-[var(--border)]">
-                {toolDetail.docs}
-              </pre>
             </div>
           )}
         </div>

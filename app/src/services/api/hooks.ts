@@ -16,8 +16,6 @@ import type {
   MeshStatus,
   NodeSummary,
   NodeDetail,
-  ToolSummary,
-  ToolDetail,
 } from "@/types"
 
 // Legacy compat hook — used by ConfigEditorPage and ComponentRedirect
@@ -59,10 +57,11 @@ export function useJob(name: string) {
   })
 }
 
-export function usePrograms() {
+export function usePrograms(behavior?: string) {
+  const params = behavior ? `?behavior=${behavior}` : ""
   return useQuery({
-    queryKey: ["programs"],
-    queryFn: () => apiClient.get<ProgramSummary[]>("/programs"),
+    queryKey: ["programs", behavior ?? "all"],
+    queryFn: () => apiClient.get<ProgramSummary[]>(`/programs${params}`),
   })
 }
 
@@ -184,21 +183,6 @@ export function useMeshStatus() {
     queryKey: ["mesh"],
     queryFn: () => apiClient.get<MeshStatus>("/mesh/status"),
     refetchInterval: 30_000,
-  })
-}
-
-export function useTools() {
-  return useQuery({
-    queryKey: ["tools"],
-    queryFn: () => apiClient.get<ToolSummary[]>("/tools"),
-  })
-}
-
-export function useToolDetail(name: string) {
-  return useQuery({
-    queryKey: ["tools", name],
-    queryFn: () => apiClient.get<ToolDetail>(`/tools/${name}`),
-    enabled: !!name,
   })
 }
 

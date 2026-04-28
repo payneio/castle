@@ -25,7 +25,7 @@ from castle_api.stream import (
     unsubscribe,
 )
 from castle_api.nodes import router as nodes_router
-from castle_api.tools import programs_router, router as tools_router
+from castle_api.tools import programs_router
 
 logger = logging.getLogger(__name__)
 
@@ -120,7 +120,6 @@ app.include_router(logs_router)
 app.include_router(nodes_router)
 app.include_router(secrets_router)
 app.include_router(services_router)
-app.include_router(tools_router)
 app.include_router(programs_router)
 
 

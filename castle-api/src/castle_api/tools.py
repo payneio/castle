@@ -1,87 +1,14 @@
-"""Tools router and program actions."""
+"""Program action endpoints."""
 
 from __future__ import annotations
 
-import shutil
-from pathlib import Path
-
 from fastapi import APIRouter, HTTPException, status
 
-from castle_core.manifest import ProgramSpec
 from castle_core.stacks import available_actions, get_handler
 
 from castle_api.config import get_config
-from castle_api.models import ToolDetail, ToolSummary
 
-router = APIRouter(tags=["tools"])
 programs_router = APIRouter(tags=["programs"])
-
-
-def _is_tool(comp: ProgramSpec) -> bool:
-    """Check if a component is a tool."""
-    return comp.behavior == "tool"
-
-
-def _tool_summary(
-    name: str, comp: ProgramSpec, root: Path | None = None
-) -> ToolSummary:
-    """Build a ToolSummary from a ProgramSpec that is a tool."""
-    installed = shutil.which(name) is not None
-
-    # Infer runner from source directory
-    runner = None
-    source = comp.source
-    if source:
-        source_dir = Path(source)
-        if (source_dir / "pyproject.toml").exists():
-            runner = "python"
-        elif source_dir.is_file():
-            runner = "command"
-
-    return ToolSummary(
-        id=name,
-        description=comp.description,
-        source=source,
-        version=comp.version,
-        runner=runner,
-        system_dependencies=comp.system_dependencies,
-        installed=installed,
-    )
-
-
-@router.get("/tools", response_model=list[ToolSummary])
-def list_tools() -> list[ToolSummary]:
-    """List all registered tools (requires repo access)."""
-    config = get_config()
-    tools = {k: v for k, v in config.programs.items() if _is_tool(v)}
-
-    return sorted(
-        [_tool_summary(name, comp, config.root) for name, comp in tools.items()],
-        key=lambda t: t.id,
-    )
-
-
-@router.get("/tools/{name}", response_model=ToolDetail)
-def get_tool(name: str) -> ToolDetail:
-    """Get detailed info for a single tool."""
-    config = get_config()
-
-    if name not in config.programs:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Component '{name}' not found",
-        )
-
-    comp = config.programs[name]
-    if not _is_tool(comp):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"'{name}' is not a tool",
-        )
-
-    summary = _tool_summary(name, comp, config.root)
-    return ToolDetail(**summary.model_dump())
-
 
 # ---------------------------------------------------------------------------
 # Unified program action endpoint

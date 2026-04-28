@@ -179,10 +179,11 @@ When enabled, the API publishes the node's registry to `castle/{hostname}/regist
 |----------|-------------|
 | `GET /health` | Health check |
 | `GET /stream` | SSE stream (health, service-action, mesh events) |
-| **Programs & Components** | |
-| `GET /programs` | List all programs |
+| **Programs** | |
+| `GET /programs` | List all programs (`?behavior=tool\|daemon\|frontend` to filter) |
 | `GET /programs/{name}` | Program detail |
-| `GET /components` | Unified view of all components (`?include_remote=true` for cross-node) |
+| `POST /programs/{name}/{action}` | Run a lifecycle action (build, test, lint, install, etc.) |
+| `GET /components` | Unified view across nodes (`?include_remote=true` for cross-node) |
 | `GET /components/{name}` | Component detail |
 | **Services** | |
 | `GET /services` | List all services with status |
@@ -206,10 +207,6 @@ When enabled, the API publishes the node's registry to `castle/{hostname}/regist
 | `PUT /config/services/{name}` | Update a service entry |
 | `PUT /config/jobs/{name}` | Update a job entry |
 | `POST /config/apply` | Apply config changes (deploy + reload) |
-| **Tools** | |
-| `GET /tools` | List all tools |
-| `GET /tools/{name}` | Tool detail |
-| `POST /programs/{name}/{action}` | Run a program action (build, test, lint, install) |
 | **Secrets** | |
 | `GET /secrets` | List secrets |
 | `GET /secrets/{name}` | Read a secret |
