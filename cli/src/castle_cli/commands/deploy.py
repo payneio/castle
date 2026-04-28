@@ -32,6 +32,7 @@ from castle_core.registry import (
     load_registry,
     save_registry,
 )
+
 SYSTEMD_USER_DIR = Path.home() / ".config" / "systemd" / "user"
 
 
@@ -105,9 +106,7 @@ def _env_prefix(name: str) -> str:
     return name.replace("-", "_").upper()
 
 
-def _resolve_description(
-    config: CastleConfig, spec: ServiceSpec | JobSpec
-) -> str | None:
+def _resolve_description(config: CastleConfig, spec: ServiceSpec | JobSpec) -> str | None:
     """Get description, falling through to program if referenced."""
     if spec.description:
         return spec.description
@@ -116,9 +115,7 @@ def _resolve_description(
     return None
 
 
-def _build_deployed_service(
-    config: CastleConfig, name: str, svc: ServiceSpec
-) -> DeployedComponent:
+def _build_deployed_service(config: CastleConfig, name: str, svc: ServiceSpec) -> DeployedComponent:
     """Build a DeployedComponent from a ServiceSpec."""
     run = svc.run
     prefix = _env_prefix(name)
@@ -145,6 +142,9 @@ def _build_deployed_service(
 
     # Resolve secrets
     env = resolve_env_vars(env)
+
+    # Ensure python tool is installed before resolving binary
+    _ensure_python_tool(config, svc.component)
 
     # Build run_cmd
     run_cmd = _build_run_cmd(run, env)
@@ -173,9 +173,7 @@ def _build_deployed_service(
     )
 
 
-def _build_deployed_job(
-    config: CastleConfig, name: str, job: JobSpec
-) -> DeployedComponent:
+def _build_deployed_job(config: CastleConfig, name: str, job: JobSpec) -> DeployedComponent:
     """Build a DeployedComponent from a JobSpec."""
     run = job.run
     prefix = _env_prefix(name)
@@ -190,6 +188,9 @@ def _build_deployed_job(
 
     # Resolve secrets
     env = resolve_env_vars(env)
+
+    # Ensure python tool is installed before resolving binary
+    _ensure_python_tool(config, job.component)
 
     # Build run_cmd
     run_cmd = _build_run_cmd(run, env)
@@ -209,6 +210,71 @@ def _build_deployed_job(
         schedule=job.schedule,
         managed=True,
     )
+
+
+def _python_tool_needs_install(program: str) -> bool:
+    """Check if a Python tool's editable install is broken.
+
+    Returns True if the binary is missing or the editable install's
+    .pth file points to a directory that no longer exists.
+    """
+    if not shutil.which(program):
+        return True
+
+    tool_dir = Path.home() / ".local" / "share" / "uv" / "tools" / program
+    if not tool_dir.exists():
+        return True
+
+    for pth_file in tool_dir.glob("lib/python*/site-packages/*.pth"):
+        if pth_file.name == "_virtualenv.pth":
+            continue
+        try:
+            target = pth_file.read_text().strip()
+        except OSError:
+            continue
+        if not target or target.startswith("import "):
+            continue
+        if not Path(target).exists():
+            return True
+
+    return False
+
+
+def _ensure_python_tool(config: CastleConfig, component: str | None) -> None:
+    """Ensure a Python program's editable install is current.
+
+    Checks if the uv tool's .pth file points to a directory that still
+    exists.  If the binary is missing or the editable path is stale,
+    reinstalls from the source directory defined in the program spec.
+    """
+    if not component or component not in config.programs:
+        return
+    comp = config.programs[component]
+    if not comp.source or not comp.stack or not comp.stack.startswith("python"):
+        return
+
+    source_dir = Path(comp.source)
+    if not source_dir.is_dir():
+        print(f"  Warning: source not found: {source_dir}")
+        return
+
+    if not _python_tool_needs_install(component):
+        return
+
+    pkg_spec = str(source_dir)
+    if comp.install_extras:
+        pkg_spec += "[" + ",".join(comp.install_extras) + "]"
+
+    print(f"  Installing {component} from {source_dir}...")
+    result = subprocess.run(
+        ["uv", "tool", "install", "--editable", pkg_spec, "--force"],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        print(f"  Error: {component} install failed:\n{result.stdout}{result.stderr}")
+    else:
+        print(f"  Installed {component}")
 
 
 def _build_run_cmd(run: object, env: dict[str, str]) -> list[str]:
