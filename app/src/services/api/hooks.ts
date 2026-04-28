@@ -18,7 +18,7 @@ import type {
   NodeDetail,
 } from "@/types"
 
-// Legacy compat hook — used by ConfigEditorPage and ComponentRedirect
+// Legacy compat hook — used by ConfigEditorPage and ProgramRedirect
 export function useComponent(name: string) {
   return useQuery({
     queryKey: ["components", name],

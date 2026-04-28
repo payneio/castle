@@ -2,8 +2,8 @@ import { createBrowserRouter } from "react-router-dom"
 import { Dashboard } from "@/pages/Dashboard"
 import { ServiceDetailPage } from "@/pages/ServiceDetail"
 import { ScheduledDetailPage } from "@/pages/ScheduledDetail"
-import { ComponentDetailPage } from "@/pages/ComponentDetail"
-import { ComponentRedirect } from "@/pages/ComponentRedirect"
+import { ProgramDetailPage } from "@/pages/ProgramDetail"
+import { ProgramRedirect } from "@/pages/ProgramRedirect"
 import { NodeDetailPage } from "@/pages/NodeDetail"
 
 export const router = createBrowserRouter([
@@ -21,11 +21,11 @@ export const router = createBrowserRouter([
   },
   {
     path: "/programs/:name",
-    element: <ComponentDetailPage />,
+    element: <ProgramDetailPage />,
   },
   {
     path: "/component/:name",
-    element: <ComponentRedirect />,
+    element: <ProgramRedirect />,
   },
   {
     path: "/node/:hostname",

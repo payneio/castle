@@ -6,7 +6,7 @@ import { DetailHeader } from "@/components/detail/DetailHeader"
 import { ConfigPanel } from "@/components/detail/ConfigPanel"
 import { ProgramActions, ActionOutputPanel, type ActionOutput } from "@/components/ProgramActions"
 
-export function ComponentDetailPage() {
+export function ProgramDetailPage() {
   useEventStream()
   const { name } = useParams<{ name: string }>()
   const { data: component, isLoading, error, refetch } = useProgram(name ?? "")
