@@ -8,13 +8,27 @@ A personal software platform. Castle manages independent services, tools, and fr
 # Install the castle CLI
 cd cli && uv tool install --editable . && cd ..
 
+# Run the installer (sets up Docker, Caddy, MQTT, Postgres, Neo4j, directory tree)
+./install.sh
+
+# Initialize castle.yaml (the registry that tracks everything)
+cat > ~/.castle/castle.yaml << 'EOF'
+gateway:
+  port: 9000
+
+programs: {}
+services: {}
+jobs: {}
+EOF
+
 # Sync all projects (git submodules + dependencies)
 castle sync
 
 # See what's here
 castle list
 
-# Start everything (all services + Caddy gateway)
+# Deploy and start everything
+castle deploy
 castle services start
 
 # Visit the dashboard
@@ -26,27 +40,32 @@ open http://localhost:9000
 ```bash
 # Service — FastAPI app with health endpoint, systemd unit, gateway route
 castle create my-api --stack python-fastapi --description "Does something useful"
-cd components/my-api && uv sync
 castle test my-api
-castle service enable my-api
-castle gateway reload
+castle deploy my-api
+castle services start
 
 # Standalone tool — CLI tool with argparse, stdin/stdout, Unix pipes
 castle create my-tool --stack python-cli --description "Does something"
+
+# Frontend — React/Vite app, built and served through the gateway
+castle create my-app --stack react-vite --description "Web interface"
+castle build my-app
+castle deploy my-app
 ```
 
 ## CLI Reference
 
 ```
-castle list [--behavior B] [--stack S] [--json]  List all components
-castle info NAME [--json]                        Show component details
-castle create NAME --stack STACK                 Scaffold a new component
-castle deploy [NAME]                  Deploy component(s) to runtime
-castle run NAME                       Run component in foreground
+castle list [--behavior B] [--stack S] [--json]  List all programs, services, and jobs
+castle info NAME [--json]                        Show program details
+castle create NAME --stack STACK                 Scaffold a new project
+castle build [NAME]                   Build projects (one or all)
 castle test [NAME]                    Run tests (one or all)
 castle lint [NAME]                    Run linter (one or all)
-castle sync                           Update submodules + install deps
-castle logs NAME [-f] [-n 50]         View component logs
+castle deploy [NAME]                  Deploy to ~/.castle/ (spec -> runtime)
+castle run NAME                       Run a service in the foreground
+castle sync                           Sync submodules + install deps
+castle logs NAME [-f] [-n 50]         View service/job logs
 castle gateway start|stop|reload      Manage Caddy reverse proxy
 castle service enable|disable NAME    Manage a systemd service
 castle service status                 Show all service statuses
@@ -57,29 +76,33 @@ castle tool info NAME                 Show tool details
 
 ## Registry
 
-`castle.yaml` is the single source of truth with three sections:
+`castle.yaml` lives at `~/.castle/castle.yaml` and is the single source of truth. It has four top-level sections:
 
-- **`components:`** — Software catalog (source, install, tool metadata, build)
+- **`programs:`** — Software catalog (source, stack, behavior, build config)
 - **`services:`** — Long-running daemons (run, expose, proxy, systemd)
 - **`jobs:`** — Scheduled tasks (run, cron schedule, systemd timer)
+- **`units:`** — Compact shorthand that expands into programs + services/jobs
 
-Services and jobs can reference a component via `component:` for description fallthrough.
+Services and jobs can reference a program via `component:` for description fallthrough.
 
 ```yaml
 gateway:
   port: 9000
+repo: /path/to/castle
 
-components:
+programs:
   central-context:
     description: Content storage API
-    source: components/central-context
+    behavior: daemon
+    source: code/central-context
+    stack: python-fastapi
 
 services:
   central-context:
     component: central-context
     run:
       runner: python
-      tool: central-context
+      program: central-context
     expose:
       http:
         internal: { port: 9001 }
@@ -103,78 +126,36 @@ jobs:
 Convention-based env vars (`<PREFIX>_DATA_DIR`, `<PREFIX>_PORT`) are generated
 automatically by `castle deploy`. Only non-convention values need `defaults.env`.
 
+The optional `repo:` field enables `source: repo:<path>` references that resolve relative to the git repo rather than `~/.castle/`.
+
 ## Architecture
 
 ```
-castle.yaml          <- component registry (single source of truth)
-cli/                 <- castle CLI
-core/                <- castle-core library (models, config, generators)
-castle-api/          <- Castle API (dashboard backend)
-app/                 <- Castle web app (React/Vite frontend)
-components/          <- all non-infrastructure components
-  central-context/   <- content storage API (git submodule)
-  notification-bridge/ <- desktop notification forwarder (git submodule)
-  protonmail/        <- email sync tool/job
-  pdf2md/            <- standalone tool (each tool is its own project)
-  ...
-docs/                <- architecture docs and component guides
-ruff.toml            <- shared lint config
-pyrightconfig.json   <- shared type checking config
+~/.castle/
+  castle.yaml          <- program registry (single source of truth)
+  code/                <- component source directories
+  data/                <- per-service data directories
+  secrets/             <- secret files (700 permissions)
+  artifacts/
+    specs/             <- generated Caddyfile, registry.yaml, systemd units
+    content/           <- built frontend assets
+
+<repo>/
+  cli/                 <- castle CLI
+  core/                <- castle-core library (models, config, generators)
+  castle-api/          <- Castle API (dashboard backend)
+  app/                 <- Castle web app (React/Vite frontend)
+  docs/                <- architecture docs
+  install.sh           <- infrastructure bootstrapper
 ```
 
-**Independence principle:** Services never depend on castle. They accept configuration (data dir, port, URLs) via environment variables. Only castle components (CLI, API, gateway) know about castle internals.
+**Independence principle:** Services never depend on castle. They accept configuration (data dir, port, URLs) via environment variables. Only castle infrastructure (CLI, API, gateway) knows about castle internals.
 
 **Gateway:** Caddy reverse proxy at port 9000. Services are proxied under one address (`localhost:9000/central-context/*` -> `localhost:9001/*`). The web app is served at the root.
 
 **Systemd:** The CLI generates user units under `~/.config/systemd/user/castle-*.service`. Scheduled jobs get `.timer` files alongside.
 
-**Data:** Service data lives in `/data/castle/<service-name>/`, outside the repo. Secrets live in `~/.castle/secrets/`.
-
-## Components
-
-### Services
-
-| Component | Port | Description |
-|-----------|------|-------------|
-| castle-gateway | 9000 | Caddy reverse proxy gateway |
-| central-context | 9001 | Content storage API |
-| notification-bridge | 9002 | Desktop notification forwarder |
-| castle-api | 9020 | Castle API (dashboard backend) |
-| castle-mqtt | 1883 | MQTT broker for mesh coordination (Mosquitto container) |
-
-### Jobs
-
-| Component | Schedule | Description |
-|-----------|----------|-------------|
-| protonmail | Every 5 min | ProtonMail email sync |
-| backup-collect | 2:00 AM | Collect files into backup directory |
-| backup-data | 3:30 AM | Restic backup of /data to /storage |
-
-### Tools
-
-| Tool | Description |
-|------|-------------|
-| android-backup | Backup Android devices via ADB |
-| browser | Browse the web via browser-use |
-| devbox-connect | SSH tunnel manager |
-| docx-extractor | Extract content from Word files |
-| docx2md | Convert Word .docx to Markdown |
-| gpt | OpenAI text generation |
-| html2text | Convert HTML to plain text |
-| mbox2eml | Convert MBOX mailboxes to .eml files |
-| md2pdf | Convert Markdown to PDF |
-| mdscraper | Combine text files into markdown |
-| pdf-extractor | Extract content from PDF files |
-| pdf2md | Convert PDF to Markdown |
-| schedule | Manage systemd user timers |
-| search | Manage searchable file collections |
-| text-extractor | Extract content from text files |
-
-### Frontends
-
-| Component | Description |
-|-----------|-------------|
-| castle-app | Castle web dashboard (React/Vite/TypeScript) |
+**Data:** Service data lives in `~/.castle/data/<service-name>/`. Secrets live in `~/.castle/secrets/`.
 
 ## Mesh Coordination
 
@@ -198,15 +179,45 @@ When enabled, the API publishes the node's registry to `castle/{hostname}/regist
 |----------|-------------|
 | `GET /health` | Health check |
 | `GET /stream` | SSE stream (health, service-action, mesh events) |
-| `GET /components` | List all components (`?include_remote=true` for cross-node) |
+| **Programs & Components** | |
+| `GET /programs` | List all programs |
+| `GET /programs/{name}` | Program detail |
+| `GET /components` | Unified view of all components (`?include_remote=true` for cross-node) |
 | `GET /components/{name}` | Component detail |
-| `GET /status` | Live health for all services |
+| **Services** | |
+| `GET /services` | List all services with status |
+| `GET /services/{name}` | Service detail |
+| `POST /services/{name}/start` | Start a service |
+| `POST /services/{name}/stop` | Stop a service |
+| `POST /services/{name}/restart` | Restart a service |
+| `GET /services/{name}/unit` | View generated systemd unit |
+| **Jobs** | |
+| `GET /jobs` | List all jobs |
+| `GET /jobs/{name}` | Job detail |
+| **Gateway** | |
 | `GET /gateway` | Gateway info with route table |
 | `GET /gateway/caddyfile` | Generated Caddyfile content |
 | `POST /gateway/reload` | Regenerate Caddyfile and reload Caddy |
+| `GET /status` | Live health for all services |
+| **Config** | |
+| `GET /config` | Read castle.yaml |
+| `PUT /config` | Write castle.yaml |
+| `PUT /config/programs/{name}` | Update a program entry |
+| `PUT /config/services/{name}` | Update a service entry |
+| `PUT /config/jobs/{name}` | Update a job entry |
+| `POST /config/apply` | Apply config changes (deploy + reload) |
+| **Tools** | |
+| `GET /tools` | List all tools |
+| `GET /tools/{name}` | Tool detail |
+| `POST /programs/{name}/{action}` | Run a program action (build, test, lint, install) |
+| **Secrets** | |
+| `GET /secrets` | List secrets |
+| `GET /secrets/{name}` | Read a secret |
+| `PUT /secrets/{name}` | Write a secret |
+| `DELETE /secrets/{name}` | Delete a secret |
+| **Logs** | |
+| `GET /logs/{name}` | View service/job logs |
+| **Mesh** | |
 | `GET /mesh/status` | Mesh connection state (MQTT, mDNS, peers) |
 | `GET /nodes` | All known nodes (local + remote) |
 | `GET /nodes/{hostname}` | Node detail with deployed components |
-| `POST /services/{name}/{action}` | Start/stop/restart a service |
-| `GET /tools` | List all tools |
-| `POST /tools/{name}/install` | Install tool to PATH |
