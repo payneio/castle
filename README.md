@@ -2,6 +2,12 @@
 
 A personal software platform. Castle manages independent services, tools, and frontends from a single CLI, with a unified gateway, systemd integration, and a web dashboard.
 
+Historically, applications have been developed by third parties, distributed through app stores, and installed on user devices.
+
+With the advent of AI-assisted software development, users can write the software they need directly, eliminating the need for packaging and distribution. This makes many classes of software simpler, too. Oftentimes all a user needs are simple scripts or configurations of existing tools. But no matter how simple your script or application, it needed to be tailored and packaged for specific distribution channels. Castle provides a unified environment for developing, managing, deploying, and advertising these simple applications.
+
+Castle _stacks_ are pre-configured development environments that provide a starting point for building applications. They include everything needed to get started, from the programming language and framework to the necessary dependencies and tools. This is a design intended for coding assistants to generate castle programs with a level of consistency and to ensure that they are properly configured and ready to use with Castle. If your coding assistant knows about Castle, it can help you create and manage your custom applications more efficiently.
+
 ## Quick Start
 
 ```bash

@@ -28,12 +28,37 @@ from castle_core.manifest import (
 )
 
 
-CASTLE_HOME = Path.home() / ".castle"
+def _resolve_castle_home() -> Path:
+    """Resolve the castle home directory (config, code, artifacts, secrets).
+
+    Defaults to ~/.castle. Override with the CASTLE_HOME environment variable
+    (supports ~ and relative paths, which are expanded and made absolute).
+    """
+    override = os.environ.get("CASTLE_HOME")
+    if override:
+        return Path(override).expanduser().resolve()
+    return Path.home() / ".castle"
+
+
+def _resolve_data_dir() -> Path:
+    """Resolve the program data directory (service/program data I/O).
+
+    Decoupled from CASTLE_HOME so bulk data can live on a dedicated volume.
+    Defaults to /data/castle. Override with the CASTLE_DATA_DIR environment
+    variable (supports ~ and relative paths, which are expanded and made absolute).
+    """
+    override = os.environ.get("CASTLE_DATA_DIR")
+    if override:
+        return Path(override).expanduser().resolve()
+    return Path("/data/castle")
+
+
+CASTLE_HOME = _resolve_castle_home()
 CODE_DIR = CASTLE_HOME / "code"
 ARTIFACTS_DIR = CASTLE_HOME / "artifacts"
 SPECS_DIR = ARTIFACTS_DIR / "specs"
 CONTENT_DIR = ARTIFACTS_DIR / "content"
-DATA_DIR = CASTLE_HOME / "data"
+DATA_DIR = _resolve_data_dir()
 SECRETS_DIR = CASTLE_HOME / "secrets"
 
 # Backwards-compat aliases (used by existing imports)

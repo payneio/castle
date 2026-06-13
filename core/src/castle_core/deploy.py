@@ -146,7 +146,12 @@ def _build_deployed_service(
 ) -> DeployedComponent:
     """Build a DeployedComponent from a ServiceSpec."""
     run = svc.run
-    prefix = _env_prefix(name)
+    # Env prefix and data dir are keyed by the program (component) the service
+    # runs, not the service name — that's the prefix the program's settings read
+    # (e.g. job `protonmail-sync` runs program `protonmail` → PROTONMAIL_DATA_DIR).
+    # Falls back to the service name when no component is referenced.
+    config_key = svc.component or name
+    prefix = _env_prefix(config_key)
     env: dict[str, str] = {}
 
     # Data dir convention (for managed services)
@@ -154,7 +159,7 @@ def _build_deployed_service(
     if svc.manage and svc.manage.systemd and not svc.manage.systemd.enable:
         managed = False
     if managed:
-        env[f"{prefix}_DATA_DIR"] = str(DATA_DIR / name)
+        env[f"{prefix}_DATA_DIR"] = str(DATA_DIR / config_key)
 
     # Port convention (if exposed)
     port = None
@@ -210,10 +215,13 @@ def _build_deployed_job(
 ) -> DeployedComponent:
     """Build a DeployedComponent from a JobSpec."""
     run = job.run
-    prefix = _env_prefix(name)
+    # Keyed by the program (component) the job runs, not the job name — see
+    # _build_deployed_service for rationale. Falls back to the job name.
+    config_key = job.component or name
+    prefix = _env_prefix(config_key)
     env: dict[str, str] = {}
 
-    env[f"{prefix}_DATA_DIR"] = str(DATA_DIR / name)
+    env[f"{prefix}_DATA_DIR"] = str(DATA_DIR / config_key)
 
     if job.defaults and job.defaults.env:
         env.update(job.defaults.env)

@@ -20,7 +20,7 @@ How to build, serve, and manage web frontends as castle components.
 
 ```bash
 # Create the project
-mkdir components/my-frontend && cd components/my-frontend
+mkdir ~/.castle/code/my-frontend && cd ~/.castle/code/my-frontend
 pnpm create vite . --template react-ts
 
 # Core dependencies
@@ -116,7 +116,7 @@ handles serving directly from the build output.
 programs:
   my-frontend:
     description: Web dashboard
-    source: components/my-frontend
+    source: code/my-frontend
     build:
       commands:
         - ["pnpm", "build"]
@@ -124,7 +124,8 @@ programs:
         - dist/
 ```
 
-For production, Caddy serves the static `dist/` output directly — no
+For production, `castle deploy` copies the build output to
+`~/.castle/artifacts/content/<name>/` and Caddy serves it from there — no
 Node process needed. See [Serving with Caddy](#serving-with-caddy) below.
 
 For development with Vite's dev server, add a service entry:
@@ -148,12 +149,23 @@ See @docs/component-registry.md for the full registry reference.
 
 ## Serving with Caddy
 
-For production, serve the static `dist/` output directly from Caddy rather than
-running a Node process. The gateway Caddyfile can serve the files:
+For production, the static build output is served by Caddy rather than a Node
+process. You do **not** write this block by hand — `castle deploy` generates it.
+The flow:
+
+1. `castle deploy` runs the program's `build.commands`, then copies each
+   `build.outputs` directory from `~/.castle/code/<name>/` into
+   `~/.castle/artifacts/content/<name>/` (`core/src/castle_core/deploy.py`,
+   `_copy_app_static`).
+2. The Caddyfile generator scans `~/.castle/artifacts/content/`; any directory
+   containing an `index.html` is served as a SPA at a path prefix matching its
+   name. `castle-app` is special-cased to serve at the root `/`.
+
+The generated block looks like this (written to `~/.castle/artifacts/specs/Caddyfile`):
 
 ```caddyfile
-handle_path /app/* {
-    root * /data/repos/castle/my-frontend/dist
+handle_path /my-frontend/* {
+    root * /home/payne/.castle/artifacts/content/my-frontend
     try_files {path} /index.html
     file_server
 }
@@ -161,7 +173,8 @@ handle_path /app/* {
 
 The `try_files {path} /index.html` directive is essential for SPA routing —
 it falls back to `index.html` for any path that doesn't match a static file,
-letting React Router handle client-side routes.
+letting React Router handle client-side routes. The serving prefix is derived
+from the program name, not hand-configured.
 
 ## API integration
 

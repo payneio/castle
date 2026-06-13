@@ -32,7 +32,7 @@ class TestCreateCommand:
             result = run_create(args)
 
         assert result == 0
-        project_dir = castle_root / "programs" / "my-api"
+        project_dir = castle_root / "code" / "my-api"
         assert project_dir.exists()
         assert (project_dir / "pyproject.toml").exists()
         assert (project_dir / "src" / "my_api" / "main.py").exists()
@@ -64,7 +64,7 @@ class TestCreateCommand:
             result = run_create(args)
 
         assert result == 0
-        project_dir = castle_root / "programs" / "my-tool2"
+        project_dir = castle_root / "code" / "my-tool2"
         assert project_dir.exists()
         assert (project_dir / "src" / "my_tool2" / "main.py").exists()
         assert (project_dir / "CLAUDE.md").exists()
