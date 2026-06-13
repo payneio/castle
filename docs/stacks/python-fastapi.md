@@ -102,7 +102,7 @@ Castle passes config via env vars in castle.yaml:
 programs:
   my-service:
     description: Does something useful
-    source: components/my-service
+    source: code/my-service
     stack: python-fastapi
     behavior: daemon
 
@@ -292,11 +292,14 @@ Mapping convention:
 Castle services use filesystem storage with JSON metadata sidecars:
 
 ```
-/data/castle/my-service/
+$CASTLE_DATA_DIR/my-service/     # default /data/castle/my-service/
 └── bucket/
     ├── item-name
     └── item-name.meta.json
 ```
+
+The service receives this path via the generated `<PREFIX>_DATA_DIR` env var —
+it never hardcodes it. Use the `data_dir` setting from your config.
 
 ```python
 # storage.py

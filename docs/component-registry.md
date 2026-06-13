@@ -6,7 +6,8 @@ architecture.
 
 ## castle.yaml
 
-The single source of truth. Lives at the repo root. Three top-level sections:
+The single source of truth. Lives at `~/.castle/castle.yaml`. Three top-level
+sections:
 
 ```yaml
 gateway:
@@ -15,7 +16,7 @@ gateway:
 programs:
   my-tool:
     description: Does something useful
-    source: programs/my-tool
+    source: code/my-tool
     stack: python-cli
     behavior: tool
     system_dependencies: [pandoc]
@@ -76,10 +77,24 @@ Explicit declaration of how the program is used:
 ### `source` — Where the source lives
 
 ```yaml
-source: programs/my-tool
+source: code/my-tool        # your programs, under ~/.castle/code/
+source: repo:castle-api      # castle's own programs, inside the git repo
 ```
 
-Relative path from repo root to the project directory.
+The `source` path is resolved one of three ways (`core/src/castle_core/config.py`):
+
+| `source:` value | Resolves to | Used for |
+|-----------------|-------------|----------|
+| `code/my-tool` *(relative)* | `$CASTLE_HOME/code/my-tool` | Your own programs |
+| `repo:castle-api` | `<repo>/castle-api` (via the top-level `repo:` field) | Castle's built-in programs |
+| `/abs/path` | as-is | Anything explicitly absolute |
+
+Relative sources resolve against the castle home (`$CASTLE_HOME`, default
+`~/.castle` — see [Infrastructure paths](#infrastructure-paths)). Most programs
+you create live under **`$CASTLE_HOME/code/`** and are recorded as
+`source: code/<name>`. Castle's own programs (CLI, core, castle-api, app) live in
+the git repo and use the `repo:` prefix. When `castle deploy` writes `castle.yaml`
+back out, it rewrites absolute paths into these relative forms.
 
 ### `stack` — Development toolchain
 
@@ -215,28 +230,50 @@ Castle generates a systemd `.timer` file alongside the `.service` unit.
 Jobs also support `run` (required), `manage`, and `defaults` — same
 semantics as services.
 
+## How programs get into `~/.castle/code/`
+
+Every program's source lives in one place — `~/.castle/code/<name>/`. It can
+arrive there a few ways:
+
+1. **Scaffold a new one** with `castle create` — writes the project into
+   `~/.castle/code/<name>/` and registers it in `castle.yaml` with
+   `source: code/<name>`.
+2. **Clone an existing project** — `git clone <url> ~/.castle/code/<name>`,
+   then add a `programs:` entry pointing at `source: code/<name>`.
+3. **Drop files in directly** — a `code/<name>/` directory is just a working
+   tree; it doesn't have to be under version control to be registered and run.
+
+`~/.castle/` and `~/.castle/code/` are **not** themselves git repos, and there
+are no submodules. Each program directory manages its own version control (or
+none) independently — some are standalone git clones, others are just loose
+files.
+
+Castle's own programs (CLI, core, castle-api, app) are the exception: they live
+inside the castle git repo and are referenced with `source: repo:<name>`.
+
 ## Registering a new program
 
 ### Via `castle create` (recommended)
 
 ```bash
-# Service — scaffolds project, assigns port, registers in castle.yaml
+# Service — scaffolds into ~/.castle/code/, assigns port, registers in castle.yaml
 castle create my-service --stack python-fastapi --description "Does something"
 
-# Tool — scaffolds under programs/
+# Tool — scaffolds into ~/.castle/code/
 castle create my-tool --stack python-cli --description "Does something"
 ```
 
 ### Manually
 
-Add entries to the appropriate sections of `castle.yaml`:
+Clone or create the project under `~/.castle/code/`, then add entries to the
+appropriate sections of `castle.yaml`:
 
 ```yaml
 # Tool — only needs a program entry
 programs:
   my-tool:
     description: Does something useful
-    source: programs/my-tool
+    source: code/my-tool
     stack: python-cli
     behavior: tool
 
@@ -244,7 +281,7 @@ programs:
 programs:
   my-service:
     description: Does something useful
-    source: programs/my-service
+    source: code/my-service
     stack: python-fastapi
     behavior: daemon
 
@@ -270,7 +307,7 @@ services:
 
 ```bash
 castle create my-service --stack python-fastapi   # 1. Scaffold + register
-cd programs/my-service && uv sync         # 2. Install deps
+cd ~/.castle/code/my-service && uv sync   # 2. Install deps
 # ... implement ...
 castle test my-service                    # 3. Run tests
 castle service enable my-service          # 4. Generate systemd unit, start
@@ -290,10 +327,10 @@ castle service disable my-service # Stop and remove systemd unit
 
 ```bash
 castle create my-tool --stack python-cli        # 1. Scaffold + register
-cd programs/my-tool && uv sync           # 2. Install deps
+cd ~/.castle/code/my-tool && uv sync     # 2. Install deps
 # ... implement ...
 castle test my-tool                      # 3. Run tests
-uv tool install --editable programs/my-tool/    # 4. Install to PATH
+uv tool install --editable ~/.castle/code/my-tool/   # 4. Install to PATH
 ```
 
 ### Job lifecycle
@@ -317,14 +354,32 @@ and a `.timer` file.
 
 ## Infrastructure paths
 
+Castle uses **two** independent roots, each overridable by an environment
+variable (both expand `~` and resolve relative paths):
+
+- **`CASTLE_HOME`** — config, code, artifacts, and secrets. Default `~/.castle`.
+- **`CASTLE_DATA_DIR`** — program/service data I/O (potentially large; lives on a
+  dedicated volume). Default `/data/castle`. Decoupled from `CASTLE_HOME` on
+  purpose so bulk data doesn't sit in the home directory.
+
 | What | Where |
 |------|-------|
-| Registry | `castle.yaml` (repo root) |
-| Service data | `/data/castle/<name>/` |
-| Secrets | `~/.castle/secrets/<NAME>` |
-| Generated Caddyfile | `~/.castle/generated/Caddyfile` |
+| Castle home | `$CASTLE_HOME` (default `~/.castle`) |
+| Registry | `$CASTLE_HOME/castle.yaml` |
+| Program source (yours) | `$CASTLE_HOME/code/<name>/` |
+| Program source (castle's) | `<repo>/<name>` (via `source: repo:<name>`) |
+| Secrets | `$CASTLE_HOME/secrets/<NAME>` |
+| Generated Caddyfile | `$CASTLE_HOME/artifacts/specs/Caddyfile` |
+| Built frontends | `$CASTLE_HOME/artifacts/content/<name>/` |
+| **Service data** | **`$CASTLE_DATA_DIR/<name>/` (default `/data/castle/<name>/`)** |
 | Systemd units | `~/.config/systemd/user/castle-*.service` |
 | Systemd timers | `~/.config/systemd/user/castle-*.timer` |
+
+Defined in `core/src/castle_core/config.py`: `CASTLE_HOME` (with derived
+`CODE_DIR`, `SECRETS_DIR`, `SPECS_DIR`, `CONTENT_DIR`) and the independent
+`DATA_DIR` (`CASTLE_DATA_DIR`). `castle deploy` passes each service its data
+path via the generated `<PREFIX>_DATA_DIR` env var. Systemd unit/timer paths are
+fixed by systemd's user-unit convention.
 
 ## Manifest models
 

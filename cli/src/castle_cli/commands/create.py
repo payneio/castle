@@ -53,11 +53,11 @@ def run_create(args: argparse.Namespace) -> int:
         print(f"Error: '{name}' already exists in castle.yaml")
         return 1
 
-    programs_dir = config.root / "programs"
-    programs_dir.mkdir(exist_ok=True)
-    project_dir = programs_dir / name
+    code_dir = config.root / "code"
+    code_dir.mkdir(exist_ok=True)
+    project_dir = code_dir / name
     if project_dir.exists():
-        print(f"Error: directory 'programs/{name}' already exists")
+        print(f"Error: directory 'code/{name}' already exists")
         return 1
 
     # Determine port for daemons
@@ -82,7 +82,7 @@ def run_create(args: argparse.Namespace) -> int:
     config.programs[name] = ProgramSpec(
         id=name,
         description=args.description or f"A castle {stack} program",
-        source=f"programs/{name}",
+        source=f"code/{name}",
         stack=stack,
         behavior=behavior,
     )
@@ -108,7 +108,7 @@ def run_create(args: argparse.Namespace) -> int:
         print(f"  Port: {port}")
     print("  Registered in castle.yaml")
     print("\nNext steps:")
-    print(f"  cd programs/{name}")
+    print(f"  cd ~/.castle/code/{name}")
     print("  uv sync")
     if behavior == "daemon":
         print(f"  uv run {name}  # starts on port {port}")

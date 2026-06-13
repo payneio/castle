@@ -37,18 +37,19 @@ When creating a new service, tool, or frontend, follow the detailed guides:
 ```bash
 # Daemon (python-fastapi)
 castle create my-service --stack python-fastapi --description "Does something"
-cd programs/my-service && uv sync
+cd ~/.castle/code/my-service && uv sync
 uv run my-service               # starts on auto-assigned port
 castle service enable my-service # register with systemd
 castle gateway reload            # update reverse proxy routes
 
 # Tool (python-cli)
 castle create my-tool --stack python-cli --description "Does something"
-cd programs/my-tool && uv sync
+cd ~/.castle/code/my-tool && uv sync
 ```
 
-The `castle create` command scaffolds the project under `programs/`,
-generates a CLAUDE.md, and registers it in `castle.yaml`.
+The `castle create` command scaffolds the project under `~/.castle/code/`,
+generates a CLAUDE.md, and registers it in `castle.yaml` with
+`source: code/<name>`.
 
 ## Castle CLI
 
@@ -63,7 +64,6 @@ castle create <name> --stack python-fastapi  # Scaffold new project
 castle deploy [name]                     # Deploy to runtime (registry + systemd + Caddyfile)
 castle test [project]                    # Run tests (one or all)
 castle lint [project]                    # Run linter (one or all)
-castle sync                              # Update submodules + uv sync all
 castle run <name>                        # Run service in foreground
 castle logs <name> [-f] [-n 50]          # View service/job logs
 castle tool list                         # List all tools
@@ -76,8 +76,13 @@ castle services start|stop               # Start/stop everything
 
 ## Infrastructure
 
+Castle uses two roots, each overridable by an env var: `CASTLE_HOME` (config,
+code, artifacts, secrets; default `~/.castle`) and `CASTLE_DATA_DIR` (program
+data I/O on a dedicated volume; default `/data/castle`). Paths below use
+`$CASTLE_HOME` and `$CASTLE_DATA_DIR` accordingly.
+
 - **Gateway**: Caddy reverse proxy at port 9000, config generated from `castle.yaml`
-  into `~/.castle/generated/Caddyfile`. Dashboard served at root.
+  into `$CASTLE_HOME/artifacts/specs/Caddyfile`. Dashboard served at root.
 - **Systemd**: User units generated under `~/.config/systemd/user/castle-*.service`.
   Use drop-in overrides (`*.service.d/*.conf`) for extra env vars that `castle deploy`
   shouldn't overwrite (e.g., `CASTLE_API_MQTT_ENABLED`).
@@ -85,9 +90,10 @@ castle services start|stop               # Start/stop everything
   due to rootless podman UID mapping issues). Deploy resolves the runtime via
   `shutil.which("docker")`.
 - **MQTT**: Mosquitto broker runs as `castle-mqtt` (Docker container on port 1883).
-  Data in `/data/castle/castle-mqtt/`, config in `/data/castle/castle-mqtt/config/`.
-- **Data**: Service data lives in `/data/castle/<service-name>/`, passed via env var.
-- **Secrets**: `~/.castle/secrets/` — never in project directories.
+  Data in `$CASTLE_DATA_DIR/castle-mqtt/`, config in `$CASTLE_DATA_DIR/castle-mqtt/config/`.
+- **Data**: Service data lives in `$CASTLE_DATA_DIR/<service-name>/` (default
+  `/data/castle/<name>/`), passed via the generated `<PREFIX>_DATA_DIR` env var.
+- **Secrets**: `$CASTLE_HOME/secrets/` — never in project directories.
 
 ## API Endpoints (castle-api, port 9020)
 
