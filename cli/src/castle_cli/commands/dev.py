@@ -85,9 +85,40 @@ def run_check(args: argparse.Namespace) -> int:
     return run_verb(args, "check")
 
 
+def _lifecycle(config: CastleConfig, name: str, deactivate: bool) -> bool:
+    """Activate or deactivate a single program. Returns True on success."""
+    from castle_core.lifecycle import activate
+    from castle_core.lifecycle import deactivate as do_deactivate
+
+    if name not in config.programs and name not in config.services and name not in config.jobs:
+        print(f"Unknown program: {name}")
+        return False
+    verb = "deactivate" if deactivate else "activate"
+    print(f"\n{'─' * 40}\n  {verb}: {name}\n{'─' * 40}")
+    fn = do_deactivate if deactivate else activate
+    result = asyncio.run(fn(name, config, config.root))
+    if result.output:
+        print(result.output)
+    return result.status == "ok"
+
+
 def run_install(args: argparse.Namespace) -> int:
-    return run_verb(args, "install")
+    """Activate (install/deploy/serve) a program — verb word kept, meaning unified."""
+    config = load_config()
+    if getattr(args, "project", None):
+        return 0 if _lifecycle(config, args.project, deactivate=False) else 1
+    ok = all(
+        _lifecycle(config, name, deactivate=False)
+        for name, comp in config.programs.items()
+        if comp.source
+    )
+    return 0 if ok else 1
 
 
 def run_uninstall(args: argparse.Namespace) -> int:
-    return run_verb(args, "uninstall")
+    """Deactivate (uninstall/stop/unpublish) a program."""
+    config = load_config()
+    if getattr(args, "project", None):
+        return 0 if _lifecycle(config, args.project, deactivate=True) else 1
+    print("Refusing to deactivate all programs; name a target.")
+    return 1

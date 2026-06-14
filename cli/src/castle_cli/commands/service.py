@@ -78,103 +78,21 @@ def run_services(args: argparse.Namespace) -> int:
 
 def _service_enable(config: CastleConfig, name: str) -> int:
     """Enable and start a single service (or timer for scheduled jobs)."""
-    if not REGISTRY_PATH.exists():
-        print("Error: no registry found. Run 'castle deploy' first.")
-        return 1
-
-    registry = load_registry()
-    if name not in registry.deployed:
-        print(f"Error: '{name}' not found in registry. Run 'castle deploy' first.")
-        return 1
-
-    deployed = registry.deployed[name]
-    if not deployed.managed:
-        print(f"Error: '{name}' is not a managed service")
-        return 1
+    from castle_core.lifecycle import enable_service
 
     ensure_dirs()
-
-    # Get systemd spec from config (services or jobs)
-    systemd_spec = None
-    if name in config.services:
-        svc = config.services[name]
-        if svc.manage and svc.manage.systemd:
-            systemd_spec = svc.manage.systemd
-    elif name in config.jobs:
-        job = config.jobs[name]
-        if job.manage and job.manage.systemd:
-            systemd_spec = job.manage.systemd
-
-    # Generate and install the service unit from registry
-    svc_unit = unit_name(name)
-    svc_content = generate_unit_from_deployed(name, deployed, systemd_spec)
-    _install_unit(svc_unit, svc_content)
-
-    # Check for timer (jobs have schedule)
-    if deployed.schedule:
-        timer_content = generate_timer(
-            name,
-            schedule=deployed.schedule,
-            description=deployed.description,
-        )
-        tmr_unit = timer_name(name)
-        _install_unit(tmr_unit, timer_content)
-
-        print(f"Enabling {name} (scheduled)...")
-        subprocess.run(["systemctl", "--user", "enable", tmr_unit], check=False)
-        subprocess.run(["systemctl", "--user", "start", tmr_unit], check=False)
-
-        result = subprocess.run(
-            ["systemctl", "--user", "is-active", tmr_unit],
-            capture_output=True,
-            text=True,
-        )
-        status = result.stdout.strip()
-        if status in ("active", "waiting"):
-            print(f"  {name}: timer active")
-        else:
-            print(f"  {name}: timer {status}")
-    else:
-        print(f"Enabling {name}...")
-        subprocess.run(["systemctl", "--user", "enable", svc_unit], check=False)
-        subprocess.run(["systemctl", "--user", "start", svc_unit], check=False)
-
-        result = subprocess.run(
-            ["systemctl", "--user", "is-active", svc_unit],
-            capture_output=True,
-            text=True,
-        )
-        status = result.stdout.strip()
-        port_str = ""
-        if deployed.port:
-            port_str = f" (port {deployed.port})"
-        if status == "active":
-            print(f"  {name}: running{port_str}")
-        else:
-            print(f"  {name}: {status}")
-            print(f"  Check logs: journalctl --user -u {svc_unit}")
-
-    return 0
+    result = enable_service(name, config)
+    print(result.output)
+    return 0 if result.status == "ok" else 1
 
 
 def _service_disable(name: str) -> int:
     """Stop and disable a service (and timer if present)."""
-    svc_unit = unit_name(name)
-    tmr_unit = timer_name(name)
+    from castle_core.lifecycle import disable_service
 
     print(f"Disabling {name}...")
-
-    timer_path = SYSTEMD_USER_DIR / tmr_unit
-    if timer_path.exists():
-        subprocess.run(["systemctl", "--user", "stop", tmr_unit], check=False)
-        subprocess.run(["systemctl", "--user", "disable", tmr_unit], check=False)
-        _remove_unit(tmr_unit)
-
-    subprocess.run(["systemctl", "--user", "stop", svc_unit], check=False)
-    subprocess.run(["systemctl", "--user", "disable", svc_unit], check=False)
-    _remove_unit(svc_unit)
-    print(f"  {name}: disabled")
-
+    result = disable_service(name)
+    print(f"  {result.output}")
     return 0
 
 

@@ -85,10 +85,12 @@ export function ProgramDetailPage() {
               <span>{runnerLabel(component.runner)}</span>
             </>
           )}
-          {component.installed !== null && (
+          {component.active !== null && (
             <>
-              <span className="text-[var(--muted)]">Installed</span>
-              <span>{component.installed ? "Yes" : "No"}</span>
+              <span className="text-[var(--muted)]">Active</span>
+              <span className={component.active ? "text-green-400" : "text-[var(--muted)]"}>
+                {component.active ? "● active" : "○ inactive"}
+              </span>
             </>
           )}
         </div>

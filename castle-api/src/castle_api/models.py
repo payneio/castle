@@ -33,6 +33,7 @@ class ComponentSummary(BaseModel):
     system_dependencies: list[str] = []
     schedule: str | None = None
     installed: bool | None = None
+    active: bool | None = None  # uniform lifecycle state (on PATH / running / served)
     node: str | None = None
 
 
@@ -99,6 +100,7 @@ class ProgramSummary(BaseModel):
     commands: dict[str, list[list[str]]] | None = None
     system_dependencies: list[str] = []
     installed: bool | None = None
+    active: bool | None = None  # uniform lifecycle state (on PATH / running / served)
     actions: list[str] = []
     node: str | None = None
 
