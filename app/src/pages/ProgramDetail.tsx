@@ -37,7 +37,7 @@ export function ProgramDetailPage() {
         stack={deployment.stack}
         source={deployment.source}
       >
-        <ProgramActions name={deployment.id} actions={deployment.actions} installed={deployment.installed} onOutput={setActionOutput} />
+        <ProgramActions name={deployment.id} actions={deployment.actions} active={deployment.active} onOutput={setActionOutput} />
       </DetailHeader>
 
       {actionOutput && actionOutput.action && (

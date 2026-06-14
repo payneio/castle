@@ -41,32 +41,34 @@ export interface ActionOutput {
 interface ProgramActionsProps {
   name: string
   actions: string[]
-  installed?: boolean | null
+  active?: boolean | null
   compact?: boolean
   onOutput?: (output: ActionOutput) => void
 }
 
 function visibleActions(
   actions: string[],
-  installed: boolean | null | undefined,
+  active: boolean | null | undefined,
   compact: boolean,
 ): string[] {
+  // `active` is the uniform lifecycle state (on PATH / running / served), not a
+  // PATH lookup — so it's correct for tools, services, jobs, and static frontends.
   if (compact) {
-    // Table: only install/uninstall based on state
-    if (installed === true) return actions.includes("uninstall") ? ["uninstall"] : []
-    if (installed === false) return actions.includes("install") ? ["install"] : []
-    // null — show install if available (frontends, etc.)
+    // Table: only the activate/deactivate toggle based on state
+    if (active === true) return actions.includes("uninstall") ? ["uninstall"] : []
+    if (active === false) return actions.includes("install") ? ["install"] : []
+    // null — show install if available
     return actions.includes("install") ? ["install"] : []
   }
 
-  // Detail page: dev actions always, install/uninstall based on state
+  // Detail page: dev actions always, activate/deactivate based on state
   const visible: string[] = []
   for (const a of DEV_ACTIONS) {
     if (actions.includes(a)) visible.push(a)
   }
-  if (installed === true) {
+  if (active === true) {
     if (actions.includes("uninstall")) visible.push("uninstall")
-  } else if (installed === false) {
+  } else if (active === false) {
     if (actions.includes("install")) visible.push("install")
   } else {
     // null — show both if available
@@ -76,11 +78,11 @@ function visibleActions(
   return visible
 }
 
-export function ProgramActions({ name, actions, installed, compact, onOutput }: ProgramActionsProps) {
+export function ProgramActions({ name, actions, active, compact, onOutput }: ProgramActionsProps) {
   const { mutate, isPending } = useProgramAction()
   const [runningAction, setRunningAction] = useState<string | null>(null)
 
-  const visible = visibleActions(actions, installed, !!compact)
+  const visible = visibleActions(actions, active, !!compact)
 
   const handleAction = (action: string) => {
     setRunningAction(action)
