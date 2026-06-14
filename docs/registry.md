@@ -157,9 +157,9 @@ repo: https://github.com/me/widget.git
 ref: v2.1.0          # optional branch/tag/commit
 ```
 
-`repo` records a git URL so `castle clone` can provision the source on a fresh
+`repo` records a git URL so `castle program clone` can provision the source on a fresh
 machine. When `source:` points at an existing working copy, that takes
-precedence. Use `castle add <path|url>` to register an existing repo as a program.
+precedence. Use `castle program add <path|url>` to register an existing repo as a program.
 
 ### `system_dependencies` — Required system packages
 
@@ -240,7 +240,7 @@ manage:
   systemd: {}
 ```
 
-Enables `castle service enable/disable` and `castle logs`. An empty `{}`
+Enables `castle service enable/disable` and `castle service logs`. An empty `{}`
 uses defaults (enable=true, restart=on-failure, restart_sec=2).
 
 Full options:
@@ -292,7 +292,7 @@ semantics as services.
 Every program's source lives in one place — `~/.castle/code/<name>/`. It can
 arrive there a few ways:
 
-1. **Scaffold a new one** with `castle create` — writes the project into
+1. **Scaffold a new one** with `castle program create` — writes the project into
    `~/.castle/code/<name>/` and registers it in `castle.yaml` with
    `source: code/<name>`.
 2. **Clone an existing project** — `git clone <url> ~/.castle/code/<name>`,
@@ -310,14 +310,14 @@ inside the castle git repo and are referenced with `source: repo:<name>`.
 
 ## Registering a new program
 
-### Via `castle create` (recommended)
+### Via `castle program create` (recommended)
 
 ```bash
 # Service — scaffolds into ~/.castle/code/, assigns port, registers in castle.yaml
-castle create my-service --stack python-fastapi --description "Does something"
+castle program create my-service --stack python-fastapi --description "Does something"
 
 # Tool — scaffolds into ~/.castle/code/
-castle create my-tool --stack python-cli --description "Does something"
+castle program create my-tool --stack python-cli --description "Does something"
 ```
 
 ### Manually
@@ -363,10 +363,10 @@ services:
 ### Service lifecycle
 
 ```bash
-castle create my-service --stack python-fastapi   # 1. Scaffold + register
+castle program create my-service --stack python-fastapi   # 1. Scaffold + register
 cd ~/.castle/code/my-service && uv sync   # 2. Install deps
 # ... implement ...
-castle test my-service                    # 3. Run tests
+castle program test my-service                    # 3. Run tests
 castle service enable my-service          # 4. Generate systemd unit, start
 castle gateway reload                     # 5. Update Caddy routes
 ```
@@ -376,17 +376,17 @@ on failure. Manage with:
 
 ```bash
 castle logs my-service -f         # Tail logs
-castle run my-service             # Run in foreground (for debugging)
+castle service run my-service     # Run in foreground (for debugging)
 castle service disable my-service # Stop and remove systemd unit
 ```
 
 ### Tool lifecycle
 
 ```bash
-castle create my-tool --stack python-cli        # 1. Scaffold + register
+castle program create my-tool --stack python-cli        # 1. Scaffold + register
 cd ~/.castle/code/my-tool && uv sync     # 2. Install deps
 # ... implement ...
-castle test my-tool                      # 3. Run tests
+castle program test my-tool                      # 3. Run tests
 uv tool install --editable ~/.castle/code/my-tool/   # 4. Install to PATH
 ```
 
@@ -406,7 +406,7 @@ jobs:
       systemd: {}
 ```
 
-`castle service enable my-job` generates both a `.service` (Type=oneshot)
+`castle job enable my-job` generates both a `.service` (Type=oneshot)
 and a `.timer` file.
 
 ## Infrastructure paths

@@ -17,5 +17,5 @@ def run_deploy(args: argparse.Namespace) -> int:
 
     print(f"\nDeployed {result.deployed_count} item(s).")
     if result.deployed_count > 0:
-        print("Run 'castle services start' to start all services.")
+        print("Run 'castle start' to start all services.")
     return 0

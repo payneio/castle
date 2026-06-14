@@ -44,24 +44,32 @@ def _run_program(name: str, extra: list[str]) -> int | None:
 
 
 def run_run(args: argparse.Namespace) -> int:
-    """Run a program (declared run) or a deployed service in the foreground."""
+    """Run a program's declared run, or a deployed service, in the foreground.
+
+    Scoped by `resource`: `program run` runs the program's declared `run`;
+    `service run` runs the deployed service's command from the registry.
+    """
     name = args.name
     extra_args = getattr(args, "extra", []) or []
+    resource = getattr(args, "resource", None)
 
-    # 1. Program with a declared run command.
-    prog_rc = _run_program(name, extra_args)
-    if prog_rc is not None:
-        return prog_rc
+    # Program: declared run command.
+    if resource in (None, "program"):
+        prog_rc = _run_program(name, extra_args)
+        if prog_rc is not None:
+            return prog_rc
+        if resource == "program":
+            print(f"Error: program '{name}' has no declared `run` command.")
+            return 1
 
-    # 2. Deployed service from the registry.
+    # Service: deployed command from the registry.
     if not REGISTRY_PATH.exists():
         print("Error: no registry found. Run 'castle deploy' first.")
         return 1
 
     registry = load_registry()
     if name not in registry.deployed:
-        print(f"Error: '{name}' is not a runnable program or deployed service.")
-        print("Declare a `run` command in castle.yaml, or run 'castle deploy'.")
+        print(f"Error: '{name}' is not a deployed service. Run 'castle deploy' first.")
         return 1
 
     deployed = registry.deployed[name]

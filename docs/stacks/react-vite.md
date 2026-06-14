@@ -1,9 +1,9 @@
 # Web Frontends in Castle
 
 > **This is a stack — creation-time guidance for writing _new_ frontends.**
-> A stack is a template + conventions, not a runtime requirement. `castle create
+> A stack is a template + conventions, not a runtime requirement. `castle program create
 > --stack react-vite` scaffolds from it and seeds the program's default dev-verb
-> commands. An existing frontend adopted with `castle add` doesn't need this
+> commands. An existing frontend adopted with `castle program add` doesn't need this
 > stack — it declares its own `commands:`. See @docs/registry.md for
 > `commands:`, `stack:` (optional), and `repo:`.
 

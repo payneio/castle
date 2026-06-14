@@ -1,4 +1,11 @@
-"""Castle CLI entry point."""
+"""Castle CLI entry point — resource-first command surface.
+
+Operations live under the resource they act on (`program`, `service`, `job`,
+`gateway`); platform-wide lifecycle (`start`/`stop`/`restart`/`status`/`deploy`)
+and the cross-resource `list` are top-level. Names can collide across resource
+types (a program and a service may share a name), so the resource is always
+explicit.
+"""
 
 from __future__ import annotations
 
@@ -7,182 +14,244 @@ import sys
 
 from castle_cli import __version__
 
+DEV_VERBS = ["build", "test", "lint", "format", "type-check", "check"]
+
+
+def _add_name(p: argparse.ArgumentParser, help: str = "Name", optional: bool = False) -> None:
+    p.add_argument("name", nargs="?" if optional else None, help=help)
+
+
+def _build_program_group(subparsers: argparse._SubParsersAction) -> None:
+    prog = subparsers.add_parser("program", help="Manage programs (the software catalog)")
+    prog.set_defaults(resource="program")
+    sub = prog.add_subparsers(dest="program_command")
+
+    p = sub.add_parser("list", help="List programs")
+    p.add_argument("--behavior", choices=["daemon", "tool", "frontend"], help="Filter by behavior")
+    p.add_argument("--stack", help="Filter by stack")
+    p.add_argument("--json", action="store_true", help="Output as JSON")
+
+    p = sub.add_parser("info", help="Show program details")
+    _add_name(p, "Program name")
+    p.add_argument("--json", action="store_true", help="Output as JSON")
+
+    p = sub.add_parser("create", help="Scaffold a new program")
+    _add_name(p, "Program name")
+    p.add_argument("--stack", choices=["python-cli", "python-fastapi", "react-vite"], default=None)
+    p.add_argument("--description", default="", help="Program description")
+    p.add_argument("--port", type=int, help="Port (daemons only)")
+
+    p = sub.add_parser("add", help="Adopt an existing repo (path or git URL)")
+    p.add_argument("target", help="Local path or git URL")
+    p.add_argument("--name", help="Program name (default: dir/repo name)")
+    p.add_argument("--description", default="", help="Program description")
+
+    p = sub.add_parser("clone", help="Clone source for programs with repo:")
+    _add_name(p, "Program to clone (default: all with repo:)", optional=True)
+
+    p = sub.add_parser("delete", help="Remove a program from castle.yaml")
+    _add_name(p, "Program name")
+    p.add_argument("--source", action="store_true", help="Also delete the source directory")
+    p.add_argument("-y", "--yes", action="store_true", help="Skip confirmation")
+
+    p = sub.add_parser("run", help="Run a program's declared run command")
+    _add_name(p, "Program name")
+    p.add_argument("extra", nargs=argparse.REMAINDER, help="Extra args passed to the program")
+
+    sub.add_parser("install", help="Activate a program (tool→PATH, frontend→served)").add_argument(
+        "name", nargs="?", help="Program (default: all)"
+    )
+    sub.add_parser("uninstall", help="Deactivate a program").add_argument(
+        "name", nargs="?", help="Program"
+    )
+
+    for verb in DEV_VERBS:
+        p = sub.add_parser(verb, help=f"Run {verb}")
+        _add_name(p, "Program (default: all)", optional=True)
+
+
+def _add_service_create(sub: argparse._SubParsersAction, kind: str) -> None:
+    p = sub.add_parser("create", help=f"Create a {kind} in castle.yaml")
+    _add_name(p, f"{kind.capitalize()} name")
+    p.add_argument("--program", help="Program this deployment runs (convenience ref)")
+    p.add_argument("--description", default="", help="Description")
+    p.add_argument("--run", help="Console script / command to run (default: --program or name)")
+    p.add_argument("--runner", choices=["python", "command"], default="python")
+    if kind == "service":
+        p.add_argument("--port", type=int, help="HTTP port")
+        p.add_argument("--health", default="/health", help="Health path (default: /health)")
+        p.add_argument("--path", help="Gateway proxy prefix (default: /<name>)")
+        p.add_argument("--host", help="Route by hostname instead of a path prefix")
+        p.add_argument("--port-env", help="Env var the program reads for its port")
+        p.add_argument("--no-proxy", action="store_true", help="Don't add a gateway route")
+    else:
+        p.add_argument("--schedule", default="0 2 * * *", help="Cron schedule (default: 0 2 * * *)")
+
+
+def _build_deployment_group(subparsers: argparse._SubParsersAction, kind: str) -> None:
+    """Build the `service` or `job` group (shared verb set)."""
+    grp = subparsers.add_parser(kind, help=f"Manage {kind}s")
+    grp.set_defaults(resource=kind)
+    sub = grp.add_subparsers(dest=f"{kind}_command")
+
+    p = sub.add_parser("list", help=f"List {kind}s")
+    p.add_argument("--json", action="store_true", help="Output as JSON")
+
+    p = sub.add_parser("info", help=f"Show {kind} details")
+    _add_name(p, f"{kind.capitalize()} name")
+    p.add_argument("--json", action="store_true", help="Output as JSON")
+
+    _add_service_create(sub, kind)
+
+    p = sub.add_parser("delete", help=f"Remove a {kind} from castle.yaml")
+    _add_name(p, f"{kind.capitalize()} name")
+    p.add_argument("-y", "--yes", action="store_true", help="Skip confirmation")
+    p.add_argument("--source", action="store_true", help=argparse.SUPPRESS)
+
+    cap = f"{kind.capitalize()} name"
+    _add_name(sub.add_parser("deploy", help=f"Deploy this {kind} (unit + gateway)"), cap)
+
+    p = sub.add_parser("enable", help=f"Enable and start the {kind}")
+    _add_name(p, cap)
+    if kind == "service":
+        p.add_argument("--dry-run", action="store_true", help="Print the unit without installing")
+    _add_name(sub.add_parser("disable", help=f"Stop and disable the {kind}"), cap)
+    _add_name(sub.add_parser("start", help=f"Start the {kind}"), cap)
+    _add_name(sub.add_parser("stop", help=f"Stop the {kind}"), cap)
+    _add_name(sub.add_parser("restart", help=f"Restart the {kind}"), cap)
+
+    p = sub.add_parser("logs", help=f"View {kind} logs")
+    _add_name(p, f"{kind.capitalize()} name")
+    p.add_argument("-f", "--follow", action="store_true", help="Follow log output")
+    p.add_argument("-n", "--lines", type=int, default=50, help="Lines to show (default: 50)")
+
 
 def build_parser() -> argparse.ArgumentParser:
-    """Build the argument parser."""
     parser = argparse.ArgumentParser(
         prog="castle",
-        description="Castle platform CLI - manage projects, services, and infrastructure",
+        description="Castle platform CLI — programs, services, jobs, and infrastructure",
     )
     parser.add_argument("--version", action="version", version=f"castle {__version__}")
-
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
-    # castle list
-    list_parser = subparsers.add_parser("list", help="List all programs, services, and jobs")
-    list_parser.add_argument(
-        "--behavior",
-        choices=["daemon", "tool", "frontend"],
-        help="Filter by behavior",
-    )
-    list_parser.add_argument(
-        "--stack",
-        help="Filter by stack (e.g. python-cli, python-fastapi, react-vite)",
-    )
-    list_parser.add_argument("--json", action="store_true", help="Output as JSON")
+    _build_program_group(subparsers)
+    _build_deployment_group(subparsers, "service")
+    _build_deployment_group(subparsers, "job")
 
-    # castle create
-    create_parser = subparsers.add_parser("create", help="Create a new project")
-    create_parser.add_argument("name", help="Project name")
-    create_parser.add_argument(
-        "--stack",
-        choices=["python-cli", "python-fastapi", "react-vite"],
-        default=None,
-        help="Development stack (scaffold template + default behavior). Omit for a bare program.",
-    )
-    create_parser.add_argument("--description", default="", help="Project description")
-    create_parser.add_argument("--port", type=int, help="Port number (daemons only)")
+    # Gateway (infrastructure)
+    gw = subparsers.add_parser("gateway", help="Manage the Caddy gateway")
+    gw_sub = gw.add_subparsers(dest="gateway_command")
+    p = gw_sub.add_parser("start", help="Start the gateway")
+    p.add_argument("--dry-run", action="store_true")
+    gw_sub.add_parser("stop", help="Stop the gateway")
+    p = gw_sub.add_parser("reload", help="Reload gateway configuration")
+    p.add_argument("--dry-run", action="store_true")
+    gw_sub.add_parser("status", help="Show gateway status")
 
-    # castle add — adopt an existing repo as a program
-    add_parser = subparsers.add_parser("add", help="Adopt an existing repo (path or git URL)")
-    add_parser.add_argument("target", help="Local path to an existing repo, or a git URL to clone")
-    add_parser.add_argument("--name", help="Program name (default: directory/repo name)")
-    add_parser.add_argument("--description", default="", help="Program description")
+    # Platform-wide lifecycle (top-level)
+    subparsers.add_parser("start", help="Start all services and the gateway")
+    subparsers.add_parser("stop", help="Stop all services and the gateway")
+    subparsers.add_parser("restart", help="Restart all services and jobs")
+    subparsers.add_parser("status", help="Show status across the platform")
+    p = subparsers.add_parser("deploy", help="Apply config to runtime (units + Caddyfile)")
+    p.add_argument("name", nargs="?", help="Service/job to deploy (default: all)")
 
-    # castle clone — clone repos for programs that declare repo:
-    clone_parser = subparsers.add_parser("clone", help="Clone source for programs with repo:")
-    clone_parser.add_argument("name", nargs="?", help="Program to clone (default: all with repo:)")
-
-    # castle expose — turn an existing program into a service
-    expose_parser = subparsers.add_parser("expose", help="Run an existing program as a service")
-    expose_parser.add_argument("name", help="Program to expose")
-    expose_parser.add_argument("--port", type=int, help="HTTP port the program binds")
-    expose_parser.add_argument("--health", default="/health", help="Health path (default: /health)")
-    expose_parser.add_argument("--path", help="Gateway proxy prefix (default: /<name>)")
-    expose_parser.add_argument(
-        "--host", help="Route by hostname instead of a path prefix (e.g. lakehouse.civil.lan)"
-    )
-    expose_parser.add_argument("--run", help="Console script / command to run (default: <name>)")
-    expose_parser.add_argument(
-        "--port-env", help="Env var the program reads for its port (e.g. LAKEHOUSED_DAEMON_PORT)"
-    )
-    expose_parser.add_argument(
-        "--no-proxy", action="store_true", help="Don't add a gateway route"
-    )
-
-    # castle delete — remove a program/service/job from the registry
-    delete_parser = subparsers.add_parser("delete", help="Remove a program/service/job")
-    delete_parser.add_argument("name", help="Program, service, or job name")
-    delete_parser.add_argument(
-        "--source", action="store_true", help="Also delete the source directory"
-    )
-    delete_parser.add_argument("-y", "--yes", action="store_true", help="Skip confirmation")
-
-    # castle info
-    info_parser = subparsers.add_parser("info", help="Show program details")
-    info_parser.add_argument("name", help="Program, service, or job name")
-    info_parser.add_argument("--json", action="store_true", help="Output as JSON")
-
-    # castle test
-    test_parser = subparsers.add_parser("test", help="Run tests")
-    test_parser.add_argument("name", nargs="?", help="Program to test (default: all)")
-
-    # castle lint
-    lint_parser = subparsers.add_parser("lint", help="Run linter")
-    lint_parser.add_argument("name", nargs="?", help="Program to lint (default: all)")
-
-    # castle format
-    format_parser = subparsers.add_parser("format", help="Format source code")
-    format_parser.add_argument("name", nargs="?", help="Program to format (default: all)")
-
-    # castle build
-    build_parser = subparsers.add_parser("build", help="Build programs")
-    build_parser.add_argument("name", nargs="?", help="Program to build (default: all)")
-
-    # castle type-check
-    tc_parser = subparsers.add_parser("type-check", help="Run type checker")
-    tc_parser.add_argument("name", nargs="?", help="Program to type-check (default: all)")
-
-    # castle check (composite: lint + type-check + test)
-    check_parser = subparsers.add_parser("check", help="Run lint + type-check + test")
-    check_parser.add_argument("name", nargs="?", help="Program to check (default: all)")
-
-    # castle install / uninstall — activate / deactivate a program in its mode
-    install_parser = subparsers.add_parser(
-        "install", help="Activate a program (tool→PATH, service/job→systemd, frontend→served)"
-    )
-    install_parser.add_argument("name", nargs="?", help="Program to activate (default: all)")
-    uninstall_parser = subparsers.add_parser(
-        "uninstall", help="Deactivate a program (reverse of install)"
-    )
-    uninstall_parser.add_argument("name", nargs="?", help="Program to deactivate")
-
-    # castle gateway
-    gateway_parser = subparsers.add_parser("gateway", help="Manage the Caddy gateway")
-    gateway_sub = gateway_parser.add_subparsers(dest="gateway_command")
-    gw_start = gateway_sub.add_parser("start", help="Start the gateway")
-    gw_start.add_argument(
-        "--dry-run", action="store_true", help="Print generated config without applying"
-    )
-    gateway_sub.add_parser("stop", help="Stop the gateway")
-    gw_reload = gateway_sub.add_parser("reload", help="Reload gateway configuration")
-    gw_reload.add_argument(
-        "--dry-run", action="store_true", help="Print generated config without applying"
-    )
-    gateway_sub.add_parser("status", help="Show gateway status")
-
-    # castle service (singular - manage individual services)
-    service_parser = subparsers.add_parser("service", help="Manage a service")
-    service_sub = service_parser.add_subparsers(dest="service_command")
-    enable_parser = service_sub.add_parser("enable", help="Enable and start a service")
-    enable_parser.add_argument("name", help="Service name")
-    enable_parser.add_argument(
-        "--dry-run", action="store_true", help="Print generated unit without installing"
-    )
-    disable_parser = service_sub.add_parser("disable", help="Stop and disable a service")
-    disable_parser.add_argument("name", help="Service name")
-
-    # castle services (plural - manage all services)
-    services_parser = subparsers.add_parser("services", help="Manage all services together")
-    services_sub = services_parser.add_subparsers(dest="services_command")
-    services_sub.add_parser("start", help="Start all services and gateway")
-    services_sub.add_parser("stop", help="Stop all services and gateway")
-    services_sub.add_parser("status", help="Show status of all services and jobs")
-
-    # castle restart — restart a single deployed service or job
-    restart_parser = subparsers.add_parser("restart", help="Restart a service or job")
-    restart_parser.add_argument("name", help="Service or job name")
-
-    # castle status — unified status (gateway + services + jobs + programs)
-    subparsers.add_parser("status", help="Show overall status across the platform")
-
-    # castle up — bring everything online (deploy + start all services)
-    subparsers.add_parser("up", help="Deploy and start all services and the gateway")
-
-    # castle logs
-    logs_parser = subparsers.add_parser("logs", help="View service/job logs")
-    logs_parser.add_argument("name", help="Service or job name")
-    logs_parser.add_argument("-f", "--follow", action="store_true", help="Follow log output")
-    logs_parser.add_argument(
-        "-n", "--lines", type=int, default=50, help="Number of lines to show (default: 50)"
-    )
-
-    # castle run — run a program (declared run) or deployed service in the foreground
-    run_parser = subparsers.add_parser("run", help="Run a program or service in the foreground")
-    run_parser.add_argument("name", help="Program or service name")
-    run_parser.add_argument(
-        "extra", nargs=argparse.REMAINDER, help="Extra arguments passed to the target"
-    )
-
-    # castle deploy
-    deploy_parser = subparsers.add_parser("deploy", help="Deploy to ~/.castle/ (spec → runtime)")
-    deploy_parser.add_argument("name", nargs="?", help="Service or job to deploy (default: all)")
+    # Cross-resource overview
+    p = subparsers.add_parser("list", help="List programs, services, and jobs")
+    p.add_argument("--behavior", choices=["daemon", "tool", "frontend"], help="Filter by behavior")
+    p.add_argument("--stack", help="Filter by stack")
+    p.add_argument("--json", action="store_true", help="Output as JSON")
 
     return parser
 
 
+def _dispatch_program(args: argparse.Namespace) -> int:
+    sub = args.program_command
+    if not sub:
+        verbs = "list|info|create|add|clone|delete|run|install|uninstall|" + "|".join(DEV_VERBS)
+        print(f"Usage: castle program {{{verbs}}}")
+        return 1
+    if sub == "list":
+        from castle_cli.commands.list_cmd import run_list
+
+        return run_list(args)
+    if sub == "info":
+        from castle_cli.commands.info import run_info
+
+        return run_info(args)
+    if sub == "create":
+        from castle_cli.commands.create import run_create
+
+        return run_create(args)
+    if sub == "add":
+        from castle_cli.commands.add import run_add
+
+        return run_add(args)
+    if sub == "clone":
+        from castle_cli.commands.clone import run_clone
+
+        return run_clone(args)
+    if sub == "delete":
+        from castle_cli.commands.delete import run_delete
+
+        return run_delete(args)
+    if sub == "run":
+        from castle_cli.commands.run_cmd import run_run
+
+        return run_run(args)
+    if sub == "install":
+        from castle_cli.commands.dev import run_install
+
+        return run_install(args)
+    if sub == "uninstall":
+        from castle_cli.commands.dev import run_uninstall
+
+        return run_uninstall(args)
+    if sub in DEV_VERBS:
+        from castle_cli.commands.dev import run_verb
+
+        return run_verb(args, sub)
+    return 1
+
+
+def _dispatch_deployment(args: argparse.Namespace, kind: str) -> int:
+    sub = getattr(args, f"{kind}_command")
+    if not sub:
+        verbs = "list|info|create|delete|deploy|enable|disable|start|stop|restart|logs"
+        print(f"Usage: castle {kind} {{{verbs}}}")
+        return 1
+    if sub == "list":
+        from castle_cli.commands.list_cmd import run_list
+
+        return run_list(args)
+    if sub == "info":
+        from castle_cli.commands.info import run_info
+
+        return run_info(args)
+    if sub == "create":
+        from castle_cli.commands.deploy_create import run_job_create, run_service_create
+
+        return run_service_create(args) if kind == "service" else run_job_create(args)
+    if sub == "delete":
+        from castle_cli.commands.delete import run_delete
+
+        return run_delete(args)
+    if sub == "deploy":
+        from castle_cli.commands.deploy import run_deploy
+
+        return run_deploy(args)
+    if sub in ("enable", "disable", "start", "stop", "restart"):
+        from castle_cli.commands.service import run_job_cmd, run_service_cmd
+
+        return run_service_cmd(args) if kind == "service" else run_job_cmd(args)
+    if sub == "logs":
+        from castle_cli.commands.logs import run_logs
+
+        return run_logs(args)
+    return 1
+
+
 def main() -> int:
-    """Main entry point."""
     parser = build_parser()
     args = parser.parse_args()
 
@@ -190,134 +259,37 @@ def main() -> int:
         parser.print_help()
         return 0
 
-    # Import command handlers lazily to keep startup fast
-    if args.command == "list":
+    cmd = args.command
+    if cmd == "program":
+        return _dispatch_program(args)
+    if cmd in ("service", "job"):
+        return _dispatch_deployment(args, cmd)
+    if cmd == "gateway":
+        from castle_cli.commands.gateway import run_gateway
+
+        return run_gateway(args)
+    if cmd in ("start", "stop", "restart"):
+        from castle_cli.commands.service import run_platform
+
+        return run_platform(args)
+    if cmd == "status":
+        from castle_cli.commands.service import run_status
+
+        return run_status(args)
+    if cmd == "deploy":
+        from castle_cli.commands.deploy import run_deploy
+
+        return run_deploy(args)
+    if cmd == "list":
         from castle_cli.commands.list_cmd import run_list
 
         return run_list(args)
 
-    elif args.command == "info":
-        from castle_cli.commands.info import run_info
-
-        return run_info(args)
-
-    elif args.command == "create":
-        from castle_cli.commands.create import run_create
-
-        return run_create(args)
-
-    elif args.command == "add":
-        from castle_cli.commands.add import run_add
-
-        return run_add(args)
-
-    elif args.command == "clone":
-        from castle_cli.commands.clone import run_clone
-
-        return run_clone(args)
-
-    elif args.command == "expose":
-        from castle_cli.commands.expose import run_expose
-
-        return run_expose(args)
-
-    elif args.command == "delete":
-        from castle_cli.commands.delete import run_delete
-
-        return run_delete(args)
-
-    elif args.command == "test":
-        from castle_cli.commands.dev import run_test
-
-        return run_test(args)
-
-    elif args.command == "lint":
-        from castle_cli.commands.dev import run_lint
-
-        return run_lint(args)
-
-    elif args.command == "format":
-        from castle_cli.commands.dev import run_format
-
-        return run_format(args)
-
-    elif args.command == "build":
-        from castle_cli.commands.dev import run_build
-
-        return run_build(args)
-
-    elif args.command == "type-check":
-        from castle_cli.commands.dev import run_type_check
-
-        return run_type_check(args)
-
-    elif args.command == "check":
-        from castle_cli.commands.dev import run_check
-
-        return run_check(args)
-
-    elif args.command == "install":
-        from castle_cli.commands.dev import run_install
-
-        return run_install(args)
-
-    elif args.command == "uninstall":
-        from castle_cli.commands.dev import run_uninstall
-
-        return run_uninstall(args)
-
-    elif args.command == "gateway":
-        from castle_cli.commands.gateway import run_gateway
-
-        return run_gateway(args)
-
-    elif args.command == "service":
-        from castle_cli.commands.service import run_service
-
-        return run_service(args)
-
-    elif args.command == "services":
-        from castle_cli.commands.service import run_services
-
-        return run_services(args)
-
-    elif args.command == "restart":
-        from castle_cli.commands.service import run_restart
-
-        return run_restart(args)
-
-    elif args.command == "status":
-        from castle_cli.commands.service import run_status
-
-        return run_status(args)
-
-    elif args.command == "up":
-        from castle_cli.commands.service import run_up
-
-        return run_up(args)
-
-    elif args.command == "logs":
-        from castle_cli.commands.logs import run_logs
-
-        return run_logs(args)
-
-    elif args.command == "deploy":
-        from castle_cli.commands.deploy import run_deploy
-
-        return run_deploy(args)
-
-    elif args.command == "run":
-        from castle_cli.commands.run_cmd import run_run
-
-        return run_run(args)
-
-    else:
-        parser.print_help()
-        return 1
+    parser.print_help()
+    return 1
 
 
 def cli() -> None:
-    """Entry point for the CLI."""
     sys.exit(main())
 
 

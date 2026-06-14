@@ -1,9 +1,9 @@
 # Web APIs in Castle
 
 > **This is a stack — creation-time guidance for writing _new_ FastAPI services.**
-> A stack is a template + conventions, not a runtime requirement. `castle create
+> A stack is a template + conventions, not a runtime requirement. `castle program create
 > --stack python-fastapi` scaffolds from it and seeds the program's default
-> dev-verb commands. An existing service adopted with `castle add` doesn't need
+> dev-verb commands. An existing service adopted with `castle program add` doesn't need
 > this stack — it declares its own `commands:`. See @docs/registry.md
 > for `commands:`, `stack:` (optional), and `repo:`.
 
@@ -442,10 +442,10 @@ uv run ruff format .        # Format
 
 ## Scaffolding
 
-`castle create` generates all of this automatically:
+`castle program create` generates all of this automatically:
 
 ```bash
-castle create my-service --stack python-fastapi --description "Does something useful"
+castle program create my-service --stack python-fastapi --description "Does something useful"
 ```
 
 See @docs/registry.md for manifest fields, castle.yaml structure,

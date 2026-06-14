@@ -57,7 +57,7 @@ class TestInfoCommand:
 
         assert result == 1
         output = capsys.readouterr().out
-        assert "not found" in output
+        assert "nope" in output
 
     def test_info_json_service(self, castle_root: Path, capsys) -> None:
         """--json produces valid JSON with service fields."""
