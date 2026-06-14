@@ -2,19 +2,23 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 
 import pytest
 
-import castle_core.generators.caddyfile as caddyfile_mod
 from castle_core.generators.caddyfile import generate_caddyfile_from_registry
 from castle_core.registry import DeployedComponent, NodeConfig, NodeRegistry
 
 
 @pytest.fixture(autouse=True)
-def _isolate_content_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Use a temp dir for CONTENT_DIR so tests don't depend on real ~/.castle."""
-    monkeypatch.setattr(caddyfile_mod, "CONTENT_DIR", tmp_path / "content")
+def _isolate_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Isolate the generator from the real ~/.castle config so static-frontend
+    routes don't leak into these registry-focused tests."""
+    import castle_core.config as config_mod
+
+    def _no_config(*args: object, **kwargs: object) -> object:
+        raise FileNotFoundError("isolated in tests")
+
+    monkeypatch.setattr(config_mod, "load_config", _no_config)
 
 
 def _make_registry(

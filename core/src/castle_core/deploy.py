@@ -14,7 +14,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from castle_core.config import (
-    CONTENT_DIR,
     DATA_DIR,
     SPECS_DIR,
     CastleConfig,
@@ -98,8 +97,8 @@ def deploy(target_name: str | None = None, root: Path | None = None) -> DeployRe
         result.deployed_count += 1
         result.messages.append(_format_deployed(name, deployed))
 
-    # Handle frontend build artifacts
-    _copy_app_static(config, result.messages)
+    # Static frontends are served in place from their repo build output
+    # (the Caddyfile roots directly at <source>/<dist>) — no copy step.
 
     # Save registry
     save_registry(registry)
@@ -365,24 +364,6 @@ def _format_deployed(name: str, deployed: DeployedComponent) -> str:
     if deployed.proxy_path:
         parts.append(f"proxy={deployed.proxy_path}")
     return " ".join(parts)
-
-
-def _copy_app_static(config: CastleConfig, messages: list[str]) -> None:
-    """Copy frontend build outputs to ~/.castle/artifacts/content/<name>/."""
-    for name, comp in config.programs.items():
-        if comp.behavior != "frontend":
-            continue
-        if not (comp.build and comp.build.outputs):
-            continue
-        source_dir = comp.source_dir or name
-        for output in comp.build.outputs:
-            src = config.root / source_dir / output
-            if src.exists():
-                dest = CONTENT_DIR / name
-                if dest.exists():
-                    shutil.rmtree(dest)
-                shutil.copytree(src, dest)
-                messages.append(f"Static: {src} → {dest}")
 
 
 def _desired_unit_files(registry: NodeRegistry) -> set[str]:
