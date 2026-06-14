@@ -4,7 +4,7 @@
 > A stack is a template + conventions, not a runtime requirement. `castle create
 > --stack python-cli` scaffolds from it and seeds the program's default dev-verb
 > commands. An existing CLI adopted with `castle add` doesn't need this stack — it
-> declares its own `commands:`. See @docs/component-registry.md for `commands:`,
+> declares its own `commands:`. See @docs/registry.md for `commands:`,
 > `stack:` (optional), and `repo:`.
 
 How to build CLI tools following Unix philosophy.
@@ -344,4 +344,4 @@ programs:
 Tools live in the `programs:` section. If a tool also runs on a schedule,
 add a separate entry in the `jobs:` section referencing the component.
 
-See @docs/component-registry.md for the full registry reference.
+See @docs/registry.md for the full registry reference.

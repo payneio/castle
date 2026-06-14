@@ -17,8 +17,8 @@ from castle_api.config import get_castle_root, get_registry
 from castle_api.mesh import mesh_state
 from castle_api.health import check_all_health
 from castle_api.models import (
-    ComponentDetail,
-    ComponentSummary,
+    DeploymentDetail,
+    DeploymentSummary,
     GatewayInfo,
     GatewayRoute,
     JobDetail,
@@ -47,8 +47,8 @@ def _declared_commands_dict(comp: ProgramSpec) -> dict[str, list[list[str]]] | N
     return out or None
 
 
-def _summary_from_deployed(name: str, deployed: object) -> ComponentSummary:
-    """Build a ComponentSummary from a DeployedComponent."""
+def _summary_from_deployed(name: str, deployed: object) -> DeploymentSummary:
+    """Build a DeploymentSummary from a Deployment."""
     managed = deployed.managed
 
     systemd_info: SystemdInfo | None = None
@@ -69,7 +69,7 @@ def _summary_from_deployed(name: str, deployed: object) -> ComponentSummary:
 
     category = "job" if deployed.schedule else "service"
 
-    return ComponentSummary(
+    return DeploymentSummary(
         id=name,
         category=category,
         description=deployed.description,
@@ -88,8 +88,8 @@ def _summary_from_deployed(name: str, deployed: object) -> ComponentSummary:
 
 def _summary_from_service(
     name: str, svc: ServiceSpec, config: object
-) -> ComponentSummary:
-    """Build a ComponentSummary from a ServiceSpec (non-deployed)."""
+) -> DeploymentSummary:
+    """Build a DeploymentSummary from a ServiceSpec (non-deployed)."""
     port = None
     health_path = None
     proxy_path = None
@@ -112,8 +112,8 @@ def _summary_from_service(
     description = svc.description
     source = None
     stack = None
-    if svc.component and svc.component in config.programs:
-        comp = config.programs[svc.component]
+    if svc.program and svc.program in config.programs:
+        comp = config.programs[svc.program]
         if not description:
             description = comp.description
         source = comp.source
@@ -121,7 +121,7 @@ def _summary_from_service(
 
     runner = svc.run.runner
 
-    return ComponentSummary(
+    return DeploymentSummary(
         id=name,
         category="service",
         description=description,
@@ -137,8 +137,8 @@ def _summary_from_service(
     )
 
 
-def _summary_from_job(name: str, job: JobSpec, config: object) -> ComponentSummary:
-    """Build a ComponentSummary from a JobSpec (non-deployed)."""
+def _summary_from_job(name: str, job: JobSpec, config: object) -> DeploymentSummary:
+    """Build a DeploymentSummary from a JobSpec (non-deployed)."""
     managed = bool(job.manage and job.manage.systemd and job.manage.systemd.enable)
 
     systemd_info: SystemdInfo | None = None
@@ -150,14 +150,14 @@ def _summary_from_job(name: str, job: JobSpec, config: object) -> ComponentSumma
     description = job.description
     source = None
     stack = None
-    if job.component and job.component in config.programs:
-        comp = config.programs[job.component]
+    if job.program and job.program in config.programs:
+        comp = config.programs[job.program]
         if not description:
             description = comp.description
         source = comp.source
         stack = comp.stack
 
-    return ComponentSummary(
+    return DeploymentSummary(
         id=name,
         category="job",
         description=description,
@@ -171,8 +171,8 @@ def _summary_from_job(name: str, job: JobSpec, config: object) -> ComponentSumma
     )
 
 
-def _summary_from_program(name: str, comp: ProgramSpec, root: Path) -> ComponentSummary:
-    """Build a ComponentSummary from a ProgramSpec (tools/frontends)."""
+def _summary_from_program(name: str, comp: ProgramSpec, root: Path) -> DeploymentSummary:
+    """Build a DeploymentSummary from a ProgramSpec (tools/frontends)."""
     source = comp.source
 
     # Infer runner from source directory
@@ -188,7 +188,7 @@ def _summary_from_program(name: str, comp: ProgramSpec, root: Path) -> Component
     if comp.source and (comp.stack or comp.commands):
         installed = shutil.which(name) is not None
 
-    return ComponentSummary(
+    return DeploymentSummary(
         id=name,
         category="program",
         description=comp.description,
@@ -222,16 +222,16 @@ def _backfill_source(name: str, config: object) -> str | None:
         return config.programs[name].source
     ref = None
     if name in config.services:
-        ref = config.services[name].component
+        ref = config.services[name].program
     elif name in config.jobs:
-        ref = config.jobs[name].component
+        ref = config.jobs[name].program
     if ref and ref in config.programs:
         return config.programs[ref].source
     return None
 
 
 def _service_from_deployed(name: str, deployed: object) -> ServiceSummary:
-    """Build a ServiceSummary from a DeployedComponent."""
+    """Build a ServiceSummary from a Deployment."""
     systemd_info = _make_systemd_info(name) if deployed.managed else None
     return ServiceSummary(
         id=name,
@@ -263,8 +263,8 @@ def _service_from_spec(name: str, svc: ServiceSpec, config: object) -> ServiceSu
     description = svc.description
     source = None
     stack = None
-    if svc.component and svc.component in config.programs:
-        comp = config.programs[svc.component]
+    if svc.program and svc.program in config.programs:
+        comp = config.programs[svc.program]
         if not description:
             description = comp.description
         source = comp.source
@@ -285,7 +285,7 @@ def _service_from_spec(name: str, svc: ServiceSpec, config: object) -> ServiceSu
 
 
 def _job_from_deployed(name: str, deployed: object) -> JobSummary:
-    """Build a JobSummary from a DeployedComponent."""
+    """Build a JobSummary from a Deployment."""
     systemd_info = _make_systemd_info(name, timer=True) if deployed.managed else None
     return JobSummary(
         id=name,
@@ -306,8 +306,8 @@ def _job_from_spec(name: str, job: JobSpec, config: object) -> JobSummary:
     description = job.description
     source = None
     stack = None
-    if job.component and job.component in config.programs:
-        comp = config.programs[job.component]
+    if job.program and job.program in config.programs:
+        comp = config.programs[job.program]
         if not description:
             description = comp.description
         source = comp.source
@@ -636,15 +636,15 @@ def get_program(name: str) -> ProgramDetail:
 # ---------------------------------------------------------------------------
 
 
-@router.get("/components", response_model=list[ComponentSummary])
-def list_components(include_remote: bool = False) -> list[ComponentSummary]:
+@router.get("/deployments", response_model=list[DeploymentSummary])
+def list_components(include_remote: bool = False) -> list[DeploymentSummary]:
     """List all components — deployed from registry, non-deployed from castle.yaml.
 
     Pass ?include_remote=true to include components from remote mesh nodes.
     """
     registry = get_registry()
     local_hostname = registry.node.hostname
-    summaries: list[ComponentSummary] = []
+    summaries: list[DeploymentSummary] = []
     seen: set[str] = set()
 
     # Deployed components from registry
@@ -686,9 +686,9 @@ def list_components(include_remote: bool = False) -> list[ComponentSummary]:
                     # Check if a service/job references a program
                     ref = None
                     if s.id in config.services:
-                        ref = config.services[s.id].component
+                        ref = config.services[s.id].program
                     elif s.id in config.jobs:
-                        ref = config.jobs[s.id].component
+                        ref = config.jobs[s.id].program
                     if ref and ref in config.programs:
                         s.source = config.programs[ref].source
 
@@ -708,7 +708,7 @@ def list_components(include_remote: bool = False) -> list[ComponentSummary]:
             for name, d in remote.registry.deployed.items():
                 if name not in seen:
                     summaries.append(
-                        ComponentSummary(
+                        DeploymentSummary(
                             id=name,
                             category="job" if d.schedule else "service",
                             description=d.description,
@@ -728,8 +728,8 @@ def list_components(include_remote: bool = False) -> list[ComponentSummary]:
     return summaries
 
 
-@router.get("/components/{name}", response_model=ComponentDetail)
-def get_component(name: str) -> ComponentDetail:
+@router.get("/deployments/{name}", response_model=DeploymentDetail)
+def get_component(name: str) -> DeploymentDetail:
     """Get detailed info for a single component."""
     registry = get_registry()
 
@@ -749,9 +749,9 @@ def get_component(name: str) -> ComponentDetail:
                 else:
                     ref = None
                     if name in config.services:
-                        ref = config.services[name].component
+                        ref = config.services[name].program
                     elif name in config.jobs:
-                        ref = config.jobs[name].component
+                        ref = config.jobs[name].program
                     if ref and ref in config.programs:
                         summary.source = config.programs[ref].source
             except FileNotFoundError:
@@ -768,7 +768,7 @@ def get_component(name: str) -> ComponentDetail:
             "behavior": deployed.behavior,
             "stack": deployed.stack,
         }
-        return ComponentDetail(**summary.model_dump(), manifest=raw)
+        return DeploymentDetail(**summary.model_dump(), manifest=raw)
 
     # Fall back to castle.yaml
     root = get_castle_root()
@@ -781,23 +781,23 @@ def get_component(name: str) -> ComponentDetail:
             svc = config.services[name]
             summary = _summary_from_service(name, svc, config)
             raw = svc.model_dump(mode="json", exclude_none=True)
-            return ComponentDetail(**summary.model_dump(), manifest=raw)
+            return DeploymentDetail(**summary.model_dump(), manifest=raw)
 
         if name in config.jobs:
             job = config.jobs[name]
             summary = _summary_from_job(name, job, config)
             raw = job.model_dump(mode="json", exclude_none=True)
-            return ComponentDetail(**summary.model_dump(), manifest=raw)
+            return DeploymentDetail(**summary.model_dump(), manifest=raw)
 
         if name in config.programs:
             comp = config.programs[name]
             summary = _summary_from_program(name, comp, root)
             raw = comp.model_dump(mode="json", exclude_none=True)
-            return ComponentDetail(**summary.model_dump(), manifest=raw)
+            return DeploymentDetail(**summary.model_dump(), manifest=raw)
 
     raise HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,
-        detail=f"Component '{name}' not found",
+        detail=f"'{name}' not found",
     )
 
 
@@ -822,7 +822,7 @@ def get_gateway() -> GatewayInfo:
         GatewayRoute(
             path=d.proxy_path,
             target_port=d.port,
-            component=name,
+            program=name,
             node=registry.node.hostname,
         )
         for name, d in registry.deployed.items()
@@ -838,7 +838,7 @@ def get_gateway() -> GatewayInfo:
                     GatewayRoute(
                         path=d.proxy_path,
                         target_port=d.port,
-                        component=name,
+                        program=name,
                         node=hostname,
                     )
                 )
@@ -848,7 +848,7 @@ def get_gateway() -> GatewayInfo:
     return GatewayInfo(
         port=registry.node.gateway_port,
         hostname=registry.node.hostname,
-        component_count=deployed_count,
+        deployment_count=deployed_count,
         service_count=service_count,
         managed_count=managed_count,
         routes=routes,

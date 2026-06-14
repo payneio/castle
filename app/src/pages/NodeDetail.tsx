@@ -77,7 +77,7 @@ export function NodeDetailPage() {
                 >
                   <td className="px-3 py-2.5">
                     <Link
-                      to={`/component/${comp.id}`}
+                      to={`/deployment/${comp.id}`}
                       className="font-medium hover:text-[var(--primary)] transition-colors"
                     >
                       {comp.id}

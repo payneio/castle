@@ -28,9 +28,9 @@ _EXTRA_PATH_DIRS = [
 
 @dataclass
 class ActionResult:
-    """Result of a stack lifecycle action."""
+    """Result of a program lifecycle action."""
 
-    component: str
+    program: str
     action: str
     status: str  # "ok" | "error"
     output: str = ""
@@ -90,12 +90,12 @@ class StackHandler:
             result = await action_fn(name, comp, root)
             if result.status != "ok":
                 return ActionResult(
-                    component=name,
+                    program=name,
                     action="check",
                     status="error",
                     output=f"{action_name} failed:\n{result.output}",
                 )
-        return ActionResult(component=name, action="check", status="ok")
+        return ActionResult(program=name, action="check", status="ok")
 
     async def install(self, name: str, comp: ProgramSpec, root: Path) -> ActionResult:
         raise NotImplementedError
@@ -111,33 +111,33 @@ class PythonHandler(StackHandler):
         src = _source_dir(comp, root)
         rc, output = await _run(["uv", "sync"], src)
         return ActionResult(
-            component=name, action="build", status="ok" if rc == 0 else "error", output=output
+            program=name, action="build", status="ok" if rc == 0 else "error", output=output
         )
 
     async def test(self, name: str, comp: ProgramSpec, root: Path) -> ActionResult:
         src = _source_dir(comp, root)
         if not (src / "tests").exists():
             return ActionResult(
-                component=name, action="test", status="ok",
+                program=name, action="test", status="ok",
                 output="No tests directory found, skipping.",
             )
         rc, output = await _run(["uv", "run", "pytest", "tests/", "-v"], src)
         return ActionResult(
-            component=name, action="test", status="ok" if rc == 0 else "error", output=output
+            program=name, action="test", status="ok" if rc == 0 else "error", output=output
         )
 
     async def lint(self, name: str, comp: ProgramSpec, root: Path) -> ActionResult:
         src = _source_dir(comp, root)
         rc, output = await _run(["uv", "run", "ruff", "check", "."], src)
         return ActionResult(
-            component=name, action="lint", status="ok" if rc == 0 else "error", output=output
+            program=name, action="lint", status="ok" if rc == 0 else "error", output=output
         )
 
     async def type_check(self, name: str, comp: ProgramSpec, root: Path) -> ActionResult:
         src = _source_dir(comp, root)
         rc, output = await _run(["uv", "run", "pyright"], src)
         return ActionResult(
-            component=name, action="type-check", status="ok" if rc == 0 else "error", output=output
+            program=name, action="type-check", status="ok" if rc == 0 else "error", output=output
         )
 
     async def install(self, name: str, comp: ProgramSpec, root: Path) -> ActionResult:
@@ -149,7 +149,7 @@ class PythonHandler(StackHandler):
             ["uv", "tool", "install", "--editable", pkg_spec, "--force"], src
         )
         return ActionResult(
-            component=name, action="install", status="ok" if rc == 0 else "error", output=output
+            program=name, action="install", status="ok" if rc == 0 else "error", output=output
         )
 
     async def uninstall(self, name: str, comp: ProgramSpec, root: Path) -> ActionResult:
@@ -162,7 +162,7 @@ class PythonHandler(StackHandler):
             pkg_name = data.get("project", {}).get("name", pkg_name)
         rc, output = await _run(["uv", "tool", "uninstall", pkg_name], src)
         return ActionResult(
-            component=name, action="uninstall", status="ok" if rc == 0 else "error", output=output
+            program=name, action="uninstall", status="ok" if rc == 0 else "error", output=output
         )
 
 
@@ -173,28 +173,28 @@ class ReactViteHandler(StackHandler):
         src = _source_dir(comp, root)
         rc, output = await _run(["pnpm", "build"], src)
         return ActionResult(
-            component=name, action="build", status="ok" if rc == 0 else "error", output=output
+            program=name, action="build", status="ok" if rc == 0 else "error", output=output
         )
 
     async def test(self, name: str, comp: ProgramSpec, root: Path) -> ActionResult:
         src = _source_dir(comp, root)
         rc, output = await _run(["pnpm", "test"], src)
         return ActionResult(
-            component=name, action="test", status="ok" if rc == 0 else "error", output=output
+            program=name, action="test", status="ok" if rc == 0 else "error", output=output
         )
 
     async def lint(self, name: str, comp: ProgramSpec, root: Path) -> ActionResult:
         src = _source_dir(comp, root)
         rc, output = await _run(["pnpm", "lint"], src)
         return ActionResult(
-            component=name, action="lint", status="ok" if rc == 0 else "error", output=output
+            program=name, action="lint", status="ok" if rc == 0 else "error", output=output
         )
 
     async def type_check(self, name: str, comp: ProgramSpec, root: Path) -> ActionResult:
         src = _source_dir(comp, root)
         rc, output = await _run(["pnpm", "type-check"], src)
         return ActionResult(
-            component=name, action="type-check", status="ok" if rc == 0 else "error", output=output
+            program=name, action="type-check", status="ok" if rc == 0 else "error", output=output
         )
 
     async def install(self, name: str, comp: ProgramSpec, root: Path) -> ActionResult:
@@ -203,18 +203,18 @@ class ReactViteHandler(StackHandler):
         result = await self.build(name, comp, root)
         if result.status != "ok":
             return ActionResult(
-                component=name, action="install", status="error",
+                program=name, action="install", status="error",
                 output=f"Build failed:\n{result.output}",
             )
         outputs = comp.build.outputs if comp.build else []
         if not outputs:
             return ActionResult(
-                component=name, action="install", status="error",
+                program=name, action="install", status="error",
                 output="No build outputs configured.",
             )
         dist = _source_dir(comp, root) / outputs[0]
         return ActionResult(
-            component=name, action="install", status="ok",
+            program=name, action="install", status="ok",
             output=f"Built; served in place from {dist}",
         )
 
@@ -224,7 +224,7 @@ class ReactViteHandler(StackHandler):
         Deactivating one means dropping its gateway route — handled by removing the
         program from the registry, not by deleting build output."""
         return ActionResult(
-            component=name, action="uninstall", status="ok",
+            program=name, action="uninstall", status="ok",
             output=f"{name}: served in place; nothing to uninstall.",
         )
 
@@ -287,8 +287,8 @@ async def _run_declared(
         rc, output = await _run(argv, src)
         outputs.append(output)
         if rc != 0:
-            return ActionResult(component=name, action=verb, status="error", output="".join(outputs))
-    return ActionResult(component=name, action=verb, status="ok", output="".join(outputs))
+            return ActionResult(program=name, action=verb, status="error", output="".join(outputs))
+    return ActionResult(program=name, action=verb, status="ok", output="".join(outputs))
 
 
 async def run_action(verb: str, name: str, comp: ProgramSpec, root: Path) -> ActionResult:
@@ -303,17 +303,17 @@ async def run_action(verb: str, name: str, comp: ProgramSpec, root: Path) -> Act
         subs = [s for s in ("lint", "type-check", "test") if is_available(comp, s)]
         if not subs:
             return ActionResult(
-                component=name, action="check", status="error",
+                program=name, action="check", status="error",
                 output="No checkable verbs available.",
             )
         for sub in subs:
             result = await run_action(sub, name, comp, root)
             if result.status != "ok":
                 return ActionResult(
-                    component=name, action="check", status="error",
+                    program=name, action="check", status="error",
                     output=f"{sub} failed:\n{result.output}",
                 )
-        return ActionResult(component=name, action="check", status="ok")
+        return ActionResult(program=name, action="check", status="ok")
 
     # 1. Declared command overrides the stack default.
     declared = _declared_commands(comp, verb)
@@ -321,7 +321,7 @@ async def run_action(verb: str, name: str, comp: ProgramSpec, root: Path) -> Act
         try:
             src = _source_dir(comp, root)
         except ValueError:
-            return ActionResult(component=name, action=verb, status="error", output="No source directory")
+            return ActionResult(program=name, action=verb, status="error", output="No source directory")
         return await _run_declared(name, verb, declared, src)
 
     # 2. Stack default.
@@ -333,7 +333,7 @@ async def run_action(verb: str, name: str, comp: ProgramSpec, root: Path) -> Act
 
     # 3. Unavailable.
     return ActionResult(
-        component=name, action=verb, status="error",
+        program=name, action=verb, status="error",
         output=f"Verb '{verb}' is not available for '{name}' "
         f"(no declared command and no stack handler provides it).",
     )

@@ -2,7 +2,7 @@ import { useEffect } from "react"
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query"
 import { apiClient } from "./client"
 import type {
-  ComponentDetail,
+  DeploymentDetail,
   ServiceSummary,
   ServiceDetail,
   JobSummary,
@@ -21,8 +21,8 @@ import type {
 // Legacy compat hook — used by ConfigEditorPage and ProgramRedirect
 export function useComponent(name: string) {
   return useQuery({
-    queryKey: ["components", name],
-    queryFn: () => apiClient.get<ComponentDetail>(`/components/${name}`),
+    queryKey: ["deployments", name],
+    queryFn: () => apiClient.get<DeploymentDetail>(`/deployments/${name}`),
     enabled: !!name,
   })
 }
@@ -125,7 +125,7 @@ export function useServiceAction() {
       } catch (err) {
         // Network error from self-restart killing the connection — expected
         if (err instanceof TypeError) {
-          return { component: name, action, status: "accepted" } as ServiceActionResponse
+          return { program: name, action, status: "accepted" } as ServiceActionResponse
         }
         throw err
       }
@@ -144,7 +144,7 @@ export function useProgramAction() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ name, action }: { name: string; action: string }) =>
-      apiClient.post<{ component: string; action: string; status: string; output: string }>(
+      apiClient.post<{ program: string; action: string; status: string; output: string }>(
         `/programs/${name}/${action}`,
       ),
     onSuccess: () => {

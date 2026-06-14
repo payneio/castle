@@ -82,10 +82,10 @@ class TestServiceSpec:
         """Service can reference a component."""
         s = ServiceSpec(
             id="svc",
-            component="my-component",
+            program="my-component",
             run=RunPython(runner="python", program="svc"),
         )
-        assert s.component == "my-component"
+        assert s.program == "my-component"
 
     def test_service_with_proxy(self) -> None:
         """Service with proxy spec."""
@@ -139,11 +139,11 @@ class TestJobSpec:
         """Job can reference a component."""
         j = JobSpec(
             id="sync",
-            component="protonmail",
+            program="protonmail",
             run=RunCommand(runner="command", argv=["protonmail", "sync"]),
             schedule="*/5 * * * *",
         )
-        assert j.component == "protonmail"
+        assert j.program == "protonmail"
 
     def test_job_requires_schedule(self) -> None:
         """Job without schedule is invalid."""

@@ -16,7 +16,7 @@ import logging
 import paho.mqtt.client as mqtt
 
 from castle_core.registry import (
-    DeployedComponent,
+    Deployment,
     NodeConfig,
     NodeRegistry,
 )
@@ -74,9 +74,9 @@ def _json_to_registry(payload: str) -> NodeRegistry:
         castle_root=node_data.get("castle_root"),
         gateway_port=node_data.get("gateway_port", 9000),
     )
-    deployed: dict[str, DeployedComponent] = {}
+    deployed: dict[str, Deployment] = {}
     for name, comp_data in data.get("deployed", {}).items():
-        deployed[name] = DeployedComponent(
+        deployed[name] = Deployment(
             runner=comp_data.get("runner", "command"),
             run_cmd=comp_data.get("run_cmd", []),
             env=comp_data.get("env", {}),

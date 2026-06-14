@@ -48,7 +48,7 @@ class TestCreateCommand:
         assert "my-api" in config.services
         svc = config.services["my-api"]
         assert svc.expose.http.internal.port == 9050
-        assert svc.component == "my-api"
+        assert svc.program == "my-api"
         mock_save.assert_called_once()
 
     def test_create_tool(self, castle_root: Path, tmp_path: Path) -> None:

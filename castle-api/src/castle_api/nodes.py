@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, Request, status
 
 from castle_api.config import get_registry, settings
 from castle_api.mesh import mesh_state
-from castle_api.models import ComponentSummary, MeshStatus, NodeDetail, NodeSummary
+from castle_api.models import DeploymentSummary, MeshStatus, NodeDetail, NodeSummary
 
 router = APIRouter(tags=["nodes"])
 
@@ -39,12 +39,12 @@ def _remote_node_summary(hostname: str, remote: object) -> NodeSummary:
     )
 
 
-def _deployed_to_summaries(registry: object, hostname: str) -> list[ComponentSummary]:
-    """Convert deployed components from a registry into ComponentSummary list."""
+def _deployed_to_summaries(registry: object, hostname: str) -> list[DeploymentSummary]:
+    """Convert deployed components from a registry into DeploymentSummary list."""
     summaries = []
     for name, d in registry.deployed.items():
         summaries.append(
-            ComponentSummary(
+            DeploymentSummary(
                 id=name,
                 category="job" if d.schedule else "service",
                 description=d.description,

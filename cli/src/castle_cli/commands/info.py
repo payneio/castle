@@ -66,10 +66,10 @@ def run_info(args: argparse.Namespace) -> int:
     stack = None
     if program and program.stack:
         stack = program.stack
-    elif service and service.component and service.component in config.programs:
-        stack = config.programs[service.component].stack
-    elif job and job.component and job.component in config.programs:
-        stack = config.programs[job.component].stack
+    elif service and service.program and service.program in config.programs:
+        stack = config.programs[service.program].stack
+    elif job and job.program and job.program in config.programs:
+        stack = config.programs[job.program].stack
     if stack:
         print(f"  {BOLD}stack{RESET}:       {stack}")
 
@@ -88,12 +88,12 @@ def run_info(args: argparse.Namespace) -> int:
     spec = service or job
     if spec:
         desc = spec.description
-        if not desc and spec.component and spec.component in config.programs:
-            desc = config.programs[spec.component].description
+        if not desc and spec.program and spec.program in config.programs:
+            desc = config.programs[spec.program].description
         if desc and not (program and program.description == desc):
             print(f"  {BOLD}description{RESET}: {desc}")
-        if spec.component:
-            print(f"  {BOLD}program{RESET}:     {spec.component}")
+        if spec.program:
+            print(f"  {BOLD}program{RESET}:     {spec.program}")
 
         # Run spec
         print(f"  {BOLD}runner{RESET}:      {spec.run.runner}")
@@ -149,8 +149,8 @@ def run_info(args: argparse.Namespace) -> int:
     source_dir = None
     if program and program.source_dir:
         source_dir = program.source_dir
-    elif spec and spec.component and spec.component in config.programs:
-        source_dir = config.programs[spec.component].source_dir
+    elif spec and spec.program and spec.program in config.programs:
+        source_dir = config.programs[spec.program].source_dir
 
     if source_dir:
         claude_md = _find_claude_md(config.root, source_dir)
@@ -191,10 +191,10 @@ def _info_json(
     stack = None
     if program and program.stack:
         stack = program.stack
-    elif service and service.component and service.component in config.programs:
-        stack = config.programs[service.component].stack
-    elif job and job.component and job.component in config.programs:
-        stack = config.programs[job.component].stack
+    elif service and service.program and service.program in config.programs:
+        stack = config.programs[service.program].stack
+    elif job and job.program and job.program in config.programs:
+        stack = config.programs[job.program].stack
     if stack:
         data["stack"] = stack
 

@@ -18,7 +18,7 @@ class TestComponents:
 
     def test_list_components(self, client: TestClient) -> None:
         """Returns all registered components."""
-        response = client.get("/components")
+        response = client.get("/deployments")
         assert response.status_code == 200
         data = response.json()
         names = [c["id"] for c in data]
@@ -27,7 +27,7 @@ class TestComponents:
 
     def test_service_has_port(self, client: TestClient) -> None:
         """Service component includes port info."""
-        response = client.get("/components")
+        response = client.get("/deployments")
         data = response.json()
         svc = next(c for c in data if c["id"] == "test-svc")
         assert svc["port"] == 19000
@@ -38,7 +38,7 @@ class TestComponents:
 
     def test_tool_has_no_port(self, client: TestClient) -> None:
         """Tool component has no port."""
-        response = client.get("/components")
+        response = client.get("/deployments")
         data = response.json()
         tool = next(c for c in data if c["id"] == "test-tool")
         assert tool["port"] is None
@@ -46,19 +46,19 @@ class TestComponents:
 
     def test_job_has_schedule(self, client: TestClient) -> None:
         """Job component has schedule."""
-        response = client.get("/components")
+        response = client.get("/deployments")
         data = response.json()
         job = next(c for c in data if c["id"] == "test-job")
         assert job["behavior"] == "tool"
         assert job["schedule"] == "0 2 * * *"
 
 
-class TestComponentDetail:
+class TestDeploymentDetail:
     """Component detail endpoint tests."""
 
     def test_get_component(self, client: TestClient) -> None:
         """Returns detailed info for a component."""
-        response = client.get("/components/test-svc")
+        response = client.get("/deployments/test-svc")
         assert response.status_code == 200
         data = response.json()
         assert data["id"] == "test-svc"
@@ -67,7 +67,7 @@ class TestComponentDetail:
 
     def test_not_found(self, client: TestClient) -> None:
         """Returns 404 for unknown component."""
-        response = client.get("/components/nonexistent")
+        response = client.get("/deployments/nonexistent")
         assert response.status_code == 404
 
 
@@ -245,7 +245,7 @@ class TestGateway:
         assert data["port"] == 9000
         assert data["hostname"] == "test-node"
         # Registry has 1 deployed component (test-svc)
-        assert data["component_count"] == 1
+        assert data["deployment_count"] == 1
         assert data["service_count"] == 1
         assert data["managed_count"] == 1
 
@@ -258,7 +258,7 @@ class TestGateway:
         route = routes[0]
         assert route["path"] == "/test-svc"
         assert route["target_port"] == 19000
-        assert route["component"] == "test-svc"
+        assert route["program"] == "test-svc"
         assert route["node"] == "test-node"
 
     def test_gateway_routes_sorted(self, client: TestClient) -> None:

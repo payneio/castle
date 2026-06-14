@@ -7,7 +7,7 @@ from castle_core.generators.systemd import (
     generate_unit_from_deployed,
     unit_name,
 )
-from castle_core.registry import DeployedComponent
+from castle_core.registry import Deployment
 
 
 class TestUnitName:
@@ -24,7 +24,7 @@ class TestUnitFromDeployed:
 
     def test_contains_description(self) -> None:
         """Unit file has service description."""
-        deployed = DeployedComponent(
+        deployed = Deployment(
             runner="python",
             run_cmd=["/home/user/.local/bin/uv", "run", "test-svc"],
             env={"TEST_SVC_PORT": "19000"},
@@ -35,7 +35,7 @@ class TestUnitFromDeployed:
 
     def test_no_working_directory(self) -> None:
         """Unit file has no WorkingDirectory (source/runtime separation)."""
-        deployed = DeployedComponent(
+        deployed = Deployment(
             runner="python",
             run_cmd=["/home/user/.local/bin/uv", "run", "test-svc"],
             env={},
@@ -46,7 +46,7 @@ class TestUnitFromDeployed:
 
     def test_contains_environment(self) -> None:
         """Unit file has environment variables from deployed config."""
-        deployed = DeployedComponent(
+        deployed = Deployment(
             runner="python",
             run_cmd=["/home/user/.local/bin/uv", "run", "test-svc"],
             env={"TEST_SVC_DATA_DIR": "/home/user/.castle/data/test-svc"},
@@ -57,7 +57,7 @@ class TestUnitFromDeployed:
 
     def test_contains_restart_policy(self) -> None:
         """Unit file has restart configuration."""
-        deployed = DeployedComponent(
+        deployed = Deployment(
             runner="python",
             run_cmd=["/home/user/.local/bin/uv", "run", "test-svc"],
             env={},
@@ -68,7 +68,7 @@ class TestUnitFromDeployed:
 
     def test_exec_start_from_run_cmd(self) -> None:
         """Unit file ExecStart uses resolved run_cmd."""
-        deployed = DeployedComponent(
+        deployed = Deployment(
             runner="python",
             run_cmd=["/home/user/.local/bin/uv", "run", "test-svc"],
             env={},
@@ -79,7 +79,7 @@ class TestUnitFromDeployed:
 
     def test_basic_service(self) -> None:
         """Generate a unit from a deployed component."""
-        deployed = DeployedComponent(
+        deployed = Deployment(
             runner="python",
             run_cmd=["/home/user/.local/bin/uv", "run", "my-svc"],
             env={"MY_SVC_PORT": "9001", "MY_SVC_DATA_DIR": "/home/user/.castle/data/my-svc"},
@@ -95,7 +95,7 @@ class TestUnitFromDeployed:
 
     def test_scheduled_job(self) -> None:
         """Scheduled component generates oneshot unit."""
-        deployed = DeployedComponent(
+        deployed = Deployment(
             runner="command",
             run_cmd=["/home/user/.local/bin/my-job"],
             env={},
@@ -108,7 +108,7 @@ class TestUnitFromDeployed:
 
     def test_no_repo_paths(self) -> None:
         """Generated units must not reference repo paths."""
-        deployed = DeployedComponent(
+        deployed = Deployment(
             runner="python",
             run_cmd=["/home/user/.local/bin/uv", "run", "my-svc"],
             env={"DATA_DIR": "/home/user/.castle/data/my-svc"},

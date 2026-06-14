@@ -94,7 +94,7 @@ def run_create(args: argparse.Namespace) -> int:
     if behavior == "daemon":
         config.services[name] = ServiceSpec(
             id=name,
-            component=name,
+            program=name,
             run=RunPython(runner="python", program=name),
             expose=ExposeSpec(
                 http=HttpExposeSpec(

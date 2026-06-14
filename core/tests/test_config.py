@@ -57,7 +57,7 @@ class TestLoadConfig:
         """Service references a component."""
         config = load_config(castle_root)
         svc = config.services["test-svc"]
-        assert svc.component == "test-svc-comp"
+        assert svc.program == "test-svc-comp"
 
     def test_job_schedule(self, castle_root: Path) -> None:
         """Job has correct schedule."""

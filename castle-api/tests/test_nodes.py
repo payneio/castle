@@ -4,7 +4,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from castle_core.registry import DeployedComponent, NodeConfig, NodeRegistry
+from castle_core.registry import Deployment, NodeConfig, NodeRegistry
 
 from castle_api.mesh import MeshStateManager
 
@@ -41,7 +41,7 @@ class TestNodesList:
             remote_reg = NodeRegistry(
                 node=NodeConfig(hostname="devbox", gateway_port=9000),
                 deployed={
-                    "remote-svc": DeployedComponent(
+                    "remote-svc": Deployment(
                         runner="python",
                         run_cmd=["svc"],
                         port=9050,

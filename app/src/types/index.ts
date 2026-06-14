@@ -64,7 +64,7 @@ export interface ProgramDetail extends ProgramSummary {
 export type AnyDetail = ServiceDetail | JobDetail | ProgramDetail
 
 // Legacy unified type — kept for NodeDetail.deployed and compat endpoint
-export interface ComponentSummary {
+export interface DeploymentSummary {
   id: string
   category: "program" | "service" | "job" | null
   description: string | null
@@ -88,7 +88,7 @@ export interface ComponentSummary {
   node: string | null
 }
 
-export interface ComponentDetail extends ComponentSummary {
+export interface DeploymentDetail extends DeploymentSummary {
   manifest: Record<string, unknown>
 }
 
@@ -105,21 +105,21 @@ export interface StatusResponse {
 export interface GatewayRoute {
   path: string
   target_port: number
-  component: string
+  program: string
   node: string
 }
 
 export interface GatewayInfo {
   port: number
   hostname: string
-  component_count: number
+  deployment_count: number
   service_count: number
   managed_count: number
   routes: GatewayRoute[]
 }
 
 export interface ServiceActionResponse {
-  component: string
+  program: string
   action: string
   status: string
 }
@@ -131,7 +131,7 @@ export interface SSEHealthEvent {
 
 export interface SSEServiceActionEvent {
   action: string
-  component: string
+  program: string
   status: string
 }
 
@@ -147,7 +147,7 @@ export interface NodeSummary {
 }
 
 export interface NodeDetail extends NodeSummary {
-  deployed: ComponentSummary[]
+  deployed: DeploymentSummary[]
 }
 
 export interface MeshStatus {

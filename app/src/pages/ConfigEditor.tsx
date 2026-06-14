@@ -3,7 +3,7 @@ import { Link } from "react-router-dom"
 import { ArrowLeft, Check, Loader2, Zap } from "lucide-react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { apiClient } from "@/services/api/client"
-import type { ComponentDetail } from "@/types"
+import type { DeploymentDetail } from "@/types"
 import { AddComponent } from "@/components/AddComponent"
 import { ComponentEditor } from "@/components/ComponentEditor"
 
@@ -24,7 +24,7 @@ export function ConfigEditorPage() {
     queryFn: async () => {
       const list = await apiClient.get<{ id: string }[]>("/components")
       const details = await Promise.all(
-        list.map((c) => apiClient.get<ComponentDetail>(`/components/${c.id}`))
+        list.map((c) => apiClient.get<DeploymentDetail>(`/components/${c.id}`))
       )
       return details
     },

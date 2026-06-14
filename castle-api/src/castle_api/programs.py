@@ -58,7 +58,7 @@ async def program_action(name: str, action: str) -> dict:
         raise HTTPException(status_code=500, detail=result.output or f"{action} failed")
 
     return {
-        "component": result.component,
+        "program": result.program,
         "action": result.action,
         "status": result.status,
         "output": result.output,

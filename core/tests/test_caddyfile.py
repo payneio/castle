@@ -6,7 +6,7 @@ from __future__ import annotations
 import pytest
 
 from castle_core.generators.caddyfile import generate_caddyfile_from_registry
-from castle_core.registry import DeployedComponent, NodeConfig, NodeRegistry
+from castle_core.registry import Deployment, NodeConfig, NodeRegistry
 
 
 @pytest.fixture(autouse=True)
@@ -22,7 +22,7 @@ def _isolate_config(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _make_registry(
-    deployed: dict[str, DeployedComponent] | None = None,
+    deployed: dict[str, Deployment] | None = None,
     gateway_port: int = 9000,
 ) -> NodeRegistry:
     """Create a test registry."""
@@ -45,7 +45,7 @@ class TestCaddyfileFromRegistry:
         """Caddyfile has reverse proxy routes for deployed services."""
         registry = _make_registry(
             deployed={
-                "test-svc": DeployedComponent(
+                "test-svc": Deployment(
                     runner="python",
                     run_cmd=["uv", "run", "test-svc"],
                     port=19000,
@@ -61,7 +61,7 @@ class TestCaddyfileFromRegistry:
         """Components without proxy_path are not in Caddyfile."""
         registry = _make_registry(
             deployed={
-                "test-tool": DeployedComponent(
+                "test-tool": Deployment(
                     runner="command",
                     run_cmd=["test-tool"],
                 ),
@@ -81,7 +81,7 @@ class TestCaddyfileFromRegistry:
         """Service proxy routes appear before the dashboard catch-all."""
         registry = _make_registry(
             deployed={
-                "test-svc": DeployedComponent(
+                "test-svc": Deployment(
                     runner="python",
                     run_cmd=["uv", "run", "test-svc"],
                     port=19000,
@@ -98,13 +98,13 @@ class TestCaddyfileFromRegistry:
         """Multiple services get separate proxy routes."""
         registry = _make_registry(
             deployed={
-                "svc-a": DeployedComponent(
+                "svc-a": Deployment(
                     runner="python",
                     run_cmd=["uv", "run", "svc-a"],
                     port=9001,
                     proxy_path="/svc-a",
                 ),
-                "svc-b": DeployedComponent(
+                "svc-b": Deployment(
                     runner="python",
                     run_cmd=["uv", "run", "svc-b"],
                     port=9002,
@@ -126,14 +126,14 @@ class TestCaddyfileRemoteRegistries:
         """Remote services get reverse_proxy entries to their hostname."""
         local = _make_registry(
             deployed={
-                "local-svc": DeployedComponent(
+                "local-svc": Deployment(
                     runner="python", run_cmd=["svc"], port=9001, proxy_path="/local"
                 ),
             }
         )
         remote = _make_registry(
             deployed={
-                "remote-svc": DeployedComponent(
+                "remote-svc": Deployment(
                     runner="python", run_cmd=["svc"], port=9050, proxy_path="/remote"
                 ),
             }
@@ -148,14 +148,14 @@ class TestCaddyfileRemoteRegistries:
         """If local and remote use the same path, local wins."""
         local = _make_registry(
             deployed={
-                "svc": DeployedComponent(
+                "svc": Deployment(
                     runner="python", run_cmd=["svc"], port=9001, proxy_path="/api"
                 ),
             }
         )
         remote = _make_registry(
             deployed={
-                "svc": DeployedComponent(
+                "svc": Deployment(
                     runner="python", run_cmd=["svc"], port=9001, proxy_path="/api"
                 ),
             }
@@ -169,7 +169,7 @@ class TestCaddyfileRemoteRegistries:
         """No remote routes when remote_registries is None."""
         local = _make_registry(
             deployed={
-                "svc": DeployedComponent(
+                "svc": Deployment(
                     runner="python", run_cmd=["svc"], port=9001, proxy_path="/api"
                 ),
             }

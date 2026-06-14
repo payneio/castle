@@ -23,7 +23,7 @@ def castle_root(tmp_path: Path) -> Generator[Path, None, None]:
         },
         "services": {
             "test-svc": {
-                "component": "test-svc-comp",
+                "program": "test-svc-comp",
                 "description": "Test service",
                 "run": {
                     "runner": "python",

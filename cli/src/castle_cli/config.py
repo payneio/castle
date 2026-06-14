@@ -22,7 +22,7 @@ from castle_core.config import (  # noqa: F401 — explicit re-exports for type 
 )
 from castle_core.registry import (  # noqa: F401
     REGISTRY_PATH,
-    DeployedComponent,
+    Deployment,
     NodeConfig,
     NodeRegistry,
     load_registry,
