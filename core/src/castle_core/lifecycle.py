@@ -15,7 +15,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from castle_core.config import CONTENT_DIR, CastleConfig
+from castle_core.config import CastleConfig
 from castle_core.generators.systemd import (
     SYSTEMD_USER_DIR,
     generate_timer,
@@ -68,7 +68,10 @@ def is_active(name: str, config: CastleConfig) -> bool:
     if name in config.jobs:
         return _systemctl_active(timer_name(name))
     if _is_static_frontend(name, config):
-        return (CONTENT_DIR / name).is_dir()
+        comp = config.programs[name]
+        if comp.source and comp.build and comp.build.outputs:
+            return (Path(comp.source) / comp.build.outputs[0]).is_dir()
+        return False
     comp = config.programs.get(name)
     if comp is not None and comp.source:
         return _on_path(name)

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from castle_core.config import CONTENT_DIR, SPECS_DIR
+from pathlib import Path
+
+from castle_core.config import SPECS_DIR
 from castle_core.registry import NodeRegistry
 
 
@@ -53,31 +55,15 @@ def generate_caddyfile_from_registry(
                 lines.append("    }")
                 lines.append("")
 
-    # Static frontends from ~/.castle/static/<name>/
-    # Any directory with an index.html gets served as a SPA at its name prefix.
-    # castle-app is special-cased to serve at the root (no prefix).
-    if CONTENT_DIR.is_dir():
-        for app_dir in sorted(CONTENT_DIR.iterdir()):
-            if not app_dir.is_dir() or not (app_dir / "index.html").exists():
-                continue
-            if app_dir.name == "castle-app":
-                continue  # handled below as root fallback
-            path_prefix = f"/{app_dir.name}"
-            if path_prefix in local_paths:
-                continue
-            local_paths.add(path_prefix)
-            lines.append(f"    handle_path {path_prefix}/* {{")
-            lines.append(f"        root * {app_dir}")
-            lines.append("        try_files {path} /index.html")
-            lines.append("        file_server")
-            lines.append("    }")
-            lines.append("")
+    # Static frontends — served IN PLACE from each program's repo build output.
+    # A behavior=frontend program with no service is static; Caddy roots directly
+    # at <source>/<build.outputs[0]> (no central copy). castle-app is the root app
+    # (served at /); other static frontends mount at /<name>.
+    root_serve = _root_static_serve(lines, local_paths)
 
-    # castle-app SPA at root (fallback)
-    static_app = CONTENT_DIR / "castle-app"
-    if (static_app / "index.html").exists():
+    if root_serve is not None:
         lines.append("    handle {")
-        lines.append(f"        root * {static_app}")
+        lines.append(f"        root * {root_serve}")
         lines.append("        try_files {path} /index.html")
         lines.append("        file_server")
         lines.append("    }")
@@ -90,3 +76,39 @@ def generate_caddyfile_from_registry(
 
     lines.append("}")
     return "\n".join(lines)
+
+
+def _root_static_serve(lines: list[str], local_paths: set[str]) -> Path | None:
+    """Emit handle_path blocks for non-root static frontends; return the root app's
+    serve dir (castle-app), or None. Static frontends are served from their repo
+    build output in place — no copy into a central content dir."""
+    try:
+        from castle_core.config import load_config
+
+        config = load_config()
+    except Exception:
+        return None
+
+    root_serve: Path | None = None
+    for name, prog in sorted(config.programs.items()):
+        if prog.behavior != "frontend" or not prog.source:
+            continue
+        if not (prog.build and prog.build.outputs):
+            continue
+        if name in config.services:  # self-serving frontend → handled as a proxy route
+            continue
+        serve_dir = Path(prog.source) / prog.build.outputs[0]
+        if name == "castle-app":
+            root_serve = serve_dir
+            continue
+        path_prefix = f"/{name}"
+        if path_prefix in local_paths:
+            continue
+        local_paths.add(path_prefix)
+        lines.append(f"    handle_path {path_prefix}/* {{")
+        lines.append(f"        root * {serve_dir}")
+        lines.append("        try_files {path} /index.html")
+        lines.append("        file_server")
+        lines.append("    }")
+        lines.append("")
+    return root_serve

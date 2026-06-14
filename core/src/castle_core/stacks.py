@@ -4,12 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import os
-import shutil
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
-from castle_core.config import CONTENT_DIR
 from castle_core.manifest import ProgramSpec
 
 DEV_ACTIONS = ["build", "test", "lint", "type-check", "check", "run"]
@@ -200,47 +198,34 @@ class ReactViteHandler(StackHandler):
         )
 
     async def install(self, name: str, comp: ProgramSpec, root: Path) -> ActionResult:
-        """Build and copy static assets to ~/.castle/static/{name}/."""
+        """Build the static assets in place. The gateway serves them directly from
+        <source>/<build.outputs[0]> — no copy into a central content dir."""
         result = await self.build(name, comp, root)
         if result.status != "ok":
             return ActionResult(
                 component=name, action="install", status="error",
                 output=f"Build failed:\n{result.output}",
             )
-
-        src = _source_dir(comp, root)
         outputs = comp.build.outputs if comp.build else []
         if not outputs:
             return ActionResult(
                 component=name, action="install", status="error",
                 output="No build outputs configured.",
             )
-
-        for output_dir in outputs:
-            src_path = src / output_dir
-            if src_path.exists():
-                dest = CONTENT_DIR / name
-                if dest.exists():
-                    shutil.rmtree(dest)
-                shutil.copytree(src_path, dest)
-
+        dist = _source_dir(comp, root) / outputs[0]
         return ActionResult(
             component=name, action="install", status="ok",
-            output=f"Built and deployed to {CONTENT_DIR / name}",
+            output=f"Built; served in place from {dist}",
         )
 
     async def uninstall(self, name: str, comp: ProgramSpec, root: Path) -> ActionResult:
-        """Remove static assets from ~/.castle/static/{name}/."""
-        dest = CONTENT_DIR / name
-        if dest.exists():
-            shutil.rmtree(dest)
-            return ActionResult(
-                component=name, action="uninstall", status="ok",
-                output=f"Removed {dest}",
-            )
+        """Static frontends have no install footprint to remove (served in place).
+
+        Deactivating one means dropping its gateway route — handled by removing the
+        program from the registry, not by deleting build output."""
         return ActionResult(
             component=name, action="uninstall", status="ok",
-            output=f"Nothing to remove ({dest} does not exist)",
+            output=f"{name}: served in place; nothing to uninstall.",
         )
 
 

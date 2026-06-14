@@ -34,14 +34,21 @@ class TestIsActive:
         config = load_config(castle_root)
         assert lifecycle.is_active("does-not-exist", config) is False
 
-    def test_static_frontend_checks_content_dir(self, castle_root: Path, tmp_path: Path) -> None:
+    def test_static_frontend_active_when_dist_built(self, castle_root: Path, tmp_path: Path) -> None:
+        from castle_core.manifest import BuildSpec
+
         config = load_config(castle_root)
+        repo = tmp_path / "fe"
         config.programs["fe"] = config.programs["test-tool"].model_copy(
-            update={"id": "fe", "behavior": "frontend", "source": "/tmp/fe"}
+            update={
+                "id": "fe",
+                "behavior": "frontend",
+                "source": str(repo),
+                "build": BuildSpec(commands=[["pnpm", "build"]], outputs=["dist"]),
+            }
         )
-        content = tmp_path / "content"
-        (content / "fe").mkdir(parents=True)
-        with patch.object(lifecycle, "CONTENT_DIR", content):
-            assert lifecycle.is_active("fe", config) is True
-        with patch.object(lifecycle, "CONTENT_DIR", tmp_path / "empty"):
-            assert lifecycle.is_active("fe", config) is False
+        # No dist yet → inactive
+        assert lifecycle.is_active("fe", config) is False
+        # Built dist → served in place → active
+        (repo / "dist").mkdir(parents=True)
+        assert lifecycle.is_active("fe", config) is True
