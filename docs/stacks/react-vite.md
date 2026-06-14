@@ -56,6 +56,10 @@ import { defineConfig } from "vite"
 import react from "@vitejs/plugin-react"
 
 export default defineConfig({
+  // Castle sets VITE_BASE to the gateway serve prefix at build time (`/<name>/`,
+  // or `/` for the root app). Reading it here makes the bundle's absolute asset
+  // URLs resolve when served behind the gateway at a subpath — no hand-tuning.
+  base: process.env.VITE_BASE ?? "/",
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
@@ -64,6 +68,12 @@ export default defineConfig({
   },
 })
 ```
+
+> **Serving behind the gateway.** A static frontend mounts at `/<name>/` (the
+> root `castle-app` at `/`). Castle's `react-vite` build passes that prefix as
+> `VITE_BASE`, so a frontend that reads it (above) works at its subpath with no
+> manual `base`. Frontends that don't read `VITE_BASE` must hand-set `base` to
+> match, or they'll request assets from the wrong path.
 
 ## Project layout
 

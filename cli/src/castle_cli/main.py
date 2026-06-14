@@ -53,6 +53,23 @@ def build_parser() -> argparse.ArgumentParser:
     clone_parser = subparsers.add_parser("clone", help="Clone source for programs with repo:")
     clone_parser.add_argument("name", nargs="?", help="Program to clone (default: all with repo:)")
 
+    # castle expose — turn an existing program into a service
+    expose_parser = subparsers.add_parser("expose", help="Run an existing program as a service")
+    expose_parser.add_argument("name", help="Program to expose")
+    expose_parser.add_argument("--port", type=int, help="HTTP port the program binds")
+    expose_parser.add_argument("--health", default="/health", help="Health path (default: /health)")
+    expose_parser.add_argument("--path", help="Gateway proxy prefix (default: /<name>)")
+    expose_parser.add_argument(
+        "--host", help="Route by hostname instead of a path prefix (e.g. lakehouse.civil.lan)"
+    )
+    expose_parser.add_argument("--run", help="Console script / command to run (default: <name>)")
+    expose_parser.add_argument(
+        "--port-env", help="Env var the program reads for its port (e.g. LAKEHOUSED_DAEMON_PORT)"
+    )
+    expose_parser.add_argument(
+        "--no-proxy", action="store_true", help="Don't add a gateway route"
+    )
+
     # castle delete — remove a program/service/job from the registry
     delete_parser = subparsers.add_parser("delete", help="Remove a program/service/job")
     delete_parser.add_argument("name", help="Program, service, or job name")
@@ -198,6 +215,11 @@ def main() -> int:
         from castle_cli.commands.clone import run_clone
 
         return run_clone(args)
+
+    elif args.command == "expose":
+        from castle_cli.commands.expose import run_expose
+
+        return run_expose(args)
 
     elif args.command == "delete":
         from castle_cli.commands.delete import run_delete

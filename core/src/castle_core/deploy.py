@@ -121,8 +121,35 @@ def deploy(target_name: str | None = None, root: Path | None = None) -> DeployRe
     # Reload systemd daemon
     subprocess.run(["systemctl", "--user", "daemon-reload"], check=False)
 
+    # Reload the gateway so the freshly written Caddyfile takes effect. Without
+    # this, new/changed proxy routes sit on disk but the running Caddy keeps the
+    # old config (a deployed service's route is silently dead until reload).
+    _reload_gateway(result.messages)
+
     result.registry = registry
     return result
+
+
+# Gateway service name in the registry → its systemd unit (castle-castle-gateway).
+_GATEWAY_NAME = "castle-gateway"
+
+
+def _reload_gateway(messages: list[str]) -> None:
+    """Reload Caddy if the gateway is running, so new routes take effect."""
+    gw_unit = unit_name(_GATEWAY_NAME)
+    active = subprocess.run(
+        ["systemctl", "--user", "is-active", gw_unit],
+        capture_output=True,
+        text=True,
+    )
+    if active.stdout.strip() != "active":
+        messages.append("Gateway not running — skipped reload (start it with 'castle gateway start').")
+        return
+    result = subprocess.run(["systemctl", "--user", "reload", gw_unit], capture_output=True, text=True)
+    if result.returncode == 0:
+        messages.append("Gateway reloaded.")
+    else:
+        messages.append(f"Warning: gateway reload failed: {result.stderr.strip()}")
 
 
 # ---------------------------------------------------------------------------
@@ -172,6 +199,10 @@ def _build_deployed_service(
     if svc.expose and svc.expose.http:
         port = svc.expose.http.internal.port
         env[f"{prefix}_PORT"] = str(port)
+        # If the program reads a non-convention port var, set that too so castle
+        # actually controls the bind (e.g. adopted lakehoused → LAKEHOUSED_DAEMON_PORT).
+        if svc.expose.http.internal.port_env:
+            env[svc.expose.http.internal.port_env] = str(port)
         health_path = svc.expose.http.health_path
 
     # Merge defaults.env (overrides conventions)
@@ -187,10 +218,18 @@ def _build_deployed_service(
     # Build run_cmd
     run_cmd = _build_run_cmd(name, run, env, messages)
 
-    # Proxy path
+    # Proxy: a path prefix (handle_path on the gateway) and/or a hostname (a
+    # dedicated host site block, so a root-based app serves unchanged).
     proxy_path = None
+    proxy_host = None
     if svc.proxy and svc.proxy.caddy and svc.proxy.caddy.enable:
-        proxy_path = svc.proxy.caddy.path_prefix or f"/{name}"
+        caddy = svc.proxy.caddy
+        proxy_host = caddy.host
+        if caddy.path_prefix:
+            proxy_path = caddy.path_prefix
+        elif not caddy.host:
+            # No explicit path and no host → default to /<name>.
+            proxy_path = f"/{name}"
 
     # Resolve stack from referenced program
     stack = None
@@ -210,6 +249,7 @@ def _build_deployed_service(
         port=port,
         health_path=health_path,
         proxy_path=proxy_path,
+        proxy_host=proxy_host,
         base_url=base_url,
         managed=managed,
     )
