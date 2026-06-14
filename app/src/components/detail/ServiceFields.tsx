@@ -119,6 +119,7 @@ export function ServiceFields({ service, onSave, onDelete }: Props) {
         onSave={handleSave}
         onDelete={onDelete ? () => onDelete(service.id) : undefined}
         deleteLabel="Remove service"
+        confirmMessage={`Remove service "${service.id}" from castle.yaml? Run a deploy afterward to tear down its unit.`}
       />
     </div>
   )

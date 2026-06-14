@@ -169,12 +169,26 @@ def save_program(name: str, request: ProgramConfigRequest) -> dict:
 
 @router.delete("/programs/{name}")
 def delete_program(name: str) -> dict:
-    """Remove a program from castle.yaml."""
+    """Remove a program from castle.yaml.
+
+    Refuses if any service or job still references the program — those
+    deployments must be removed first so no dangling `program:` ref is left.
+    """
     config = get_config()
     if name not in config.programs:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Program '{name}' not found",
+        )
+    refs = [s for s, spec in config.services.items() if spec.program == name]
+    refs += [j for j, spec in config.jobs.items() if spec.program == name]
+    if refs:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Programs with active jobs or services cannot be removed. "
+                f"Delete these first: {', '.join(refs)}"
+            ),
         )
     del config.programs[name]
     save_config(config)

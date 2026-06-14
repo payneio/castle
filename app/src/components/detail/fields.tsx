@@ -122,18 +122,27 @@ export function FormFooter({
   onSave,
   onDelete,
   deleteLabel,
+  confirmMessage,
+  deleteBlocked,
 }: {
   saving: boolean
   saved: boolean
   onSave: () => void
   onDelete?: () => void
   deleteLabel: string
+  confirmMessage?: string
+  /** When set, removal is disallowed and this reason is shown instead of the button. */
+  deleteBlocked?: string
 }) {
   return (
     <div className="flex items-center justify-between pt-3 border-t border-[var(--border)]">
-      {onDelete ? (
+      {deleteBlocked ? (
+        <span className="text-xs text-amber-400">{deleteBlocked}</span>
+      ) : onDelete ? (
         <button
-          onClick={onDelete}
+          onClick={() => {
+            if (window.confirm(confirmMessage ?? `${deleteLabel}?`)) onDelete()
+          }}
           className="flex items-center gap-1.5 text-xs text-red-400 hover:text-red-300"
         >
           <Trash2 size={12} /> {deleteLabel}

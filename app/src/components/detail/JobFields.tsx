@@ -74,6 +74,7 @@ export function JobFields({ job, onSave, onDelete }: Props) {
         onSave={handleSave}
         onDelete={onDelete ? () => onDelete(job.id) : undefined}
         deleteLabel="Remove job"
+        confirmMessage={`Remove job "${job.id}" from castle.yaml? Run a deploy afterward to tear down its timer.`}
       />
     </div>
   )

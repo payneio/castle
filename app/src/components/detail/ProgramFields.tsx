@@ -95,6 +95,12 @@ export function ProgramFields({ program, onSave, onDelete }: Props) {
         onSave={handleSave}
         onDelete={onDelete ? () => onDelete(program.id) : undefined}
         deleteLabel="Remove program"
+        confirmMessage={`Remove program "${program.id}" from castle.yaml? (Source on disk is untouched.)`}
+        deleteBlocked={
+          program.services.length + program.jobs.length > 0
+            ? "Programs with active jobs or services cannot be removed — delete those first."
+            : undefined
+        }
       />
     </div>
   )
