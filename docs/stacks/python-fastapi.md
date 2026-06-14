@@ -109,13 +109,13 @@ Castle passes config via env vars in castle.yaml:
 programs:
   my-service:
     description: Does something useful
-    source: code/my-service
+    source: /data/repos/my-service
     stack: python-fastapi
     behavior: daemon
 
 services:
   my-service:
-    component: my-service
+    program: my-service
     run:
       runner: python
       program: my-service

@@ -7,7 +7,7 @@
 > stack — it declares its own `commands:`. See @docs/registry.md for
 > `commands:`, `stack:` (optional), and `repo:`.
 
-How to build, serve, and manage web frontends as castle components.
+How to build, serve, and manage web frontends as castle programs.
 
 ## Stack
 
@@ -27,7 +27,7 @@ How to build, serve, and manage web frontends as castle components.
 
 ```bash
 # Create the project
-mkdir ~/.castle/code/my-frontend && cd ~/.castle/code/my-frontend
+mkdir /data/repos/my-frontend && cd /data/repos/my-frontend
 pnpm create vite . --template react-ts
 
 # Core dependencies
@@ -122,9 +122,9 @@ pnpm run check        # lint + type-check + test
 
 The `build` output is a static SPA in `dist/` — just HTML, JS, and CSS files.
 
-## Registering as a castle component
+## Registering as a program
 
-A frontend component has a `build` spec (produces static output). Register it
+A frontend program has a `build` spec (produces static output). Register it
 in the `programs:` section of `castle.yaml`. No `run` block needed if Caddy
 handles serving directly from the build output.
 
@@ -133,7 +133,7 @@ handles serving directly from the build output.
 programs:
   my-frontend:
     description: Web dashboard
-    source: code/my-frontend
+    source: /data/repos/my-frontend
     build:
       commands:
         - ["pnpm", "build"]
@@ -141,16 +141,16 @@ programs:
         - dist/
 ```
 
-For production, `castle deploy` copies the build output to
-`~/.castle/artifacts/content/<name>/` and Caddy serves it from there — no
-Node process needed. See [Serving with Caddy](#serving-with-caddy) below.
+For production, Caddy serves the build output **in place** from the program's
+repo (`<source>/<build.outputs[0]>`) — no Node process and no copy into a
+central directory. See [Serving with Caddy](#serving-with-caddy) below.
 
 For development with Vite's dev server, add a service entry:
 
 ```yaml
 services:
   my-frontend:
-    component: my-frontend
+    program: my-frontend
     run:
       runner: node
       script: dev
@@ -170,19 +170,19 @@ For production, the static build output is served by Caddy rather than a Node
 process. You do **not** write this block by hand — `castle deploy` generates it.
 The flow:
 
-1. `castle deploy` runs the program's `build.commands`, then copies each
-   `build.outputs` directory from `~/.castle/code/<name>/` into
-   `~/.castle/artifacts/content/<name>/` (`core/src/castle_core/deploy.py`,
-   `_copy_app_static`).
-2. The Caddyfile generator scans `~/.castle/artifacts/content/`; any directory
-   containing an `index.html` is served as a SPA at a path prefix matching its
-   name. `castle-app` is special-cased to serve at the root `/`.
+1. `castle deploy` runs the program's `build.commands` (so `dist/` is current).
+2. The Caddyfile generator emits a route per `behavior: frontend` program that
+   has `build.outputs`, rooted **in place** at `<source>/<build.outputs[0]>` —
+   no copy. A static frontend mounts at `/<name>/`; `castle-app` is
+   special-cased to serve at the root `/`.
 
-The generated block looks like this (written to `~/.castle/artifacts/specs/Caddyfile`):
+The build is run with `VITE_BASE` set to that serve prefix, so a `vite.config`
+that reads it (see [Vite config](#vite-config)) emits asset URLs that resolve at
+the subpath. The generated block (in `~/.castle/artifacts/specs/Caddyfile`):
 
 ```caddyfile
 handle_path /my-frontend/* {
-    root * /home/payne/.castle/artifacts/content/my-frontend
+    root * /data/repos/my-frontend/dist
     try_files {path} /index.html
     file_server
 }

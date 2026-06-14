@@ -20,7 +20,7 @@ is self-sufficient. The mesh is optional.
    Castle service is just a well-behaved Unix daemon that happens to
    be registered in a manifest.
 
-3. **Stack and behavior.** Each component has a *stack* (development
+3. **Stack and behavior.** Each program has a *stack* (development
    toolchain: python-fastapi, python-cli, react-vite) and a *behavior*
    (runtime role: daemon, tool, frontend). Scheduling, systemd management,
    and proxying are orthogonal operations — not behaviors.
@@ -36,7 +36,7 @@ is self-sufficient. The mesh is optional.
    source tree.
 
 6. **AI-manageable.** The CLI and API exist so that AI assistants can
-   discover, create, and manage components programmatically. Humans
+   discover, create, and manage programs programmatically. Humans
    use the dashboard. Agents use the CLI and API.
 
 7. **Simple until proven otherwise.** Filesystem over databases. HTTP
@@ -123,25 +123,25 @@ Castle generates systemd unit files and Caddyfile entries from the
 registry. It doesn't run a daemon itself — it configures OS-level
 infrastructure and gets out of the way.
 
-Critically, the runtime layer references only standard paths — never
-the source tree. Systemd units point to installed binaries (on PATH
-or in `~/.local/bin/`), not to repo subdirectories. Caddy serves
-from `$CASTLE_HOME/artifacts/content/`, not from build output directories in the repo.
+Systemd units point to installed binaries (on PATH or in `~/.local/bin/`),
+not to repo subdirectories. Frontends are the deliberate exception: rather
+than stage a copy, Caddy serves their built assets **in place** from the repo
+(`<source>/<dist>/`), with the serve prefix baked into the build via `VITE_BASE`.
 
 ### Registry Layer
 
-The registry is the central concept in Castle. It tracks what components
+The registry is the central concept in Castle. It tracks what programs
 exist, what they can do, and how they're configured. But it's not a
 single thing — it's three distinct concepts:
 
-**1. Component spec** — what a component *is*. Description, capabilities,
+**1. Component spec** — what a program *is*. Description, capabilities,
 build instructions, default configuration. This is source-level
-information, version-controlled in the repo. It answers: "what components
+information, version-controlled in the repo. It answers: "what programs
 could exist?"
 
 **2. Node config** — what's *deployed on this machine*, with what concrete
 ports, data paths, and env vars. This is per-machine. Two Castle nodes
-might run different subsets of components with different parameters. It
+might run different subsets of programs with different parameters. It
 answers: "what's running here, and how?"
 
 **3. Runtime state** — what's *actually happening*. PIDs, health, uptime,
@@ -158,11 +158,11 @@ These map to two files:
 programs:
   central-context:
     description: Content storage API
-    source: code/central-context
+    source: /data/repos/central-context
 
 services:
   central-context:
-    component: central-context
+    program: central-context
     run:
       runner: python
       tool: central-context
@@ -178,7 +178,7 @@ services:
 
 jobs:
   backup-collect:
-    component: backup-collect
+    program: backup-collect
     run:
       runner: command
       argv: [backup-collect]
@@ -191,7 +191,7 @@ Programs define *what software exists* (identity, source, install, tools).
 Services define *how daemons run* (run config, expose, proxy, systemd).
 Jobs define *how scheduled tasks run* (run config, cron schedule, systemd).
 
-Services and jobs can reference a component via `component:` for description
+Services and jobs can reference a program via `program:` for description
 fallthrough and source code linking. They can also exist independently
 (e.g., `castle-gateway` runs Caddy — not our software).
 
@@ -239,7 +239,7 @@ Three interfaces expose the registry:
 
 - **CLI** (`castle`) — For AI agents and terminal users. Structured
   output via `--json`. Commands for listing, inspecting, creating,
-  and managing components.
+  and managing programs.
 - **API** (`castle-api`) — For programmatic access over HTTP. Used by
   the dashboard, other nodes, and remote agents.
 - **Dashboard** (`castle-app`) — For human discoverability. Visual
@@ -248,7 +248,7 @@ Three interfaces expose the registry:
 ### Coordination Layer
 
 Coordination handles discovery and communication — both between
-components on a single node and across multiple Castle nodes.
+programs on a single node and across multiple Castle nodes.
 
 **Intra-node coordination:**
 - Components find each other through the gateway (path-based routing)
@@ -257,7 +257,7 @@ components on a single node and across multiple Castle nodes.
 - No service mesh or message broker required for basic operation.
 
 **Inter-node coordination:**
-- Each Castle node runs the API, which exposes its component registry.
+- Each Castle node runs the API, which exposes its program registry.
 - Nodes discover each other via MQTT retained messages and mDNS/DNS-SD
   (python-zeroconf) for LAN environments.
 - The gateway on each node can proxy to services on other nodes,
@@ -290,9 +290,9 @@ Local paths always take precedence.
 **Why MQTT over custom gossip:**
 - Standard protocol, every language has a client library.
 - Retained messages give new nodes an immediate view of the network.
-- Topic-based routing maps naturally to `castle/{node}/{component}`.
+- Topic-based routing maps naturally to `castle/{node}/{program}`.
 - Works across networks (not just LAN like mDNS).
-- Mosquitto is a single binary, simple to run as a Castle component.
+- Mosquitto is a single binary, simple to run as a Castle program.
 
 **Why mDNS/DNS-SD as a complement:**
 - Zero-config LAN discovery via python-zeroconf.
@@ -303,9 +303,9 @@ Local paths always take precedence.
 
 ### Dashboard
 
-The web dashboard (`castle-app`) is a React SPA served by Caddy from
-`$CASTLE_HOME/artifacts/content/castle-app/`. It talks to `castle-api` via the
-gateway proxy at `/api`.
+The web dashboard (`castle-app`) is a React SPA served by Caddy in place from
+its repo build output (`<source>/dist/`) at the root `/`. It talks to
+`castle-api` via the gateway proxy at `/api`.
 
 **Layout:**
 
@@ -344,7 +344,7 @@ Components · Software catalog
   backup-collect   Python / CLI     tool      0 2 * * *    —
 ```
 
-**Key components:**
+**Key programs:**
 - **GatewayPanel** — Route table with live health badges, reload button,
   collapsible Caddyfile viewer. Node column appears when multi-node.
 - **MeshPanel** — MQTT connection status (connected/disconnected badge),
@@ -353,7 +353,7 @@ Components · Software catalog
 - **NodeBar** — Horizontal list of discovered nodes. Hidden in single-node
   mode. Each node links to `/node/{hostname}`.
 - **ServiceSection** — Daemon cards in a responsive grid.
-- **ComponentTable** — Unified sortable table for all non-daemon components
+- **ComponentTable** — Unified sortable table for all non-daemon programs
   (tools, frontends) with Stack, Behavior, Schedule, and Status columns.
 
 **Real-time updates:**
@@ -365,11 +365,11 @@ Components · Software catalog
 **Multi-node behavior:**
 - NodeBar appears when `GET /nodes` returns >1 node.
 - GatewayPanel shows a "Node" column when routes span multiple nodes.
-- `/node/{hostname}` page shows a specific node's deployed components.
+- `/node/{hostname}` page shows a specific node's deployed programs.
 
 ## Component Contract
 
-Every Castle component, regardless of language, must satisfy a minimal
+Every Castle program, regardless of language, must satisfy a minimal
 contract. This is what makes the system uniform above the build line.
 
 ### Services (long-running daemons)
@@ -421,11 +421,11 @@ Each step is distinct:
 2. **Install** — Makes the artifact available on the system. For tools:
    `uv tool install` or compiled binary placed in `~/.local/bin/`. For
    services: same — the binary or entry point is on PATH or in a known
-   location. For frontends: built assets copied to
-   `$CASTLE_HOME/artifacts/content/`.
+   location. For frontends: assets built in place under the repo
+   (`<source>/<dist>/`), served from there — no copy.
 
 3. **Deploy** — Materializes the runtime configuration. Reads the
-   component spec, merges with node config, generates systemd units
+   program spec, merges with node config, generates systemd units
    and Caddyfile entries that reference *installed* artifacts — never
    the source tree. Enables and starts services.
 
@@ -507,7 +507,7 @@ Key OTP ideas that apply:
   can remap these across nodes.
 - **Spec vs. config.** In OTP, an application defines its structure
   (the `.app` file) and a release provides the deployment config
-  (`sys.config`). Castle mirrors this: the component spec defines
+  (`sys.config`). Castle mirrors this: the program spec defines
   structure, the node config provides deployment values.
 
 ## Current State
@@ -526,9 +526,9 @@ What exists today:
   the manifest. Only non-convention values need `defaults.env`.
 - **Gateway** — Caddy on port 9000, Caddyfile generated from registry
 - **API** — `castle-api` on port 9020, reads from registry (optional
-  castle.yaml fallback for non-deployed components)
+  castle.yaml fallback for non-deployed programs)
 - **Dashboard** — `castle-app` React/Vite frontend, static assets
-  served from `$CASTLE_HOME/artifacts/content/castle-app/`
+  served in place from its repo build output (`<source>/dist/`)
 - **Services** — central-context (content storage), notification-bridge
   (desktop notification forwarder)
 - **Jobs** — protonmail (email sync every 5 min), backup-collect (nightly),
@@ -543,7 +543,7 @@ What exists today:
   on port 1883, managed by systemd. Config and data in
   `$CASTLE_DATA_DIR/castle-mqtt/`.
 - **Node API** — `GET /mesh/status`, `GET /nodes`, `GET /nodes/{hostname}`.
-  `GET /components?include_remote=true` for cross-node component listing.
+  `GET /deployments?include_remote=true` for cross-node program listing.
 - **Gateway panel** — Dedicated UI showing route table, health per route,
   reload button, Caddyfile viewer. Cross-node routes shown when multi-node.
 - **Mesh panel** — Dashboard UI showing MQTT connection status, broker
@@ -555,7 +555,7 @@ What exists today:
 
 What doesn't exist yet:
 
-- **Multi-language support** — Rust and Go components (the abstractions
+- **Multi-language support** — Rust and Go programs (the abstractions
   support them via `command` runner, but no examples exist yet)
 - **Build automation** — Castle records build specs but doesn't
   orchestrate builds (each project builds independently)

@@ -1,4 +1,4 @@
-"""castle create - scaffold a new project from templates."""
+"""castle program create — scaffold a new program from templates."""
 
 from __future__ import annotations
 
