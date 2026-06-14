@@ -4,6 +4,7 @@ import { useProgram, useEventStream } from "@/services/api/hooks"
 import { runnerLabel } from "@/lib/labels"
 import { DetailHeader } from "@/components/detail/DetailHeader"
 import { ConfigPanel } from "@/components/detail/ConfigPanel"
+import { DeploymentsSection } from "@/components/detail/DeploymentsSection"
 import { ProgramActions, ActionOutputPanel, type ActionOutput } from "@/components/ProgramActions"
 
 export function ProgramDetailPage() {
@@ -37,7 +38,14 @@ export function ProgramDetailPage() {
         stack={deployment.stack}
         source={deployment.source}
       >
-        <ProgramActions name={deployment.id} actions={deployment.actions} active={deployment.active} onOutput={setActionOutput} />
+        <ProgramActions
+          name={deployment.id}
+          actions={deployment.actions}
+          active={deployment.active}
+          behavior={deployment.behavior}
+          deployedAs={[...deployment.services, ...deployment.jobs]}
+          onOutput={setActionOutput}
+        />
       </DetailHeader>
 
       {actionOutput && actionOutput.action && (
@@ -127,6 +135,8 @@ export function ProgramDetailPage() {
           </div>
         )}
       </div>
+
+      <DeploymentsSection program={deployment} />
 
       <ConfigPanel deployment={deployment} configSection="programs" onRefetch={refetch} />
     </div>

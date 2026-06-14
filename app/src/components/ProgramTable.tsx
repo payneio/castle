@@ -143,7 +143,14 @@ function ProgramRow({ program }: { program: ProgramSummary }) {
         <BehaviorBadge behavior={program.behavior} />
       </td>
       <td className="px-3 py-2.5">
-        <ProgramActions name={program.id} actions={program.actions} active={program.active} compact />
+        <ProgramActions
+          name={program.id}
+          actions={program.actions}
+          active={program.active}
+          behavior={program.behavior}
+          deployedAs={[...program.services, ...program.jobs]}
+          compact
+        />
       </td>
     </tr>
   )
