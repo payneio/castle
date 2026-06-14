@@ -155,6 +155,17 @@ async def activate(name: str, config: CastleConfig, root: Path) -> ActionResult:
     if comp is not None and comp.behavior == "frontend":
         return await run_action("install", name, comp, root)
 
+    # A daemon with no service can't be "activated" — installing its binary to
+    # PATH doesn't run it. Direct the user to declare a service instead.
+    if comp is not None and comp.behavior == "daemon":
+        return ActionResult(
+            name,
+            "activate",
+            "error",
+            f"'{name}' is a daemon with no service. Run "
+            f"'castle expose {name} --port <PORT>' to deploy it as a service.",
+        )
+
     # Tool: install to PATH.
     if comp is not None:
         return await run_action("install", name, comp, root)

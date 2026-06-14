@@ -42,8 +42,20 @@ interface ProgramActionsProps {
   name: string
   actions: string[]
   active?: boolean | null
+  behavior?: string | null
+  /** Names of services/jobs deploying this program — daemons activate via these. */
+  deployedAs?: string[]
   compact?: boolean
   onOutput?: (output: ActionOutput) => void
+}
+
+/** install/uninstall (activate) is meaningful only for tools (PATH) and static
+ * frontends (served). A daemon activates through a service/job, so it never
+ * shows install/uninstall here — its run controls live on the deployment page. */
+function showsActivation(behavior: string | null | undefined, deployedAs: string[]): boolean {
+  if (behavior === "daemon") return false
+  if (behavior === "frontend") return deployedAs.length === 0 // self-serving frontend → its service
+  return true // tools (and unspecified)
 }
 
 function visibleActions(
@@ -78,11 +90,23 @@ function visibleActions(
   return visible
 }
 
-export function ProgramActions({ name, actions, active, compact, onOutput }: ProgramActionsProps) {
+export function ProgramActions({
+  name,
+  actions,
+  active,
+  behavior,
+  deployedAs = [],
+  compact,
+  onOutput,
+}: ProgramActionsProps) {
   const { mutate, isPending } = useProgramAction()
   const [runningAction, setRunningAction] = useState<string | null>(null)
 
-  const visible = visibleActions(actions, active, !!compact)
+  // Drop install/uninstall for behaviors that activate via a deployment.
+  const allowed = showsActivation(behavior, deployedAs)
+    ? actions
+    : actions.filter((a) => a !== "install" && a !== "uninstall")
+  const visible = visibleActions(allowed, active, !!compact)
 
   const handleAction = (action: string) => {
     setRunningAction(action)

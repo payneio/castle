@@ -1,5 +1,5 @@
 import { useRef } from "react"
-import { useParams } from "react-router-dom"
+import { useParams, Link } from "react-router-dom"
 import { Server, ExternalLink, Terminal, Trash2 } from "lucide-react"
 import { useService, useStatus, useEventStream, useCaddyfile } from "@/services/api/hooks"
 import { runnerLabel } from "@/lib/labels"
@@ -34,8 +34,6 @@ export function ServiceDetailPage() {
       </div>
     )
   }
-
-  const runner = (deployment.manifest.run as Record<string, unknown>)?.runner as string | undefined
 
   return (
     <div className="max-w-3xl mx-auto px-6 py-8">
@@ -83,16 +81,28 @@ export function ServiceDetailPage() {
               </a>
             </>
           )}
-          {runner && (
+          {deployment.proxy_host && (
             <>
-              <span className="text-[var(--muted)]">Runner</span>
+              <span className="text-[var(--muted)]">Host</span>
+              <span className="font-mono">{deployment.proxy_host}</span>
+            </>
+          )}
+          {deployment.runner && (
+            <>
+              <span className="text-[var(--muted)]">Runs</span>
               <span className="flex items-center gap-1">
                 <Terminal size={12} />
-                {runnerLabel(runner)}
-                {(deployment.manifest.run as Record<string, string>)?.program && (
-                  <> &middot; {(deployment.manifest.run as Record<string, string>).program}</>
-                )}
+                {runnerLabel(deployment.runner)}
+                {deployment.run_target && <> &middot; <span className="font-mono">{deployment.run_target}</span></>}
               </span>
+            </>
+          )}
+          {deployment.program && (
+            <>
+              <span className="text-[var(--muted)]">Program</span>
+              <Link to={`/programs/${deployment.program}`} className="text-[var(--primary)] hover:underline">
+                {deployment.program}
+              </Link>
             </>
           )}
           {deployment.port && (
