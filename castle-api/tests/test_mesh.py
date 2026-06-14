@@ -2,7 +2,7 @@
 
 import time
 
-from castle_core.registry import DeployedComponent, NodeConfig, NodeRegistry
+from castle_core.registry import Deployment, NodeConfig, NodeRegistry
 
 from castle_api.mesh import STALE_TTL_SECONDS, MeshStateManager, RemoteNode
 
@@ -96,7 +96,7 @@ class TestMeshStateManager:
         mgr.update_node("devbox", _make_registry("devbox"))
         new_reg = _make_registry(
             "devbox",
-            {"svc": DeployedComponent(runner="python", run_cmd=["svc"])},
+            {"svc": Deployment(runner="python", run_cmd=["svc"])},
         )
         mgr.update_node("devbox", new_reg)
         node = mgr.get_node("devbox")

@@ -108,7 +108,7 @@ async def _do_action(name: str, action: str) -> JSONResponse:
         asyncio.create_task(_deferred_systemctl(action, unit))
         return JSONResponse(
             status_code=202,
-            content={"component": name, "action": action, "status": "accepted"},
+            content={"program": name, "action": action, "status": "accepted"},
         )
 
     ok, output = await _systemctl(action, unit)
@@ -120,7 +120,7 @@ async def _do_action(name: str, action: str) -> JSONResponse:
     await _broadcast_health_with_override(name, unit_status)
 
     return JSONResponse(
-        content={"component": name, "action": action, "status": unit_status},
+        content={"program": name, "action": action, "status": unit_status},
     )
 
 

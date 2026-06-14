@@ -16,7 +16,7 @@ Castle is a personal software platform — a monorepo of independent projects
 Each program has a **stack** (development toolchain: python-fastapi,
 python-cli, react-vite) and a **behavior** (runtime role: daemon, tool,
 frontend). Scheduling, systemd management, and proxying are orthogonal
-operations. Services and jobs reference a program via `component:` for
+operations. Services and jobs reference a program via `program:` for
 description fallthrough.
 
 **Key principle:** Regular projects must never depend on castle. They accept standard
@@ -41,7 +41,7 @@ verb commands and scaffold, but a program stands on its own via its declared
 
 Stack guides (for writing *new* code, AI-facing):
 
-- @docs/component-registry.md — Registry architecture, castle.yaml structure, lifecycle
+- @docs/registry.md — Registry architecture, castle.yaml structure, lifecycle
 - @docs/stacks/python-fastapi.md — FastAPI service patterns (config, routes, models, testing)
 - @docs/stacks/python-cli.md — CLI tool patterns (argparse, stdin/stdout, piping, testing)
 - @docs/stacks/react-vite.md — React/Vite/TypeScript frontend patterns
@@ -123,10 +123,21 @@ Core:
 - `GET /health` — Health check
 - `GET /stream` — SSE stream (health, service-action, mesh events)
 
-Components:
-- `GET /components` — List all (add `?include_remote=true` for cross-node)
-- `GET /components/{name}` — Component detail
+Deployments (the unified view of services + jobs + programs):
+- `GET /deployments` — List all (add `?include_remote=true` for cross-node)
+- `GET /deployments/{name}` — Deployment detail
 - `GET /status` — Live health for all services
+
+Programs / Services / Jobs (typed views + editing):
+- `GET /programs`, `GET /programs/{name}` — Program catalog (`?behavior=tool` to filter)
+- `POST /programs/{name}/{action}` — Run a program verb (install/uninstall/build/…)
+- `PUT|DELETE /programs/{name}` — Edit or remove a program entry
+- `GET /services`, `GET /services/{name}`, `PUT|DELETE /services/{name}`
+- `GET /jobs`, `GET /jobs/{name}`, `PUT|DELETE /jobs/{name}`
+
+Config:
+- `GET /` — Full registry; `PUT /` — Save registry
+- `POST /apply` — Apply registry changes; `POST /deploy` — Deploy to runtime
 
 Gateway:
 - `GET /gateway` — Gateway info with route table and hostname
@@ -138,15 +149,9 @@ Mesh:
 - `GET /nodes` — All known nodes (local + discovered remote)
 - `GET /nodes/{hostname}` — Node detail with deployed components
 
-Services:
+Service actions:
 - `POST /services/{name}/{action}` — start/stop/restart
 - `GET /services/{name}/unit` — Systemd unit content
-
-Tools:
-- `GET /tools` — List all tools
-- `GET /tools/{name}` — Tool detail
-- `POST /tools/{name}/install` — Install tool to PATH
-- `POST /tools/{name}/uninstall` — Uninstall tool
 
 ## Mesh Coordination (opt-in)
 

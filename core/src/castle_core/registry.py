@@ -28,7 +28,7 @@ class NodeConfig:
 
 
 @dataclass
-class DeployedComponent:
+class Deployment:
     """A component deployed on this node with resolved runtime config."""
 
     runner: str
@@ -50,7 +50,7 @@ class NodeRegistry:
     """What's deployed on this node."""
 
     node: NodeConfig
-    deployed: dict[str, DeployedComponent] = field(default_factory=dict)
+    deployed: dict[str, Deployment] = field(default_factory=dict)
 
 
 def load_registry(path: Path | None = None) -> NodeRegistry:
@@ -77,7 +77,7 @@ def load_registry(path: Path | None = None) -> NodeRegistry:
         gateway_port=node_data.get("gateway_port", 9000),
     )
 
-    deployed: dict[str, DeployedComponent] = {}
+    deployed: dict[str, Deployment] = {}
     for name, comp_data in data.get("deployed", {}).items():
         # Support both old "category" and new "behavior" keys for migration
         behavior = comp_data.get("behavior")
@@ -92,7 +92,7 @@ def load_registry(path: Path | None = None) -> NodeRegistry:
                 if category == "frontend"
                 else category
             )
-        deployed[name] = DeployedComponent(
+        deployed[name] = Deployment(
             runner=comp_data.get("runner", "command"),
             run_cmd=comp_data.get("run_cmd", []),
             env=comp_data.get("env", {}),

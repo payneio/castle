@@ -6,7 +6,7 @@ import shutil
 from pathlib import Path
 
 from castle_core.manifest import RestartPolicy, SystemdSpec
-from castle_core.registry import DeployedComponent
+from castle_core.registry import Deployment
 
 SYSTEMD_USER_DIR = Path.home() / ".config" / "systemd" / "user"
 UNIT_PREFIX = "castle-"
@@ -74,7 +74,7 @@ def cron_to_interval_sec(cron: str) -> int | None:
 
 def generate_unit_from_deployed(
     name: str,
-    deployed: DeployedComponent,
+    deployed: Deployment,
     systemd_spec: SystemdSpec | None = None,
 ) -> str:
     """Generate a systemd unit from a deployed component (registry-based).

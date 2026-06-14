@@ -24,7 +24,7 @@ export const router = createBrowserRouter([
     element: <ProgramDetailPage />,
   },
   {
-    path: "/component/:name",
+    path: "/deployment/:name",
     element: <ProgramRedirect />,
   },
   {

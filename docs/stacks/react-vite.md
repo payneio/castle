@@ -4,7 +4,7 @@
 > A stack is a template + conventions, not a runtime requirement. `castle create
 > --stack react-vite` scaffolds from it and seeds the program's default dev-verb
 > commands. An existing frontend adopted with `castle add` doesn't need this
-> stack — it declares its own `commands:`. See @docs/component-registry.md for
+> stack — it declares its own `commands:`. See @docs/registry.md for
 > `commands:`, `stack:` (optional), and `repo:`.
 
 How to build, serve, and manage web frontends as castle components.
@@ -152,7 +152,7 @@ services:
       caddy: { path_prefix: /app }
 ```
 
-See @docs/component-registry.md for the full registry reference.
+See @docs/registry.md for the full registry reference.
 
 ## Serving with Caddy
 

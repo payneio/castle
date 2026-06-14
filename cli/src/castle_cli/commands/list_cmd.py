@@ -54,13 +54,13 @@ def _resolve_stack(config: object, name: str) -> str | None:
     # Check services for program ref
     if name in config.services:
         svc = config.services[name]
-        comp_name = svc.component
+        comp_name = svc.program
         if comp_name and comp_name in config.programs:
             return config.programs[comp_name].stack
     # Check jobs for program ref
     if name in config.jobs:
         job = config.jobs[name]
-        comp_name = job.component
+        comp_name = job.program
         if comp_name and comp_name in config.programs:
             return config.programs[comp_name].stack
     # Direct program

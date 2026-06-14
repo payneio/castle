@@ -2,7 +2,7 @@
 
 import json
 
-from castle_core.registry import DeployedComponent, NodeConfig, NodeRegistry
+from castle_core.registry import Deployment, NodeConfig, NodeRegistry
 
 from castle_api.mqtt_client import _json_to_registry, _registry_to_json
 
@@ -11,7 +11,7 @@ def _make_registry() -> NodeRegistry:
     return NodeRegistry(
         node=NodeConfig(hostname="tower", castle_root="/data/repos/castle", gateway_port=9000),
         deployed={
-            "my-svc": DeployedComponent(
+            "my-svc": Deployment(
                 runner="python",
                 run_cmd=["uv", "run", "my-svc"],
                 env={"PORT": "9001", "SECRET_KEY": "super-secret"},
@@ -23,7 +23,7 @@ def _make_registry() -> NodeRegistry:
                 proxy_path="/my-svc",
                 managed=True,
             ),
-            "my-job": DeployedComponent(
+            "my-job": Deployment(
                 runner="command",
                 run_cmd=["my-job"],
                 behavior="tool",
@@ -75,7 +75,7 @@ class TestRegistrySerialization:
         reg = NodeRegistry(
             node=NodeConfig(hostname="minimal"),
             deployed={
-                "bare": DeployedComponent(runner="command", run_cmd=["bare"]),
+                "bare": Deployment(runner="command", run_cmd=["bare"]),
             },
         )
         restored = _json_to_registry(_registry_to_json(reg))

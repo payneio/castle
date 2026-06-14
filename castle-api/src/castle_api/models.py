@@ -11,7 +11,7 @@ class SystemdInfo(BaseModel):
     timer: bool = False
 
 
-class ComponentSummary(BaseModel):
+class DeploymentSummary(BaseModel):
     """Summary of a single component."""
 
     id: str
@@ -37,7 +37,7 @@ class ComponentSummary(BaseModel):
     node: str | None = None
 
 
-class ComponentDetail(ComponentSummary):
+class DeploymentDetail(DeploymentSummary):
     """Full detail for a single component, including raw manifest."""
 
     manifest: dict
@@ -130,7 +130,7 @@ class GatewayRoute(BaseModel):
 
     path: str
     target_port: int
-    component: str
+    program: str
     node: str
 
 
@@ -139,7 +139,7 @@ class GatewayInfo(BaseModel):
 
     port: int
     hostname: str
-    component_count: int
+    deployment_count: int
     service_count: int
     managed_count: int
     routes: list[GatewayRoute] = []
@@ -161,7 +161,7 @@ class NodeSummary(BaseModel):
 class NodeDetail(NodeSummary):
     """Full detail for a node, including its deployed components."""
 
-    deployed: list[ComponentSummary] = []
+    deployed: list[DeploymentSummary] = []
 
 
 class MeshStatus(BaseModel):
@@ -179,6 +179,6 @@ class MeshStatus(BaseModel):
 class ServiceActionResponse(BaseModel):
     """Response from a service management action."""
 
-    component: str
+    program: str
     action: str
     status: str

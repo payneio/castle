@@ -65,7 +65,7 @@ async def get_logs(
     )
     stdout, _ = await proc.communicate()
     lines = (stdout or b"").decode().splitlines()
-    return {"component": name, "lines": lines}
+    return {"name": name, "lines": lines}
 
 
 async def _follow_logs(unit: str, n: int) -> AsyncGenerator[str, None]:

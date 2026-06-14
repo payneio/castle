@@ -4,6 +4,33 @@ How castle tracks, configures, and manages programs, services, and jobs.
 This is the central reference for `castle.yaml` structure and the registry
 architecture.
 
+## Vocabulary (canonical)
+
+Use these terms consistently across code, CLI, API, and docs.
+
+- **program** — any project castle manages, regardless of what it does. The
+  software catalog (`programs:`). Every program has a **behavior** and an
+  optional **stack**. *("component" was the old name for program — don't use it.)*
+- **behavior** — what a program *is*: `tool` (a CLI you invoke), `daemon` (a
+  long-running server), `frontend` (a web UI). A property of the program,
+  independent of whether/how it's deployed.
+- **stack** — a creation-time toolchain + scaffold template (`python-cli`,
+  `python-fastapi`, `react-vite`). Optional; seeds a program's default dev
+  commands but isn't required at runtime.
+- **service** — a program deployed as a long-running systemd `.service`
+  (`services:`).
+- **job** — a program deployed as a scheduled systemd `.timer` (+ oneshot)
+  (`jobs:`).
+- **deployment** — the umbrella for "a service or a job" (a program materialized
+  into the runtime). The registry's deployed entries are deployments.
+
+**Two orthogonal axes.** *behavior* (tool/daemon/frontend) is **what** a program
+is; *service/job* is **how/when** it's deployed. They're independent: a program
+may have neither (a tool you just install), a **service** (always-on), or a
+**job** (scheduled). A `daemon`-behavior program is usually deployed as a
+service; a `tool`-behavior program may back a job or just be installed for
+manual use.
+
 ## castle.yaml
 
 The single source of truth. Lives at `~/.castle/castle.yaml`. Three top-level

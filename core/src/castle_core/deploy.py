@@ -1,7 +1,7 @@
 """Deploy logic — bridge castle.yaml spec to runtime (~/.castle/).
 
 This module contains the core deploy logic shared by the CLI and API.
-It reads castle.yaml, resolves services/jobs into DeployedComponents,
+It reads castle.yaml, resolves services/jobs into Deployments,
 writes the registry, generates systemd units and the Caddyfile, and
 copies frontend build outputs.
 """
@@ -31,7 +31,7 @@ from castle_core.generators.systemd import (
 from castle_core.manifest import JobSpec, ServiceSpec
 from castle_core.registry import (
     REGISTRY_PATH,
-    DeployedComponent,
+    Deployment,
     NodeConfig,
     NodeRegistry,
     load_registry,
@@ -139,21 +139,21 @@ def _resolve_description(config: CastleConfig, spec: ServiceSpec | JobSpec) -> s
     """Get description, falling through to program if referenced."""
     if spec.description:
         return spec.description
-    if spec.component and spec.component in config.programs:
-        return config.programs[spec.component].description
+    if spec.program and spec.program in config.programs:
+        return config.programs[spec.program].description
     return None
 
 
 def _build_deployed_service(
     config: CastleConfig, name: str, svc: ServiceSpec, messages: list[str]
-) -> DeployedComponent:
-    """Build a DeployedComponent from a ServiceSpec."""
+) -> Deployment:
+    """Build a Deployment from a ServiceSpec."""
     run = svc.run
     # Env prefix and data dir are keyed by the program (component) the service
     # runs, not the service name — that's the prefix the program's settings read
     # (e.g. job `protonmail-sync` runs program `protonmail` → PROTONMAIL_DATA_DIR).
     # Falls back to the service name when no component is referenced.
-    config_key = svc.component or name
+    config_key = svc.program or name
     prefix = _env_prefix(config_key)
     env: dict[str, str] = {}
 
@@ -182,7 +182,7 @@ def _build_deployed_service(
     env = resolve_env_vars(env)
 
     # Ensure python tool is installed before resolving binary
-    _ensure_python_tool(config, svc.component, messages)
+    _ensure_python_tool(config, svc.program, messages)
 
     # Build run_cmd
     run_cmd = _build_run_cmd(name, run, env, messages)
@@ -194,13 +194,13 @@ def _build_deployed_service(
 
     # Resolve stack from referenced program
     stack = None
-    if svc.component and svc.component in config.programs:
-        stack = config.programs[svc.component].stack
+    if svc.program and svc.program in config.programs:
+        stack = config.programs[svc.program].stack
 
     # Remote services proxy to an external base_url
     base_url = getattr(run, "base_url", None)
 
-    return DeployedComponent(
+    return Deployment(
         runner=run.runner,
         run_cmd=run_cmd,
         env=env,
@@ -217,12 +217,12 @@ def _build_deployed_service(
 
 def _build_deployed_job(
     config: CastleConfig, name: str, job: JobSpec, messages: list[str]
-) -> DeployedComponent:
-    """Build a DeployedComponent from a JobSpec."""
+) -> Deployment:
+    """Build a Deployment from a JobSpec."""
     run = job.run
     # Keyed by the program (component) the job runs, not the job name — see
     # _build_deployed_service for rationale. Falls back to the job name.
-    config_key = job.component or name
+    config_key = job.program or name
     prefix = _env_prefix(config_key)
     env: dict[str, str] = {}
 
@@ -232,14 +232,14 @@ def _build_deployed_job(
         env.update(job.defaults.env)
 
     env = resolve_env_vars(env)
-    _ensure_python_tool(config, job.component, messages)
+    _ensure_python_tool(config, job.program, messages)
     run_cmd = _build_run_cmd(name, run, env, messages)
 
     stack = None
-    if job.component and job.component in config.programs:
-        stack = config.programs[job.component].stack
+    if job.program and job.program in config.programs:
+        stack = config.programs[job.program].stack
 
-    return DeployedComponent(
+    return Deployment(
         runner=run.runner,
         run_cmd=run_cmd,
         env=env,
@@ -273,33 +273,33 @@ def _python_tool_needs_install(program: str) -> bool:
 
 
 def _ensure_python_tool(
-    config: CastleConfig, component: str | None, messages: list[str]
+    config: CastleConfig, program: str | None, messages: list[str]
 ) -> None:
     """Ensure a Python program's editable install is current."""
-    if not component or component not in config.programs:
+    if not program or program not in config.programs:
         return
-    comp = config.programs[component]
+    comp = config.programs[program]
     if not comp.source or not comp.stack or not comp.stack.startswith("python"):
         return
     source_dir = Path(comp.source)
     if not source_dir.is_dir():
         messages.append(f"Warning: source not found: {source_dir}")
         return
-    if not _python_tool_needs_install(component):
+    if not _python_tool_needs_install(program):
         return
     pkg_spec = str(source_dir)
     if comp.install_extras:
         pkg_spec += "[" + ",".join(comp.install_extras) + "]"
-    messages.append(f"Installing {component} from {source_dir}...")
+    messages.append(f"Installing {program} from {source_dir}...")
     result = subprocess.run(
         ["uv", "tool", "install", "--editable", pkg_spec, "--force"],
         capture_output=True,
         text=True,
     )
     if result.returncode != 0:
-        messages.append(f"Error: {component} install failed:\n{result.stdout}{result.stderr}")
+        messages.append(f"Error: {program} install failed:\n{result.stdout}{result.stderr}")
     else:
-        messages.append(f"Installed {component}")
+        messages.append(f"Installed {program}")
 
 
 def _build_run_cmd(name: str, run: object, env: dict[str, str], messages: list[str]) -> list[str]:
@@ -354,7 +354,7 @@ def _build_run_cmd(name: str, run: object, env: dict[str, str], messages: list[s
             raise ValueError(f"Unsupported runner: {run.runner}")  # type: ignore[union-attr]
 
 
-def _format_deployed(name: str, deployed: DeployedComponent) -> str:
+def _format_deployed(name: str, deployed: Deployment) -> str:
     """Format deployment summary for a component."""
     parts = [name]
     if deployed.port:

@@ -1,12 +1,12 @@
 import { useState } from "react"
 import { ChevronDown, ChevronRight } from "lucide-react"
-import type { ComponentDetail } from "@/types"
+import type { DeploymentDetail } from "@/types"
 import { ComponentFields } from "./ComponentFields"
 import { BehaviorBadge } from "./BehaviorBadge"
 import { StackBadge } from "./StackBadge"
 
 interface ComponentEditorProps {
-  component: ComponentDetail
+  component: DeploymentDetail
   onSave: (name: string, config: Record<string, unknown>) => Promise<void>
   onDelete: (name: string) => Promise<void>
 }

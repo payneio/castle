@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 import castle_api.config as api_config
 from castle_api.main import app
 from castle_core.registry import (
-    DeployedComponent,
+    Deployment,
     NodeConfig,
     NodeRegistry,
     save_registry,
@@ -50,7 +50,7 @@ def castle_root(tmp_path: Path) -> Generator[Path, None, None]:
         },
         "services": {
             "test-svc": {
-                "component": "test-svc-comp",
+                "program": "test-svc-comp",
                 "description": "Test service",
                 "run": {
                     "runner": "python",
@@ -92,7 +92,7 @@ def registry_path(tmp_path: Path, castle_root: Path) -> Generator[Path, None, No
             gateway_port=9000,
         ),
         deployed={
-            "test-svc": DeployedComponent(
+            "test-svc": Deployment(
                 runner="python",
                 run_cmd=["uv", "run", "test-svc"],
                 env={

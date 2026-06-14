@@ -5,7 +5,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Annotated, Literal, Union
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 
 EnvMap = dict[str, str]
 
@@ -247,8 +247,13 @@ class ProgramSpec(BaseModel):
 class ServiceSpec(BaseModel):
     """Long-running daemon deployment config."""
 
+    model_config = ConfigDict(populate_by_name=True)
+
     id: str = ""
-    component: str | None = None
+    # The program this service deploys. (`component` accepted as a legacy alias.)
+    program: str | None = Field(
+        default=None, validation_alias=AliasChoices("program", "component")
+    )
     description: str | None = None
 
     run: RunSpec
@@ -274,8 +279,13 @@ class ServiceSpec(BaseModel):
 class JobSpec(BaseModel):
     """Scheduled task that runs periodically and exits."""
 
+    model_config = ConfigDict(populate_by_name=True)
+
     id: str = ""
-    component: str | None = None
+    # The program this job runs. (`component` accepted as a legacy alias.)
+    program: str | None = Field(
+        default=None, validation_alias=AliasChoices("program", "component")
+    )
     description: str | None = None
 
     run: RunSpec

@@ -252,7 +252,7 @@ def _expand_units(
 
             services[name] = ServiceSpec(
                 id=name,
-                component=name,
+                program=name,
                 run=run_spec,
                 expose=ExposeSpec(
                     http=HttpExposeSpec(
@@ -272,7 +272,7 @@ def _expand_units(
             assert unit.argv is not None  # guaranteed by validator
             jobs[name] = JobSpec(
                 id=name,
-                component=name,
+                program=name,
                 description=unit.description,
                 run=RunCommand(runner="command", argv=list(unit.argv)),
                 schedule=unit.schedule,

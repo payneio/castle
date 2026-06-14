@@ -7,11 +7,11 @@ from unittest.mock import patch
 
 from castle_core import deploy as deploy_mod
 from castle_core.deploy import _desired_unit_files, _prune_orphans
-from castle_core.registry import DeployedComponent, NodeConfig, NodeRegistry
+from castle_core.registry import Deployment, NodeConfig, NodeRegistry
 
 
-def _svc(managed: bool = True, schedule: str | None = None) -> DeployedComponent:
-    return DeployedComponent(
+def _svc(managed: bool = True, schedule: str | None = None) -> Deployment:
+    return Deployment(
         runner="python",
         run_cmd=["x"],
         env={},
@@ -20,7 +20,7 @@ def _svc(managed: bool = True, schedule: str | None = None) -> DeployedComponent
     )
 
 
-def _registry(**deployed: DeployedComponent) -> NodeRegistry:
+def _registry(**deployed: Deployment) -> NodeRegistry:
     return NodeRegistry(node=NodeConfig(castle_root="/x", gateway_port=9000), deployed=dict(deployed))
 
 

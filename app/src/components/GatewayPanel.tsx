@@ -73,7 +73,7 @@ export function GatewayPanel({ gateway, statuses }: GatewayPanelProps) {
           </thead>
           <tbody>
             {gateway.routes.map((route) => {
-              const health = statusMap.get(route.component)
+              const health = statusMap.get(route.program)
               return (
                 <tr
                   key={route.path}
@@ -84,10 +84,10 @@ export function GatewayPanel({ gateway, statuses }: GatewayPanelProps) {
                   </td>
                   <td className="px-4 py-2">
                     <Link
-                      to={`/component/${route.component}`}
+                      to={`/deployment/${route.program}`}
                       className="hover:text-[var(--primary)] transition-colors"
                     >
-                      {route.component}
+                      {route.program}
                     </Link>
                   </td>
                   <td className="px-4 py-2 font-mono text-[var(--muted)]">

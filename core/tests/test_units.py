@@ -76,7 +76,7 @@ class TestUnitExpansion:
         assert svc.expose.http.health_path == "/health"
         assert svc.proxy.caddy.path_prefix == "/my-svc"
         assert svc.manage.systemd is not None
-        assert svc.component == "my-svc"
+        assert svc.program == "my-svc"
 
     def test_tool_creates_program_only(self, units_root: Path) -> None:
         config = load_config(units_root)
@@ -108,7 +108,7 @@ class TestUnitExpansion:
         assert job.run.runner == "command"
         assert job.run.argv == ["my-job", "run"]
         assert job.defaults.env["DATA_DIR"] == "/tmp/data"
-        assert job.component == "my-job"
+        assert job.program == "my-job"
 
     def test_service_without_path_prefix(self, tmp_path: Path) -> None:
         config_data = {
