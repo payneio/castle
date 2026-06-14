@@ -1,3 +1,5 @@
+import { useState } from "react"
+import { Plus } from "lucide-react"
 import { useServices, useJobs, usePrograms, useStatus, useGateway, useNodes, useMeshStatus, useEventStream } from "@/services/api/hooks"
 import { GatewayPanel } from "@/components/GatewayPanel"
 import { MeshPanel } from "@/components/MeshPanel"
@@ -6,6 +8,7 @@ import { ServiceSection } from "@/components/ServiceSection"
 import { ScheduledSection } from "@/components/ScheduledSection"
 import { ProgramTable } from "@/components/ProgramTable"
 import { SectionHeader } from "@/components/SectionHeader"
+import { CreateDeploymentForm } from "@/components/detail/CreateDeploymentForm"
 
 
 export function Dashboard() {
@@ -17,9 +20,14 @@ export function Dashboard() {
   const { data: gateway } = useGateway()
   const { data: nodes } = useNodes()
   const { data: mesh } = useMeshStatus()
+  const [creating, setCreating] = useState<"service" | "job" | null>(null)
 
   const statuses = statusResp?.statuses ?? []
   const isLoading = loadingServices || loadingJobs || loadingPrograms
+  const existing =
+    creating === "service"
+      ? (services ?? []).map((s) => s.id)
+      : (jobs ?? []).map((j) => j.id)
 
   return (
     <div className="max-w-6xl mx-auto px-6 py-8">
@@ -39,6 +47,30 @@ export function Dashboard() {
       {mesh && (
         <div className="mb-10">
           <MeshPanel mesh={mesh} />
+        </div>
+      )}
+
+      <div className="flex items-center gap-2 mb-6">
+        <button
+          onClick={() => setCreating(creating === "service" ? null : "service")}
+          className="flex items-center gap-1 px-3 py-1.5 text-sm rounded border border-[var(--border)] text-[var(--muted)] hover:text-[var(--foreground)] hover:border-[var(--primary)] transition-colors"
+        >
+          <Plus size={14} /> Add service
+        </button>
+        <button
+          onClick={() => setCreating(creating === "job" ? null : "job")}
+          className="flex items-center gap-1 px-3 py-1.5 text-sm rounded border border-[var(--border)] text-[var(--muted)] hover:text-[var(--foreground)] hover:border-[var(--primary)] transition-colors"
+        >
+          <Plus size={14} /> Add job
+        </button>
+      </div>
+      {creating && (
+        <div className="mb-6 max-w-2xl">
+          <CreateDeploymentForm
+            kind={creating}
+            existingNames={existing}
+            onCancel={() => setCreating(null)}
+          />
         </div>
       )}
 
