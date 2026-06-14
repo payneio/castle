@@ -6,17 +6,17 @@ import { runnerLabel } from "@/lib/labels"
 import { HealthBadge } from "./HealthBadge"
 import { StackBadge } from "./StackBadge"
 
-interface ComponentCardProps {
-  component: ServiceSummary
+interface ServiceCardProps {
+  service: ServiceSummary
   health?: HealthStatus
 }
 
-export function ComponentCard({ component, health }: ComponentCardProps) {
-  const hasHttp = component.port != null
+export function ServiceCard({ service, health }: ServiceCardProps) {
+  const hasHttp = service.port != null
   const { mutate, isPending } = useServiceAction()
 
   const doAction = (action: string) => {
-    mutate({ name: component.id, action })
+    mutate({ name: service.id, action })
   }
 
   const isDown = health?.status === "down"
@@ -25,10 +25,10 @@ export function ComponentCard({ component, health }: ComponentCardProps) {
     <div className="bg-[var(--card)] border border-[var(--border)] rounded-lg p-5">
       <div className="flex items-start justify-between mb-2">
         <Link
-          to={`/services/${component.id}`}
+          to={`/services/${service.id}`}
           className="text-base font-semibold hover:text-[var(--primary)] transition-colors"
         >
-          {component.id}
+          {service.id}
         </Link>
         {health ? (
           <HealthBadge status={health.status} latency={health.latency_ms} />
@@ -38,38 +38,38 @@ export function ComponentCard({ component, health }: ComponentCardProps) {
       </div>
 
       <div className="flex gap-1.5 mb-2">
-        <StackBadge stack={component.stack} />
+        <StackBadge stack={service.stack} />
       </div>
 
-      {component.description && (
-        <p className="text-sm text-[var(--muted)] mb-3">{component.description}</p>
+      {service.description && (
+        <p className="text-sm text-[var(--muted)] mb-3">{service.description}</p>
       )}
 
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3 text-xs text-[var(--muted)]">
-          {component.port && (
+          {service.port && (
             <span className="flex items-center gap-1 font-mono">
-              <Server size={12} />:{component.port}
+              <Server size={12} />:{service.port}
             </span>
           )}
-          {component.runner && (
+          {service.runner && (
             <span className="flex items-center gap-1">
               <Terminal size={12} />
-              {runnerLabel(component.runner)}
+              {runnerLabel(service.runner)}
             </span>
           )}
-          {component.proxy_path && (
+          {service.proxy_path && (
             <a
-              href={component.proxy_path + "/"}
+              href={service.proxy_path + "/"}
               className="flex items-center gap-1 text-[var(--primary)] hover:underline"
             >
               <ExternalLink size={12} />
-              {component.proxy_path}
+              {service.proxy_path}
             </a>
           )}
-          {component.port && (
+          {service.port && (
             <a
-              href={`http://localhost:${component.port}/docs`}
+              href={`http://localhost:${service.port}/docs`}
               className="text-[var(--primary)] hover:underline"
             >
               Docs
@@ -77,7 +77,7 @@ export function ComponentCard({ component, health }: ComponentCardProps) {
           )}
         </div>
 
-        {component.managed && (
+        {service.managed && (
           <div className="flex items-center gap-1">
             {isDown && (
               <button

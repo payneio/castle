@@ -63,7 +63,7 @@ export function GatewayPanel({ gateway, statuses }: GatewayPanelProps) {
           <thead>
             <tr className="border-b border-[var(--border)] text-left">
               <th className="px-4 py-2 font-medium text-[var(--muted)]">Path</th>
-              <th className="px-4 py-2 font-medium text-[var(--muted)]">Component</th>
+              <th className="px-4 py-2 font-medium text-[var(--muted)]">Program</th>
               <th className="px-4 py-2 font-medium text-[var(--muted)]">Port</th>
               {multiNode && (
                 <th className="px-4 py-2 font-medium text-[var(--muted)]">Node</th>

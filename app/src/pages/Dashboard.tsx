@@ -4,7 +4,7 @@ import { MeshPanel } from "@/components/MeshPanel"
 import { NodeBar } from "@/components/NodeBar"
 import { ServiceSection } from "@/components/ServiceSection"
 import { ScheduledSection } from "@/components/ScheduledSection"
-import { ComponentTable } from "@/components/ComponentTable"
+import { ProgramTable } from "@/components/ProgramTable"
 import { SectionHeader } from "@/components/SectionHeader"
 
 
@@ -55,7 +55,7 @@ export function Dashboard() {
           {programs && programs.length > 0 && (
             <section>
               <SectionHeader section="program" />
-              <ComponentTable components={programs} />
+              <ProgramTable programs={programs} />
             </section>
           )}
         </div>

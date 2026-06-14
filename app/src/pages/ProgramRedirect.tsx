@@ -1,9 +1,9 @@
 import { useParams, Navigate } from "react-router-dom"
-import { useComponent } from "@/services/api/hooks"
+import { useDeployment } from "@/services/api/hooks"
 
 export function ProgramRedirect() {
   const { name } = useParams<{ name: string }>()
-  const { data: component, isLoading, error } = useComponent(name ?? "")
+  const { data: deployment, isLoading, error } = useDeployment(name ?? "")
 
   if (isLoading) {
     return (
@@ -11,15 +11,15 @@ export function ProgramRedirect() {
     )
   }
 
-  if (error || !component) {
+  if (error || !deployment) {
     return <Navigate to={`/programs/${name}`} replace />
   }
 
-  if (component.managed && !component.schedule) {
+  if (deployment.managed && !deployment.schedule) {
     return <Navigate to={`/services/${name}`} replace />
   }
 
-  if (component.managed && component.schedule) {
+  if (deployment.managed && deployment.schedule) {
     return <Navigate to={`/jobs/${name}`} replace />
   }
 

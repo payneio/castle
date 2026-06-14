@@ -4,15 +4,15 @@ import { useQueryClient } from "@tanstack/react-query"
 import { Check } from "lucide-react"
 import { apiClient } from "@/services/api/client"
 import type { AnyDetail } from "@/types"
-import { ComponentFields } from "@/components/ComponentFields"
+import { DeploymentFields } from "@/components/DeploymentFields"
 
 interface ConfigPanelProps {
-  component: AnyDetail
+  deployment: AnyDetail
   configSection: "services" | "jobs" | "programs"
   onRefetch: () => void
 }
 
-export function ConfigPanel({ component, configSection, onRefetch }: ConfigPanelProps) {
+export function ConfigPanel({ deployment, configSection, onRefetch }: ConfigPanelProps) {
   const navigate = useNavigate()
   const qc = useQueryClient()
   const [message, setMessage] = useState<{ type: "ok" | "error"; text: string } | null>(null)
@@ -61,8 +61,8 @@ export function ConfigPanel({ component, configSection, onRefetch }: ConfigPanel
         <h2 className="text-sm font-semibold text-[var(--muted)] uppercase tracking-wider mb-4">
           Configuration
         </h2>
-        <ComponentFields
-          component={component}
+        <DeploymentFields
+          deployment={deployment}
           onSave={handleSave}
           onDelete={handleDelete}
         />

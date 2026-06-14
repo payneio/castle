@@ -36,12 +36,12 @@ const TEMPLATES: Record<string, Record<string, unknown>> = {
   empty: {},
 }
 
-interface AddComponentProps {
+interface AddDeploymentProps {
   onAdd: (name: string, config: Record<string, unknown>) => Promise<void>
   existingNames: string[]
 }
 
-export function AddComponent({ onAdd, existingNames }: AddComponentProps) {
+export function AddDeployment({ onAdd, existingNames }: AddDeploymentProps) {
   const [open, setOpen] = useState(false)
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
@@ -100,7 +100,7 @@ export function AddComponent({ onAdd, existingNames }: AddComponentProps) {
         onClick={() => setOpen(true)}
         className="w-full flex items-center justify-center gap-2 p-4 border border-dashed border-[var(--border)] rounded-lg text-[var(--muted)] hover:text-[var(--foreground)] hover:border-[var(--primary)] transition-colors"
       >
-        <Plus size={16} /> Add component
+        <Plus size={16} /> Add entry
       </button>
     )
   }
@@ -108,7 +108,7 @@ export function AddComponent({ onAdd, existingNames }: AddComponentProps) {
   return (
     <div className="bg-[var(--card)] border border-[var(--primary)] rounded-lg p-5 space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="font-semibold">New component</h3>
+        <h3 className="font-semibold">New entry</h3>
         <button onClick={() => setOpen(false)} className="text-[var(--muted)] hover:text-[var(--foreground)]">
           <X size={16} />
         </button>
@@ -150,7 +150,7 @@ export function AddComponent({ onAdd, existingNames }: AddComponentProps) {
         <input
           value={description}
           onChange={(e) => setDescription(e.target.value)}
-          placeholder="What does this component do?"
+          placeholder="What does this entry do?"
           className="w-full bg-black/30 border border-[var(--border)] rounded px-3 py-1.5 text-sm focus:outline-none focus:border-[var(--primary)]"
         />
       </Field>

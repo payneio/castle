@@ -14,7 +14,7 @@ export function ServiceDetailPage() {
   useEventStream()
   const logRef = useRef<LogViewerHandle>(null)
   const { name } = useParams<{ name: string }>()
-  const { data: component, isLoading, error, refetch } = useService(name ?? "")
+  const { data: deployment, isLoading, error, refetch } = useService(name ?? "")
   const { data: statusResp } = useStatus()
   const health = statusResp?.statuses.find((s) => s.id === name)
   const isGateway = name === "castle-gateway"
@@ -26,7 +26,7 @@ export function ServiceDetailPage() {
     )
   }
 
-  if (error || !component) {
+  if (error || !deployment) {
     return (
       <div className="max-w-3xl mx-auto px-6 py-8">
         <DetailHeader backTo="/" backLabel="Back" name={name ?? ""} />
@@ -35,21 +35,21 @@ export function ServiceDetailPage() {
     )
   }
 
-  const runner = (component.manifest.run as Record<string, unknown>)?.runner as string | undefined
+  const runner = (deployment.manifest.run as Record<string, unknown>)?.runner as string | undefined
 
   return (
     <div className="max-w-3xl mx-auto px-6 py-8">
       <DetailHeader
         backTo="/"
         backLabel="Back to Services"
-        name={component.id}
+        name={deployment.id}
         behavior="daemon"
-        stack={component.stack}
-        source={component.source}
+        stack={deployment.stack}
+        source={deployment.source}
       >
         <div className="flex items-center gap-2">
           {health && <HealthBadge status={health.status} latency={health.latency_ms} />}
-          <ServiceControls name={component.id} health={health} />
+          <ServiceControls name={deployment.id} health={health} />
         </div>
       </DetailHeader>
 
@@ -58,28 +58,28 @@ export function ServiceDetailPage() {
           Overview
         </h2>
         <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
-          {component.port && (
+          {deployment.port && (
             <>
               <span className="text-[var(--muted)]">Port</span>
               <span className="flex items-center gap-1 font-mono">
-                <Server size={12} />:{component.port}
+                <Server size={12} />:{deployment.port}
               </span>
             </>
           )}
-          {component.health_path && (
+          {deployment.health_path && (
             <>
               <span className="text-[var(--muted)]">Health</span>
-              <span className="font-mono">{component.health_path}</span>
+              <span className="font-mono">{deployment.health_path}</span>
             </>
           )}
-          {component.proxy_path && (
+          {deployment.proxy_path && (
             <>
               <span className="text-[var(--muted)]">Proxy</span>
               <a
-                href={component.proxy_path + "/"}
+                href={deployment.proxy_path + "/"}
                 className="flex items-center gap-1 text-[var(--primary)] hover:underline font-mono"
               >
-                <ExternalLink size={12} />{component.proxy_path}
+                <ExternalLink size={12} />{deployment.proxy_path}
               </a>
             </>
           )}
@@ -89,17 +89,17 @@ export function ServiceDetailPage() {
               <span className="flex items-center gap-1">
                 <Terminal size={12} />
                 {runnerLabel(runner)}
-                {(component.manifest.run as Record<string, string>)?.program && (
-                  <> &middot; {(component.manifest.run as Record<string, string>).program}</>
+                {(deployment.manifest.run as Record<string, string>)?.program && (
+                  <> &middot; {(deployment.manifest.run as Record<string, string>).program}</>
                 )}
               </span>
             </>
           )}
-          {component.port && (
+          {deployment.port && (
             <>
               <span className="text-[var(--muted)]">Docs</span>
               <a
-                href={`http://localhost:${component.port}/docs`}
+                href={`http://localhost:${deployment.port}/docs`}
                 className="text-[var(--primary)] hover:underline"
               >
                 OpenAPI docs
@@ -109,8 +109,8 @@ export function ServiceDetailPage() {
         </div>
       </div>
 
-      {component.systemd && (
-        <SystemdPanel name={component.id} systemd={component.systemd} />
+      {deployment.systemd && (
+        <SystemdPanel name={deployment.id} systemd={deployment.systemd} />
       )}
 
       {isGateway && caddyfile?.content && (
@@ -127,9 +127,9 @@ export function ServiceDetailPage() {
         </div>
       )}
 
-      <ConfigPanel component={component} configSection="services" onRefetch={refetch} />
+      <ConfigPanel deployment={deployment} configSection="services" onRefetch={refetch} />
 
-      {component.managed && (
+      {deployment.managed && (
         <div className="mb-6">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-lg font-semibold">Logs</h2>
@@ -140,7 +140,7 @@ export function ServiceDetailPage() {
               <Trash2 size={14} /> Clear
             </button>
           </div>
-          <LogViewer ref={logRef} name={component.id} />
+          <LogViewer ref={logRef} name={deployment.id} />
         </div>
       )}
     </div>
