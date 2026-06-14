@@ -40,6 +40,7 @@ class Deployment:
     port: int | None = None
     health_path: str | None = None
     proxy_path: str | None = None
+    proxy_host: str | None = None
     base_url: str | None = None
     schedule: str | None = None
     managed: bool = False
@@ -102,6 +103,7 @@ def load_registry(path: Path | None = None) -> NodeRegistry:
             port=comp_data.get("port"),
             health_path=comp_data.get("health_path"),
             proxy_path=comp_data.get("proxy_path"),
+            proxy_host=comp_data.get("proxy_host"),
             base_url=comp_data.get("base_url"),
             schedule=comp_data.get("schedule"),
             managed=comp_data.get("managed", False),
@@ -146,6 +148,8 @@ def save_registry(registry: NodeRegistry, path: Path | None = None) -> None:
             entry["health_path"] = comp.health_path
         if comp.proxy_path:
             entry["proxy_path"] = comp.proxy_path
+        if comp.proxy_host:
+            entry["proxy_host"] = comp.proxy_host
         if comp.base_url:
             entry["base_url"] = comp.base_url
         if comp.schedule:

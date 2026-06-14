@@ -57,6 +57,32 @@ class TestCaddyfileFromRegistry:
         assert "handle_path /test-svc/*" in caddyfile
         assert "reverse_proxy localhost:19000" in caddyfile
 
+    def test_disables_auto_https(self) -> None:
+        """The gateway is HTTP-only; auto_https must be off so named hosts don't
+        flip the listener to TLS or try to bind :80."""
+        caddyfile = generate_caddyfile_from_registry(_make_registry())
+        assert "auto_https off" in caddyfile
+
+    def test_host_route_uses_matcher_in_main_site(self) -> None:
+        """A proxy_host becomes a host matcher inside the :9000 site (not a
+        separate site block, which would split the listener into TLS)."""
+        registry = _make_registry(
+            deployed={
+                "lake": Deployment(
+                    runner="python",
+                    run_cmd=["lake"],
+                    port=8420,
+                    proxy_host="lake.example.lan",
+                ),
+            }
+        )
+        caddyfile = generate_caddyfile_from_registry(registry)
+        assert "@host_lake host lake.example.lan" in caddyfile
+        assert "handle @host_lake {" in caddyfile
+        assert "reverse_proxy localhost:8420" in caddyfile
+        # No separate hostname site block on the gateway port.
+        assert "lake.example.lan:9000 {" not in caddyfile
+
     def test_skips_non_proxied(self) -> None:
         """Components without proxy_path are not in Caddyfile."""
         registry = _make_registry(

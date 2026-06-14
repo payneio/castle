@@ -45,17 +45,30 @@ def _build_env() -> dict[str, str]:
     return env
 
 
-async def _run(cmd: list[str], cwd: Path) -> tuple[int, str]:
+async def _run(cmd: list[str], cwd: Path, env: dict[str, str] | None = None) -> tuple[int, str]:
     """Run a subprocess and return (returncode, combined output)."""
+    run_env = _build_env()
+    if env:
+        run_env.update(env)
     proc = await asyncio.create_subprocess_exec(
         *cmd,
         cwd=cwd,
-        env=_build_env(),
+        env=run_env,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.STDOUT,
     )
     stdout, _ = await proc.communicate()
     return proc.returncode or 0, (stdout or b"").decode()
+
+
+def _vite_base(name: str) -> str:
+    """The base path a castle-served static frontend builds against.
+
+    Matches the Caddyfile serve prefix: castle-app is the root app ('/'); every
+    other static frontend mounts at '/<name>/'. Exposed to the build as VITE_BASE
+    so the bundle's absolute asset URLs resolve at the gateway subpath (the
+    vite.config reads `base: process.env.VITE_BASE ?? '/'`)."""
+    return "/" if name == "castle-app" else f"/{name}/"
 
 
 def _source_dir(comp: ProgramSpec, root: Path) -> Path:
@@ -181,7 +194,9 @@ class ReactViteHandler(StackHandler):
 
     async def build(self, name: str, comp: ProgramSpec, root: Path) -> ActionResult:
         src = _source_dir(comp, root)
-        rc, output = await _run(["pnpm", "build"], src)
+        # Build against the gateway serve prefix so absolute asset URLs resolve at
+        # /<name>/ (vite.config reads VITE_BASE). Removes the hand-tuned-base footgun.
+        rc, output = await _run(["pnpm", "build"], src, env={"VITE_BASE": _vite_base(name)})
         return ActionResult(
             program=name, action="build", status="ok" if rc == 0 else "error", output=output
         )

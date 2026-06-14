@@ -142,8 +142,10 @@ async def activate(name: str, config: CastleConfig, root: Path) -> ActionResult:
 
     # Process-backed: daemon, self-serving frontend, or job.
     if name in config.services or name in config.jobs:
-        # Ensure the program's binary is on PATH first (python programs).
-        if comp is not None and (comp.stack or comp.commands):
+        # Ensure the program's binary is on PATH first (python programs). Skip the
+        # editable reinstall if it's already there — `castle deploy` installs it,
+        # so re-running it on every activate is wasted work.
+        if comp is not None and (comp.stack or comp.commands) and not _on_path(name):
             res = await run_action("install", name, comp, root)
             if res.status != "ok":
                 return res

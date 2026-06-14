@@ -20,10 +20,34 @@ def generate_caddyfile_from_registry(
     If remote_registries is provided, cross-node routes are added for
     remote services whose proxy_path doesn't conflict with local ones.
     """
-    lines = [f":{registry.node.gateway_port} {{"]
+    gw_port = registry.node.gateway_port
+
+    # Global options: the gateway is an internal HTTP-only reverse proxy on a
+    # non-standard port. Disable automatic HTTPS so named hosts don't pull the
+    # listener into TLS or try to bind :80/:443 (which fails for a user service).
+    lines = ["{", "    auto_https off", "}", ""]
+
+    lines.append(f":{gw_port} {{")
 
     # Track local proxy paths for precedence
     local_paths: set[str] = set()
+
+    # Host-based routes: a `host` matcher inside the single :9000 site (NOT a
+    # separate site block — that would split the listener and flip it to TLS).
+    # The whole host maps to the backend root, so a root-based SPA (base="/")
+    # serves unchanged. Emitted first so a host match wins over path routes.
+    for name, deployed in registry.deployed.items():
+        if not deployed.proxy_host:
+            continue
+        if not deployed.port and not deployed.base_url:
+            continue
+        target = deployed.base_url or f"localhost:{deployed.port}"
+        matcher = f"@host_{name.replace('-', '_')}"
+        lines.append(f"    {matcher} host {deployed.proxy_host}")
+        lines.append(f"    handle {matcher} {{")
+        lines.append(f"        reverse_proxy {target}")
+        lines.append("    }")
+        lines.append("")
 
     for name, deployed in registry.deployed.items():
         if not deployed.proxy_path:
