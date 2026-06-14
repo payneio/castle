@@ -71,6 +71,7 @@ def run_list(args: argparse.Namespace) -> int:
 
     filter_behavior = getattr(args, "behavior", None)
     filter_stack = getattr(args, "stack", None)
+    resource = getattr(args, "resource", None)  # scope to one section, or all
 
     if getattr(args, "json", False):
         return _list_json(config, filter_behavior, filter_stack)
@@ -81,12 +82,16 @@ def run_list(args: argparse.Namespace) -> int:
     any_output = False
 
     # Programs (the catalog) — filtered by real behavior + stack
-    progs = {
-        name: comp
-        for name, comp in config.programs.items()
-        if (not filter_behavior or comp.behavior == filter_behavior)
-        and (not filter_stack or comp.stack == filter_stack)
-    }
+    progs = (
+        {
+            name: comp
+            for name, comp in config.programs.items()
+            if (not filter_behavior or comp.behavior == filter_behavior)
+            and (not filter_stack or comp.stack == filter_stack)
+        }
+        if resource in (None, "program")
+        else {}
+    )
     if progs:
         any_output = True
         print(f"\n{BOLD}{CYAN}Programs{RESET}")
@@ -100,8 +105,8 @@ def run_list(args: argparse.Namespace) -> int:
             print(f"  {dot(name)} {BOLD}{name}{RESET}{behavior_str}{stack_str}{desc}")
 
     # Services + Jobs (deployment views) — independent of behavior, so only shown
-    # when no behavior filter is applied.
-    if not filter_behavior:
+    # when no behavior filter is applied. Each gated by its own resource scope.
+    if not filter_behavior and resource in (None, "service"):
         services = _filter_by_stack(config.services, config, filter_stack)
         if services:
             any_output = True
@@ -117,6 +122,7 @@ def run_list(args: argparse.Namespace) -> int:
                 desc = f"  {DIM}{svc.description}{RESET}" if svc.description else ""
                 print(f"  {dot(name)} {BOLD}{name}{RESET}{port_str}{stack_str}{desc}")
 
+    if not filter_behavior and resource in (None, "job"):
         jobs = _filter_by_stack(config.jobs, config, filter_stack)
         if jobs:
             any_output = True
@@ -128,7 +134,7 @@ def run_list(args: argparse.Namespace) -> int:
                 print(f"  {dot(name)} {BOLD}{name}{RESET}{sched}{desc}")
 
     if not any_output:
-        print("No programs found.")
+        print(f"No {resource or 'program'}s found.")
 
     print()
     return 0

@@ -1,4 +1,4 @@
-"""castle service / castle services - manage systemd service units."""
+"""castle service / castle job — manage systemd service & timer units."""
 
 from __future__ import annotations
 
@@ -40,56 +40,73 @@ def _remove_unit(uname: str) -> None:
         subprocess.run(["systemctl", "--user", "daemon-reload"], check=False)
 
 
-def run_service(args: argparse.Namespace) -> int:
-    """Manage individual services."""
-    if not args.service_command:
-        print("Usage: castle service {enable|disable}")
-        return 1
+_PAST = {"start": "started", "stop": "stopped", "restart": "restarted"}
 
+
+def run_service_cmd(args: argparse.Namespace) -> int:
+    """`castle service <enable|disable|start|stop|restart> <name>`."""
+    sub = args.service_command
     config = load_config()
-
-    if args.service_command == "enable":
+    if sub == "enable":
         if getattr(args, "dry_run", False):
             return _service_dry_run(config, args.name)
         return _service_enable(config, args.name)
-    elif args.service_command == "disable":
+    if sub == "disable":
         return _service_disable(args.name)
-
+    if sub in ("start", "stop", "restart"):
+        return _unit_action(config, args.name, sub, is_job=False)
     return 1
 
 
-def run_services(args: argparse.Namespace) -> int:
-    """Manage all services together."""
-    if not args.services_command:
-        print("Usage: castle services {start|stop|status}")
-        return 1
-
+def run_job_cmd(args: argparse.Namespace) -> int:
+    """`castle job <enable|disable|start|stop|restart> <name>` (acts on the timer)."""
+    sub = args.job_command
     config = load_config()
+    if sub == "enable":
+        return _service_enable(config, args.name)  # enable_service handles timers
+    if sub == "disable":
+        return _service_disable(args.name)
+    if sub in ("start", "stop", "restart"):
+        return _unit_action(config, args.name, sub, is_job=True)
+    return 1
 
-    if args.services_command == "start":
+
+def run_platform(args: argparse.Namespace) -> int:
+    """Top-level `castle start|stop|restart` — the whole platform."""
+    config = load_config()
+    action = args.command
+    if action == "start":
         return _services_start(config)
-    elif args.services_command == "stop":
+    if action == "stop":
         return _services_stop(config)
-    elif args.services_command == "status":
-        return _service_status(config)
-
+    if action == "restart":
+        return _services_restart(config)
     return 1
 
 
-def run_restart(args: argparse.Namespace) -> int:
-    """Restart a single deployed service or job."""
-    config = load_config()
-    name = args.name
-    if name not in config.services and name not in config.jobs:
-        print(f"Error: '{name}' is not a known service or job.")
+def _unit_action(config: CastleConfig, name: str, action: str, is_job: bool) -> int:
+    """systemctl start/stop/restart one service (unit) or job (timer)."""
+    section = config.jobs if is_job else config.services
+    if name not in section:
+        print(f"Error: no {'job' if is_job else 'service'} '{name}'.")
         return 1
-    # Jobs are driven by their timer; services by the service unit.
-    unit = timer_name(name) if name in config.jobs else unit_name(name)
-    result = subprocess.run(["systemctl", "--user", "restart", unit], check=False)
+    unit = timer_name(name) if is_job else unit_name(name)
+    result = subprocess.run(["systemctl", "--user", action, unit], check=False)
     if result.returncode != 0:
-        print(f"Error: failed to restart {unit}")
+        print(f"Error: failed to {action} {unit}")
         return 1
-    print(f"  {name}: restarted")
+    print(f"  {name}: {_PAST[action]}")
+    return 0
+
+
+def _services_restart(config: CastleConfig) -> int:
+    """Restart every managed service and job unit."""
+    for name in config.jobs:
+        subprocess.run(["systemctl", "--user", "restart", timer_name(name)], check=False)
+        print(f"  {name}: restarted (timer)")
+    for name in config.services:
+        subprocess.run(["systemctl", "--user", "restart", unit_name(name)], check=False)
+        print(f"  {name}: restarted")
     return 0
 
 
@@ -118,17 +135,6 @@ def run_status(args: argparse.Namespace) -> int:
             print(f"  {color}{label:10s}\033[0m  {name}  ({comp.behavior or 'program'})")
         print()
     return 0
-
-
-def run_up(args: argparse.Namespace) -> int:
-    """Bring everything online: deploy from castle.yaml, then start all services."""
-    from castle_cli.commands.deploy import run_deploy
-
-    config = load_config()
-    print("Deploying from castle.yaml...")
-    run_deploy(argparse.Namespace(name=None))
-    print("\nStarting services and gateway...")
-    return _services_start(config)
 
 
 def _service_enable(config: CastleConfig, name: str) -> int:

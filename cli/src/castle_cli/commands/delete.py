@@ -16,13 +16,15 @@ from castle_cli.config import load_config, save_config
 def run_delete(args: argparse.Namespace) -> int:
     config = load_config()
     name = args.name
+    resource = getattr(args, "resource", None)  # "program" | "service" | "job"
 
-    # Find every section the name appears in.
-    in_programs = name in config.programs
-    in_services = name in config.services
-    in_jobs = name in config.jobs
+    # Resolve which sections this delete touches (scoped to one resource).
+    in_programs = name in config.programs and resource in (None, "program")
+    in_services = name in config.services and resource in (None, "service")
+    in_jobs = name in config.jobs and resource in (None, "job")
     if not (in_programs or in_services or in_jobs):
-        print(f"Error: '{name}' not found in castle.yaml")
+        where = f" {resource}" if resource else ""
+        print(f"Error: no{where} '{name}' in castle.yaml")
         return 1
 
     where = [s for s, present in
@@ -32,8 +34,14 @@ def run_delete(args: argparse.Namespace) -> int:
     # named the same are removed in this call; any other referencing deployment
     # would be left dangling, so refuse.
     if in_programs:
-        dangling = [s for s, spec in config.services.items() if spec.program == name and s != name]
-        dangling += [j for j, spec in config.jobs.items() if spec.program == name and j != name]
+        dangling = [
+            s for s, spec in config.services.items()
+            if spec.program == name and not (s == name and in_services)
+        ]
+        dangling += [
+            j for j, spec in config.jobs.items()
+            if spec.program == name and not (j == name and in_jobs)
+        ]
         if dangling:
             print(
                 "Error: programs with active jobs or services cannot be removed.\n"

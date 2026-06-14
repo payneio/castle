@@ -32,14 +32,16 @@ def run_info(args: argparse.Namespace) -> int:
     """Show detailed info for a program, service, or job."""
     config = load_config()
     name = args.name
+    resource = getattr(args, "resource", None)
 
-    # Look up in all sections
-    program = config.programs.get(name)
-    service = config.services.get(name)
-    job = config.jobs.get(name)
+    # Look up in the requested section (or all, when unscoped).
+    program = config.programs.get(name) if resource in (None, "program") else None
+    service = config.services.get(name) if resource in (None, "service") else None
+    job = config.jobs.get(name) if resource in (None, "job") else None
 
     if not program and not service and not job:
-        print(f"Error: '{name}' not found in castle.yaml")
+        where = f" {resource}" if resource else ""
+        print(f"Error: no{where} '{name}' in castle.yaml")
         return 1
 
     deployed = _load_deployed_program(name)

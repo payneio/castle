@@ -163,7 +163,7 @@ async def activate(name: str, config: CastleConfig, root: Path) -> ActionResult:
             "activate",
             "error",
             f"'{name}' is a daemon with no service. Run "
-            f"'castle expose {name} --port <PORT>' to deploy it as a service.",
+            f"'castle service create {name} --program {name} --port <PORT>' to deploy it.",
         )
 
     # Tool: install to PATH.
