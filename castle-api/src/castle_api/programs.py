@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, status
 
-from castle_core.stacks import available_actions, get_handler
+from castle_core.stacks import available_actions, run_action
 
 from castle_api.config import get_config
 
@@ -27,7 +27,11 @@ _VALID_ACTIONS = {
 
 @programs_router.post("/programs/{name}/{action}")
 async def program_action(name: str, action: str) -> dict:
-    """Run a lifecycle action on a program via its stack handler."""
+    """Run a lifecycle action on a program.
+
+    Resolution-aware: a declared `commands:` entry overrides the stack default,
+    so a program with no stack can still be linted/tested/built/installed.
+    """
     if action not in _VALID_ACTIONS:
         raise HTTPException(status_code=400, detail=f"Unknown action: {action}")
 
@@ -41,24 +45,14 @@ async def program_action(name: str, action: str) -> dict:
     if not comp.source:
         raise HTTPException(status_code=400, detail=f"'{name}' has no source directory")
 
-    actions = available_actions(comp)
-    if action not in actions:
+    if action not in available_actions(comp):
         raise HTTPException(
             status_code=400,
-            detail=f"Action '{action}' not available for '{name}' (stack: {comp.stack})",
+            detail=f"Action '{action}' not available for '{name}' "
+            f"(no declared command and no stack handler provides it)",
         )
 
-    handler = get_handler(comp.stack)
-    if handler is None:
-        raise HTTPException(
-            status_code=400, detail=f"No handler for stack '{comp.stack}'"
-        )
-
-    # Map hyphenated action names to method names (type-check → type_check)
-    method_name = action.replace("-", "_")
-    method = getattr(handler, method_name)
-
-    result = await method(name, comp, config.root)
+    result = await run_action(action, name, comp, config.root)
 
     if result.status != "ok":
         raise HTTPException(status_code=500, detail=result.output or f"{action} failed")

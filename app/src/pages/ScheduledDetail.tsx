@@ -37,7 +37,6 @@ export function ScheduledDetailPage() {
         backTo="/"
         backLabel="Back to Jobs"
         name={component.id}
-        behavior="tool"
         stack={component.stack}
         source={component.source}
       >

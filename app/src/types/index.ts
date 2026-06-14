@@ -46,6 +46,9 @@ export interface ProgramSummary {
   runner: string | null
   version: string | null
   source: string | null
+  repo: string | null
+  ref: string | null
+  commands: Record<string, string[][]> | null
   system_dependencies: string[]
   installed: boolean | null
   actions: string[]
@@ -74,6 +77,9 @@ export interface ComponentSummary {
   systemd: SystemdInfo | null
   version: string | null
   source: string | null
+  repo: string | null
+  ref: string | null
+  commands: Record<string, string[][]> | null
   system_dependencies: string[]
   schedule: string | null
   installed: boolean | null

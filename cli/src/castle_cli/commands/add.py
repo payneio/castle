@@ -1,0 +1,134 @@
+"""castle add — adopt an existing repo as a program (no scaffolding).
+
+`castle create` makes new code from a stack. `castle add` adopts code that
+already exists — a local path, or a git URL to clone. It detects sensible dev
+verb commands so a non-castle project becomes usable without writing them by hand.
+"""
+
+from __future__ import annotations
+
+import argparse
+import tomllib
+from pathlib import Path
+
+from castle_cli.config import REPOS_DIR, load_config, save_config
+from castle_cli.manifest import BuildSpec, CommandsSpec, ProgramSpec
+
+
+def _is_git_url(s: str) -> bool:
+    return (
+        s.startswith(("http://", "https://", "git@", "ssh://"))
+        or s.endswith(".git")
+    )
+
+
+def _detect(src: Path) -> tuple[str | None, dict[str, list[list[str]]], str]:
+    """Detect (stack, commands, behavior) for a source dir.
+
+    Returns a stack name when the project fits a known one (so it inherits those
+    defaults), otherwise an explicit commands map. behavior defaults to 'tool'.
+    """
+    stack: str | None = None
+    commands: dict[str, list[list[str]]] = {}
+    behavior = "tool"
+
+    pyproject = src / "pyproject.toml"
+    if pyproject.exists():
+        try:
+            data = tomllib.loads(pyproject.read_text())
+        except (OSError, tomllib.TOMLDecodeError):
+            data = {}
+        deps = " ".join(data.get("project", {}).get("dependencies", []))
+        if "fastapi" in deps or "uvicorn" in deps:
+            stack, behavior = "python-fastapi", "daemon"
+        else:
+            stack = "python-cli"
+        return stack, commands, behavior
+
+    if (src / "Cargo.toml").exists():
+        commands = {
+            "build": [["cargo", "build", "--release"]],
+            "test": [["cargo", "test"]],
+            "lint": [["cargo", "clippy"]],
+            "run": [["cargo", "run"]],
+        }
+        return None, commands, "tool"
+
+    if (src / "package.json").exists():
+        commands = {
+            "build": [["pnpm", "build"]],
+            "test": [["pnpm", "test"]],
+            "lint": [["pnpm", "lint"]],
+        }
+        return None, commands, "frontend"
+
+    if (src / "Makefile").exists() or (src / "makefile").exists():
+        commands = {"build": [["make"]], "test": [["make", "test"]]}
+        return None, commands, "tool"
+
+    return None, commands, "tool"
+
+
+def run_add(args: argparse.Namespace) -> int:
+    """Adopt an existing repo as a program."""
+    config = load_config()
+    target = args.target
+
+    repo_url: str | None = None
+    source: str | None = None
+
+    if _is_git_url(target):
+        repo_url = target
+        name = args.name or Path(target.rstrip("/")).name.removesuffix(".git")
+        # Default local clone location; cloned later via `castle clone`.
+        source = str(REPOS_DIR / name)
+        src_path = Path(source)
+    else:
+        src_path = Path(target).expanduser().resolve()
+        if not src_path.exists():
+            print(f"Error: path does not exist: {src_path}")
+            return 1
+        source = str(src_path)
+        name = args.name or src_path.name
+
+    if name in config.programs or name in config.services or name in config.jobs:
+        print(f"Error: '{name}' already exists in castle.yaml")
+        return 1
+
+    # Detect verbs from the working copy if we have one on disk.
+    stack: str | None = None
+    detected_commands: dict[str, list[list[str]]] = {}
+    behavior = "tool"
+    if src_path.exists():
+        stack, detected_commands, behavior = _detect(src_path)
+
+    prog = ProgramSpec(
+        id=name,
+        description=args.description or f"Adopted from {target}",
+        source=source,
+        stack=stack,
+        repo=repo_url,
+        behavior=behavior,
+    )
+    # `build` is declared via BuildSpec; every other verb via CommandsSpec.
+    if detected_commands:
+        build_cmds = detected_commands.pop("build", None)
+        if build_cmds:
+            prog.build = BuildSpec(commands=build_cmds)
+        if detected_commands:
+            prog.commands = CommandsSpec.model_validate(detected_commands)
+
+    config.programs[name] = prog
+    save_config(config)
+
+    print(f"Adopted '{name}' as a program.")
+    print(f"  source: {source}")
+    if repo_url:
+        print(f"  repo:   {repo_url}  (run 'castle clone {name}' to fetch it)")
+    if stack:
+        print(f"  stack:  {stack}  (verbs inherited from stack defaults)")
+    elif detected_commands:
+        print(f"  commands detected: {', '.join(sorted(detected_commands))}")
+    else:
+        print("  no stack/commands detected — declare verbs in castle.yaml as needed")
+    return 0

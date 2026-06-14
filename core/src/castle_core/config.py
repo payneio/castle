@@ -53,6 +53,19 @@ def _resolve_data_dir() -> Path:
     return Path("/data/castle")
 
 
+def _resolve_repos_dir() -> Path:
+    """Resolve where program source repos live by default.
+
+    `castle create` scaffolds and `castle add` adopts repos under here. Programs
+    may also live anywhere (source: is an absolute path); this is just the default
+    home for new ones. Override with CASTLE_REPOS_DIR. Defaults to /data/repos.
+    """
+    override = os.environ.get("CASTLE_REPOS_DIR")
+    if override:
+        return Path(override).expanduser().resolve()
+    return Path("/data/repos")
+
+
 CASTLE_HOME = _resolve_castle_home()
 CODE_DIR = CASTLE_HOME / "code"
 ARTIFACTS_DIR = CASTLE_HOME / "artifacts"
@@ -60,6 +73,7 @@ SPECS_DIR = ARTIFACTS_DIR / "specs"
 CONTENT_DIR = ARTIFACTS_DIR / "content"
 DATA_DIR = _resolve_data_dir()
 SECRETS_DIR = CASTLE_HOME / "secrets"
+REPOS_DIR = _resolve_repos_dir()
 
 # Backwards-compat aliases (used by existing imports)
 GENERATED_DIR = SPECS_DIR

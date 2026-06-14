@@ -36,6 +36,17 @@ def castle_root(tmp_path: Path) -> Generator[Path, None, None]:
                 "behavior": "tool",
                 "version": "2.0.0",
             },
+            "wired-in": {
+                "description": "Adopted repo, no stack",
+                "source": "wired-in",
+                "behavior": "tool",
+                "repo": "https://github.com/someone/wired-in.git",
+                "commands": {
+                    "lint": [["make", "lint"]],
+                    "test": [["make", "test"]],
+                    "run": [["./bin/wired-in"]],
+                },
+            },
         },
         "services": {
             "test-svc": {

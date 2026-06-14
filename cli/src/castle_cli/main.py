@@ -37,11 +37,30 @@ def build_parser() -> argparse.ArgumentParser:
     create_parser.add_argument(
         "--stack",
         choices=["python-cli", "python-fastapi", "react-vite"],
-        required=True,
-        help="Development stack (determines scaffold template and default behavior)",
+        default=None,
+        help="Development stack (scaffold template + default behavior). Omit for a bare program.",
     )
     create_parser.add_argument("--description", default="", help="Project description")
     create_parser.add_argument("--port", type=int, help="Port number (daemons only)")
+
+    # castle add — adopt an existing repo as a program
+    add_parser = subparsers.add_parser("add", help="Adopt an existing repo (path or git URL)")
+    add_parser.add_argument("target", help="Local path to an existing repo, or a git URL to clone")
+    add_parser.add_argument("--name", help="Program name (default: directory/repo name)")
+    add_parser.add_argument("--description", default="", help="Program description")
+
+    # castle clone — clone repos for programs that declare repo:
+    clone_parser = subparsers.add_parser("clone", help="Clone source for programs with repo:")
+    clone_parser.add_argument("name", nargs="?", help="Program to clone (default: all with repo:)")
+
+    # castle delete — remove a program/service/job from the registry
+    delete_parser = subparsers.add_parser("delete", help="Remove a program/service/job")
+    delete_parser.add_argument("name", help="Program, service, or job name")
+    delete_parser.add_argument(
+        "--source", action="store_true", help="Also delete the source directory"
+    )
+    delete_parser.add_argument("-y", "--yes", action="store_true", help="Skip confirmation")
+
     # castle info
     info_parser = subparsers.add_parser("info", help="Show program details")
     info_parser.add_argument("project", help="Program, service, or job name")
@@ -58,6 +77,20 @@ def build_parser() -> argparse.ArgumentParser:
     # castle build
     build_parser = subparsers.add_parser("build", help="Build projects")
     build_parser.add_argument("project", nargs="?", help="Project to build (default: all)")
+
+    # castle type-check
+    tc_parser = subparsers.add_parser("type-check", help="Run type checker")
+    tc_parser.add_argument("project", nargs="?", help="Project to type-check (default: all)")
+
+    # castle check (composite: lint + type-check + test)
+    check_parser = subparsers.add_parser("check", help="Run lint + type-check + test")
+    check_parser.add_argument("project", nargs="?", help="Project to check (default: all)")
+
+    # castle install / uninstall
+    install_parser = subparsers.add_parser("install", help="Install a program to PATH")
+    install_parser.add_argument("project", nargs="?", help="Program to install (default: all)")
+    uninstall_parser = subparsers.add_parser("uninstall", help="Uninstall a program")
+    uninstall_parser.add_argument("project", nargs="?", help="Program to uninstall (default: all)")
 
     # castle gateway
     gateway_parser = subparsers.add_parser("gateway", help="Manage the Caddy gateway")
@@ -99,23 +132,16 @@ def build_parser() -> argparse.ArgumentParser:
         "-n", "--lines", type=int, default=50, help="Number of lines to show (default: 50)"
     )
 
-    # castle run
-    run_parser = subparsers.add_parser("run", help="Run a service in the foreground")
-    run_parser.add_argument("name", help="Service name")
+    # castle run — run a program (declared run) or deployed service in the foreground
+    run_parser = subparsers.add_parser("run", help="Run a program or service in the foreground")
+    run_parser.add_argument("name", help="Program or service name")
     run_parser.add_argument(
-        "extra", nargs=argparse.REMAINDER, help="Extra arguments passed to the service"
+        "extra", nargs=argparse.REMAINDER, help="Extra arguments passed to the target"
     )
 
     # castle deploy
     deploy_parser = subparsers.add_parser("deploy", help="Deploy to ~/.castle/ (spec → runtime)")
     deploy_parser.add_argument("name", nargs="?", help="Service or job to deploy (default: all)")
-
-    # castle tool
-    tool_parser = subparsers.add_parser("tool", help="Manage tools")
-    tool_sub = tool_parser.add_subparsers(dest="tool_command")
-    tool_sub.add_parser("list", help="List all tools")
-    tool_info_parser = tool_sub.add_parser("info", help="Show tool details")
-    tool_info_parser.add_argument("name", help="Tool name")
 
     return parser
 
@@ -145,6 +171,21 @@ def main() -> int:
 
         return run_create(args)
 
+    elif args.command == "add":
+        from castle_cli.commands.add import run_add
+
+        return run_add(args)
+
+    elif args.command == "clone":
+        from castle_cli.commands.clone import run_clone
+
+        return run_clone(args)
+
+    elif args.command == "delete":
+        from castle_cli.commands.delete import run_delete
+
+        return run_delete(args)
+
     elif args.command == "test":
         from castle_cli.commands.dev import run_test
 
@@ -159,6 +200,26 @@ def main() -> int:
         from castle_cli.commands.dev import run_build
 
         return run_build(args)
+
+    elif args.command == "type-check":
+        from castle_cli.commands.dev import run_type_check
+
+        return run_type_check(args)
+
+    elif args.command == "check":
+        from castle_cli.commands.dev import run_check
+
+        return run_check(args)
+
+    elif args.command == "install":
+        from castle_cli.commands.dev import run_install
+
+        return run_install(args)
+
+    elif args.command == "uninstall":
+        from castle_cli.commands.dev import run_uninstall
+
+        return run_uninstall(args)
 
     elif args.command == "gateway":
         from castle_cli.commands.gateway import run_gateway
@@ -189,11 +250,6 @@ def main() -> int:
         from castle_cli.commands.run_cmd import run_run
 
         return run_run(args)
-
-    elif args.command == "tool":
-        from castle_cli.commands.tool import run_tool
-
-        return run_tool(args)
 
     else:
         parser.print_help()

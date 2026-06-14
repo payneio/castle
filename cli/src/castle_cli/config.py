@@ -2,14 +2,15 @@
 
 from castle_core.config import *  # noqa: F401, F403
 from castle_core.config import (  # noqa: F401 — explicit re-exports for type checkers
+    ARTIFACTS_DIR,
     CASTLE_HOME,
     CODE_DIR,
-    ARTIFACTS_DIR,
-    SPECS_DIR,
     CONTENT_DIR,
     DATA_DIR,
-    SECRETS_DIR,
     GENERATED_DIR,
+    REPOS_DIR,
+    SECRETS_DIR,
+    SPECS_DIR,
     STATIC_DIR,
     CastleConfig,
     GatewayConfig,

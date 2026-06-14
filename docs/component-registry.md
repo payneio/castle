@@ -96,13 +96,43 @@ you create live under **`$CASTLE_HOME/code/`** and are recorded as
 the git repo and use the `repo:` prefix. When `castle deploy` writes `castle.yaml`
 back out, it rewrites absolute paths into these relative forms.
 
-### `stack` — Development toolchain
+### `stack` — Development toolchain (optional)
 
 ```yaml
-stack: python-fastapi   # or: python-cli, react-vite
+stack: python-fastapi   # or: python-cli, react-vite — OPTIONAL
 ```
 
-Stacks define how programs get built, checked, and installed.
+A stack provides **default** dev-verb commands (build/test/lint/type-check/…)
+and a scaffold template for new code. It is **optional**: a program with no
+stack works fine as long as it declares its own `commands:`. Stacks are a
+creation-time convenience, not a runtime requirement.
+
+### `commands` — Per-program dev verbs
+
+```yaml
+commands:
+  lint:  [["ruff", "check", "."]]
+  test:  [["pytest", "tests/"]]
+  run:   [["./bin/my-tool", "--serve"]]
+```
+
+Each verb is a list of argv lists (run in sequence). A declared verb **overrides**
+the stack default; an absent verb falls back to the stack handler (if any), else
+the verb is unavailable. `build` is declared via `build:` (it also carries
+`outputs:`); every other verb via `commands:`. This is what lets a wired-in repo
+with no stack be linted/tested/run. Verb resolution lives in
+`core/src/castle_core/stacks.py` (`run_action`, `available_actions`).
+
+### `repo` / `ref` — Wiring in an existing repo
+
+```yaml
+repo: https://github.com/me/widget.git
+ref: v2.1.0          # optional branch/tag/commit
+```
+
+`repo` records a git URL so `castle clone` can provision the source on a fresh
+machine. When `source:` points at an existing working copy, that takes
+precedence. Use `castle add <path|url>` to register an existing repo as a program.
 
 ### `system_dependencies` — Required system packages
 
@@ -111,7 +141,7 @@ system_dependencies: [pandoc, poppler-utils]
 ```
 
 System packages that must be installed for the program to work. Displayed
-in `castle tool list` and the dashboard.
+in `castle list --behavior tool` and the dashboard.
 
 ### `version` — Program version
 

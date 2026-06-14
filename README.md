@@ -1,5 +1,7 @@
 # Castle
 
+"Standing to author, run, govern, and maintain your own software"
+
 A personal software platform. Castle manages independent services, tools, and frontends from a single CLI, with a unified gateway, systemd integration, and a web dashboard.
 
 Historically, applications have been developed by third parties, distributed through app stores, and installed on user devices.
@@ -61,20 +63,22 @@ castle deploy my-app
 ```
 castle list [--behavior B] [--stack S] [--json]  List all programs, services, and jobs
 castle info NAME [--json]                        Show program details
-castle create NAME --stack STACK                 Scaffold a new project
-castle build [NAME]                   Build projects (one or all)
-castle test [NAME]                    Run tests (one or all)
-castle lint [NAME]                    Run linter (one or all)
+castle create NAME [--stack STACK]               Scaffold a new project (bare if no stack)
+castle add PATH|GIT-URL [--name N]               Adopt an existing repo as a program
+castle clone [NAME]                   Clone source for programs that declare repo:
+castle build|test|lint|type-check|check [NAME]   Dev verbs (one or all)
+castle install|uninstall [NAME]       Install/remove a program on PATH
 castle deploy [NAME]                  Deploy to ~/.castle/ (spec -> runtime)
-castle run NAME                       Run a service in the foreground
+castle run NAME                       Run a program (declared run) or service in foreground
 castle logs NAME [-f] [-n 50]         View service/job logs
 castle gateway start|stop|reload      Manage Caddy reverse proxy
 castle service enable|disable NAME    Manage a systemd service
 castle service status                 Show all service statuses
 castle services start|stop            Start/stop everything
-castle tool list                      List all tools
-castle tool info NAME                 Show tool details
 ```
+
+Tools are programs with `behavior: tool` — list them with
+`castle list --behavior tool`.
 
 ## Registry
 
