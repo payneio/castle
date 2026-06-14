@@ -34,6 +34,19 @@ from castle_api.models import (
 router = APIRouter(tags=["dashboard"])
 
 
+def _declared_commands_dict(comp: ProgramSpec) -> dict[str, list[list[str]]] | None:
+    """Serialize a program's declared verbs for the API (build + CommandsSpec)."""
+    out: dict[str, list[list[str]]] = {}
+    if comp.build and comp.build.commands:
+        out["build"] = comp.build.commands
+    if comp.commands is not None:
+        for verb in ("lint", "test", "type-check", "check", "run", "install", "uninstall"):
+            cmds = comp.commands.for_verb(verb)
+            if cmds:
+                out[verb] = cmds
+    return out or None
+
+
 def _summary_from_deployed(name: str, deployed: object) -> ComponentSummary:
     """Build a ComponentSummary from a DeployedComponent."""
     managed = deployed.managed
@@ -172,7 +185,7 @@ def _summary_from_program(name: str, comp: ProgramSpec, root: Path) -> Component
             runner = "command"
 
     installed: bool | None = None
-    if comp.source and comp.stack:
+    if comp.source and (comp.stack or comp.commands):
         installed = shutil.which(name) is not None
 
     return ComponentSummary(
@@ -184,6 +197,9 @@ def _summary_from_program(name: str, comp: ProgramSpec, root: Path) -> Component
         runner=runner,
         version=comp.version,
         source=source,
+        repo=comp.repo,
+        ref=comp.ref,
+        commands=_declared_commands_dict(comp),
         system_dependencies=comp.system_dependencies,
         installed=installed,
     )
@@ -323,7 +339,7 @@ def _program_from_spec(
             runner = "command"
 
     installed: bool | None = None
-    if comp.source and comp.stack:
+    if comp.source and (comp.stack or comp.commands):
         installed = shutil.which(name) is not None
 
     return ProgramSummary(
@@ -334,6 +350,9 @@ def _program_from_spec(
         runner=runner,
         version=comp.version,
         source=source,
+        repo=comp.repo,
+        ref=comp.ref,
+        commands=_declared_commands_dict(comp),
         system_dependencies=comp.system_dependencies,
         installed=installed,
         actions=available_actions(comp),

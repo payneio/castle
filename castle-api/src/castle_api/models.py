@@ -27,6 +27,9 @@ class ComponentSummary(BaseModel):
     systemd: SystemdInfo | None = None
     version: str | None = None
     source: str | None = None
+    repo: str | None = None
+    ref: str | None = None
+    commands: dict[str, list[list[str]]] | None = None
     system_dependencies: list[str] = []
     schedule: str | None = None
     installed: bool | None = None
@@ -91,6 +94,9 @@ class ProgramSummary(BaseModel):
     runner: str | None = None
     version: str | None = None
     source: str | None = None
+    repo: str | None = None
+    ref: str | None = None
+    commands: dict[str, list[list[str]]] | None = None
     system_dependencies: list[str] = []
     installed: bool | None = None
     actions: list[str] = []

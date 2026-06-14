@@ -12,9 +12,14 @@ from pathlib import Path
 from castle_core.config import CONTENT_DIR
 from castle_core.manifest import ProgramSpec
 
-DEV_ACTIONS = ["build", "test", "lint", "type-check", "check"]
+DEV_ACTIONS = ["build", "test", "lint", "type-check", "check", "run"]
 INSTALL_ACTIONS = ["install", "uninstall"]
 ALL_ACTIONS = DEV_ACTIONS + INSTALL_ACTIONS
+
+# Verbs a stack handler can provide (everything except `run`, which is declared-only).
+_STACK_VERBS = {"build", "test", "lint", "type-check", "check", "install", "uninstall"}
+# Verbs whose handler method name differs from the verb spelling.
+_VERB_METHOD = {"type-check": "type_check"}
 
 # User-local tool directories that may not be on the systemd service PATH.
 _EXTRA_PATH_DIRS = [
@@ -253,11 +258,97 @@ def get_handler(stack: str | None) -> StackHandler | None:
     return HANDLERS.get(stack)
 
 
+def _declared_commands(comp: ProgramSpec, verb: str) -> list[list[str]] | None:
+    """Declared argv-lists for a verb, or None.
+
+    `build` is declared via BuildSpec.commands; every other verb via CommandsSpec.
+    """
+    if verb == "build":
+        if comp.build and comp.build.commands:
+            return comp.build.commands
+        return None
+    if comp.commands is not None:
+        return comp.commands.for_verb(verb)
+    return None
+
+
+def _stack_provides(comp: ProgramSpec, verb: str) -> bool:
+    """Whether the program's stack handler can run this verb."""
+    return bool(comp.source) and verb in _STACK_VERBS and get_handler(comp.stack) is not None
+
+
+def is_available(comp: ProgramSpec, verb: str) -> bool:
+    """Whether a verb can be run for a program (declared command or stack default)."""
+    if _declared_commands(comp, verb) is not None:
+        return True
+    if verb == "check":
+        return any(is_available(comp, sub) for sub in ("lint", "type-check", "test"))
+    return _stack_provides(comp, verb)
+
+
 def available_actions(comp: ProgramSpec) -> list[str]:
-    """Return the list of actions available for a program."""
+    """Return the list of verbs available for a program (resolution-aware)."""
     if not comp.source:
         return []
+    return [verb for verb in ALL_ACTIONS if is_available(comp, verb)]
+
+
+async def _run_declared(
+    name: str, verb: str, cmds: list[list[str]], src: Path
+) -> ActionResult:
+    """Run declared argv-lists in sequence; stop at the first failure."""
+    outputs: list[str] = []
+    for argv in cmds:
+        rc, output = await _run(argv, src)
+        outputs.append(output)
+        if rc != 0:
+            return ActionResult(component=name, action=verb, status="error", output="".join(outputs))
+    return ActionResult(component=name, action=verb, status="ok", output="".join(outputs))
+
+
+async def run_action(verb: str, name: str, comp: ProgramSpec, root: Path) -> ActionResult:
+    """Resolve and run a verb: declared command → stack default → unavailable.
+
+    This is the single entry point callers should use; it replaces reaching for
+    get_handler(...).<method>(...) directly so the override logic stays in one place.
+    """
+    # `check` is a composite that must respect per-verb overrides — unless the
+    # program declares its own `check`, run each available sub-verb via run_action.
+    if verb == "check" and _declared_commands(comp, "check") is None:
+        subs = [s for s in ("lint", "type-check", "test") if is_available(comp, s)]
+        if not subs:
+            return ActionResult(
+                component=name, action="check", status="error",
+                output="No checkable verbs available.",
+            )
+        for sub in subs:
+            result = await run_action(sub, name, comp, root)
+            if result.status != "ok":
+                return ActionResult(
+                    component=name, action="check", status="error",
+                    output=f"{sub} failed:\n{result.output}",
+                )
+        return ActionResult(component=name, action="check", status="ok")
+
+    # 1. Declared command overrides the stack default.
+    declared = _declared_commands(comp, verb)
+    if declared is not None:
+        try:
+            src = _source_dir(comp, root)
+        except ValueError:
+            return ActionResult(component=name, action=verb, status="error", output="No source directory")
+        return await _run_declared(name, verb, declared, src)
+
+    # 2. Stack default.
     handler = get_handler(comp.stack)
-    if handler is None:
-        return []
-    return list(ALL_ACTIONS)
+    if handler is not None and verb in _STACK_VERBS:
+        method = getattr(handler, _VERB_METHOD.get(verb, verb), None)
+        if method is not None:
+            return await method(name, comp, root)
+
+    # 3. Unavailable.
+    return ActionResult(
+        component=name, action=verb, status="error",
+        output=f"Verb '{verb}' is not available for '{name}' "
+        f"(no declared command and no stack handler provides it).",
+    )

@@ -1,5 +1,12 @@
 # Web APIs in Castle
 
+> **This is a stack — creation-time guidance for writing _new_ FastAPI services.**
+> A stack is a template + conventions, not a runtime requirement. `castle create
+> --stack python-fastapi` scaffolds from it and seeds the program's default
+> dev-verb commands. An existing service adopted with `castle add` doesn't need
+> this stack — it declares its own `commands:`. See @docs/component-registry.md
+> for `commands:`, `stack:` (optional), and `repo:`.
+
 How to build Python web APIs as castle service components. Based on the
 patterns used in [wild-cloud/api](https://github.com/civilsociety-dev/wild-cloud)
 and existing castle services (central-context, notification-bridge, event-bus).

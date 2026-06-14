@@ -66,7 +66,6 @@ def _deployed_to_summaries(registry: object, hostname: str) -> list[ComponentSum
 def get_mesh_status(request: Request) -> MeshStatus:
     """Get the current state of the mesh coordination layer."""
     mqtt_client = getattr(request.app.state, "mqtt_client", None)
-    mdns = getattr(request.app.state, "mdns", None)
 
     peers = list(mesh_state.all_nodes(include_stale=True).keys())
 

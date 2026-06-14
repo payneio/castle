@@ -3,15 +3,16 @@
 from __future__ import annotations
 
 import argparse
+import subprocess
 
-from castle_cli.config import load_config, save_config
+from castle_cli.config import REPOS_DIR, load_config, save_config
 from castle_cli.manifest import (
     CaddySpec,
-    ProgramSpec,
     ExposeSpec,
     HttpExposeSpec,
     HttpInternal,
     ManageSpec,
+    ProgramSpec,
     ProxySpec,
     RunPython,
     ServiceSpec,
@@ -43,21 +44,20 @@ def next_available_port(config: object) -> int:
 
 
 def run_create(args: argparse.Namespace) -> int:
-    """Create a new project."""
+    """Create a new project (scaffolded from a stack, or a bare program)."""
     config = load_config()
     name = args.name
     stack = args.stack
-    behavior = STACK_DEFAULTS.get(stack)
+    behavior = STACK_DEFAULTS.get(stack) if stack else None
 
     if name in config.programs or name in config.services or name in config.jobs:
         print(f"Error: '{name}' already exists in castle.yaml")
         return 1
 
-    code_dir = config.root / "code"
-    code_dir.mkdir(exist_ok=True)
-    project_dir = code_dir / name
+    REPOS_DIR.mkdir(parents=True, exist_ok=True)
+    project_dir = REPOS_DIR / name
     if project_dir.exists():
-        print(f"Error: directory 'code/{name}' already exists")
+        print(f"Error: directory already exists: {project_dir}")
         return 1
 
     # Determine port for daemons
@@ -65,24 +65,29 @@ def run_create(args: argparse.Namespace) -> int:
     if behavior == "daemon" and port is None:
         port = next_available_port(config)
 
-    # Package name: convert kebab-case to snake_case
     package_name = name.replace("-", "_")
+    description = args.description or (f"A castle {stack} program" if stack else f"{name}")
 
-    # Scaffold the project files
-    scaffold_project(
-        project_dir=project_dir,
-        name=name,
-        package_name=package_name,
-        stack=stack,
-        description=args.description or f"A castle {stack} program",
-        port=port,
-    )
+    if stack:
+        scaffold_project(
+            project_dir=project_dir,
+            name=name,
+            package_name=package_name,
+            stack=stack,
+            description=description,
+            port=port,
+        )
+    else:
+        # Bare program: empty source tree, no scaffold; user declares commands later.
+        project_dir.mkdir(parents=True)
 
-    # Build entries
+    # Initialize a git repo for the new source.
+    subprocess.run(["git", "init", "-q", str(project_dir)], check=False)
+
     config.programs[name] = ProgramSpec(
         id=name,
-        description=args.description or f"A castle {stack} program",
-        source=f"code/{name}",
+        description=description,
+        source=str(project_dir),
         stack=stack,
         behavior=behavior,
     )
@@ -103,16 +108,20 @@ def run_create(args: argparse.Namespace) -> int:
 
     save_config(config)
 
-    print(f"Created {stack} program '{name}' at {project_dir}")
+    label = f"{stack} program" if stack else "bare program"
+    print(f"Created {label} '{name}' at {project_dir}")
     if port:
         print(f"  Port: {port}")
     print("  Registered in castle.yaml")
     print("\nNext steps:")
-    print(f"  cd ~/.castle/code/{name}")
-    print("  uv sync")
-    if behavior == "daemon":
-        print(f"  uv run {name}  # starts on port {port}")
-        print(f"  castle deploy {name}  # deploy to ~/.castle/")
-    print(f"  castle test {name}")
+    print(f"  cd {project_dir}")
+    if stack:
+        print("  uv sync")
+        if behavior == "daemon":
+            print(f"  uv run {name}  # starts on port {port}")
+            print(f"  castle deploy {name}")
+        print(f"  castle test {name}")
+    else:
+        print("  # add code, then declare commands: in castle.yaml")
 
     return 0

@@ -12,11 +12,13 @@ from castle_cli.config import load_config
 class TestCreateCommand:
     """Tests for the create command."""
 
-    def test_create_service(self, castle_root: Path) -> None:
+    def test_create_service(self, castle_root: Path, tmp_path: Path) -> None:
         """Create a new service project."""
+        repos = tmp_path / "repos"
         with (
             patch("castle_cli.commands.create.load_config") as mock_load,
             patch("castle_cli.commands.create.save_config") as mock_save,
+            patch("castle_cli.commands.create.REPOS_DIR", repos),
         ):
             config = load_config(castle_root)
             mock_load.return_value = config
@@ -32,7 +34,7 @@ class TestCreateCommand:
             result = run_create(args)
 
         assert result == 0
-        project_dir = castle_root / "code" / "my-api"
+        project_dir = repos / "my-api"
         assert project_dir.exists()
         assert (project_dir / "pyproject.toml").exists()
         assert (project_dir / "src" / "my_api" / "main.py").exists()
@@ -49,11 +51,13 @@ class TestCreateCommand:
         assert svc.component == "my-api"
         mock_save.assert_called_once()
 
-    def test_create_tool(self, castle_root: Path) -> None:
+    def test_create_tool(self, castle_root: Path, tmp_path: Path) -> None:
         """Create a new tool project."""
+        repos = tmp_path / "repos"
         with (
             patch("castle_cli.commands.create.load_config") as mock_load,
             patch("castle_cli.commands.create.save_config"),
+            patch("castle_cli.commands.create.REPOS_DIR", repos),
         ):
             config = load_config(castle_root)
             mock_load.return_value = config
@@ -64,7 +68,7 @@ class TestCreateCommand:
             result = run_create(args)
 
         assert result == 0
-        project_dir = castle_root / "code" / "my-tool2"
+        project_dir = repos / "my-tool2"
         assert project_dir.exists()
         assert (project_dir / "src" / "my_tool2" / "main.py").exists()
         assert (project_dir / "CLAUDE.md").exists()
@@ -91,11 +95,12 @@ class TestCreateCommand:
 
         assert result == 1
 
-    def test_create_auto_port(self, castle_root: Path) -> None:
+    def test_create_auto_port(self, castle_root: Path, tmp_path: Path) -> None:
         """Service creation auto-assigns next available port."""
         with (
             patch("castle_cli.commands.create.load_config") as mock_load,
             patch("castle_cli.commands.create.save_config"),
+            patch("castle_cli.commands.create.REPOS_DIR", tmp_path / "repos"),
         ):
             config = load_config(castle_root)
             mock_load.return_value = config

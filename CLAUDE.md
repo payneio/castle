@@ -23,9 +23,23 @@ description fallthrough.
 configuration (data dir, port, URLs) via env vars. Only castle programs (CLI, gateway)
 know about castle internals.
 
-## Creating Programs
+## Programs: create new, or adopt existing
 
-When creating a new service, tool, or frontend, follow the detailed guides:
+A **program** is a source repo castle knows how to work with (dev verbs) and
+deploy. There are two ways to get one:
+
+- **`castle create`** — scaffold *new* code from a **stack** (a creation-time
+  template). Stacks are guidance for how new code is written; they are NOT
+  required at runtime.
+- **`castle add`** — adopt an *existing* repo (a local path or git URL),
+  wherever it lives. No stack needed — castle detects sensible dev-verb commands
+  (pyproject→uv/ruff/pytest, Cargo.toml→cargo, etc.) or you declare them.
+
+**Stacks vs programs** are decoupled: a stack seeds a new program's default
+verb commands and scaffold, but a program stands on its own via its declared
+`commands:` (and `source:`/`repo:`). A program may have no stack at all.
+
+Stack guides (for writing *new* code, AI-facing):
 
 - @docs/component-registry.md — Registry architecture, castle.yaml structure, lifecycle
 - @docs/stacks/python-fastapi.md — FastAPI service patterns (config, routes, models, testing)
@@ -35,21 +49,23 @@ When creating a new service, tool, or frontend, follow the detailed guides:
 ### Quick start
 
 ```bash
-# Daemon (python-fastapi)
+# New daemon, scaffolded from a stack
 castle create my-service --stack python-fastapi --description "Does something"
-cd ~/.castle/code/my-service && uv sync
-uv run my-service               # starts on auto-assigned port
-castle service enable my-service # register with systemd
-castle gateway reload            # update reverse proxy routes
+cd /data/repos/my-service && uv sync
+castle service enable my-service   # register with systemd
+castle gateway reload              # update reverse proxy routes
 
-# Tool (python-cli)
+# New tool from a stack
 castle create my-tool --stack python-cli --description "Does something"
-cd ~/.castle/code/my-tool && uv sync
+
+# Adopt an existing repo (no stack required)
+castle add ~/projects/some-rust-tool
+castle add https://github.com/me/widget.git --name widget
 ```
 
-The `castle create` command scaffolds the project under `~/.castle/code/`,
-generates a CLAUDE.md, and registers it in `castle.yaml` with
-`source: code/<name>`.
+`castle create` scaffolds under `/data/repos/` (override with `CASTLE_REPOS_DIR`)
+and registers the program in `castle.yaml` with an absolute `source:`. `castle add`
+registers an existing repo in place (or records its `repo:` URL for `castle clone`).
 
 ## Castle CLI
 
@@ -60,19 +76,25 @@ castle list                              # List all programs, services, and jobs
 castle list --behavior daemon             # Filter by behavior
 castle list --stack python-cli           # Filter by stack
 castle info <name>                       # Show details (--json for machine-readable)
-castle create <name> --stack python-fastapi  # Scaffold new project
+castle create <name> [--stack ...]       # Scaffold new project (--stack optional → bare program)
+castle add <path|git-url> [--name ...]   # Adopt an EXISTING repo as a program (detects verbs)
+castle clone [name]                      # Clone source for programs that declare repo:
 castle deploy [name]                     # Deploy to runtime (registry + systemd + Caddyfile)
-castle test [project]                    # Run tests (one or all)
-castle lint [project]                    # Run linter (one or all)
-castle run <name>                        # Run service in foreground
+castle build|test|lint|type-check|check [project]   # Dev verbs (one or all)
+castle install|uninstall [program]       # Install/remove a program on PATH
+castle run <name>                        # Run a program (declared run) or service in foreground
 castle logs <name> [-f] [-n 50]          # View service/job logs
-castle tool list                         # List all tools
-castle tool info <name>                  # Show tool details
 castle gateway start|stop|reload|status  # Manage Caddy reverse proxy
 castle service enable|disable <name>     # Manage individual systemd service
 castle service status                    # Show all service statuses
 castle services start|stop               # Start/stop everything
 ```
+
+**Dev verbs** resolve per-program: a declared `commands:` entry (or `build:`)
+overrides the stack default, falling back to the program's stack handler, else
+the verb is unavailable. So a wired-in repo with **no `stack`** works as long as
+it declares its commands. Tools are reached via `castle list --behavior tool`
+(the dedicated `castle tool` command was removed).
 
 ## Infrastructure
 

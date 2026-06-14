@@ -5,7 +5,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Annotated, Literal, Union
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 EnvMap = dict[str, str]
 
@@ -150,6 +150,35 @@ class BuildSpec(BaseModel):
 
 
 # ---------------------
+# Commands spec — per-program dev verb overrides
+# ---------------------
+
+
+class CommandsSpec(BaseModel):
+    """Per-program dev verb commands. Each verb is a list of argv lists run in
+    sequence. A declared verb overrides the stack default; an absent verb falls
+    back to the program's stack handler (if any), else the verb is unavailable.
+
+    This generalizes BuildSpec.commands to the rest of the verb contract, which
+    is what lets a wired-in repo with no `stack` declare how it is linted/tested/run.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    lint: list[list[str]] | None = None
+    test: list[list[str]] | None = None
+    type_check: list[list[str]] | None = Field(default=None, alias="type-check")
+    check: list[list[str]] | None = None
+    run: list[list[str]] | None = None
+    install: list[list[str]] | None = None
+    uninstall: list[list[str]] | None = None
+
+    def for_verb(self, verb: str) -> list[list[str]] | None:
+        """Return the declared commands for a verb name (accepts 'type-check')."""
+        return getattr(self, verb.replace("-", "_"), None)
+
+
+# ---------------------
 # Capabilities
 # ---------------------
 
@@ -183,6 +212,14 @@ class ProgramSpec(BaseModel):
 
     source: str | None = None
     stack: str | None = None
+
+    # Wiring in existing repos: clone from `repo` (git URL) at optional `ref`;
+    # `source` (when set) is the local working copy and takes precedence.
+    repo: str | None = None
+    ref: str | None = None
+
+    # Per-program dev verb overrides (declared verbs override the stack default).
+    commands: CommandsSpec | None = None
 
     system_dependencies: list[str] = Field(default_factory=list)
     install_extras: list[str] = Field(default_factory=list)

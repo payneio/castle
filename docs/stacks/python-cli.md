@@ -1,5 +1,12 @@
 # Python Tools in Castle
 
+> **This is a stack — creation-time guidance for writing _new_ CLI tools.**
+> A stack is a template + conventions, not a runtime requirement. `castle create
+> --stack python-cli` scaffolds from it and seeds the program's default dev-verb
+> commands. An existing CLI adopted with `castle add` doesn't need this stack — it
+> declares its own `commands:`. See @docs/component-registry.md for `commands:`,
+> `stack:` (optional), and `repo:`.
+
 How to build CLI tools following Unix philosophy.
 
 ## Principles
