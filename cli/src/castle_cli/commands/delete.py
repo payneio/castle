@@ -28,6 +28,19 @@ def run_delete(args: argparse.Namespace) -> int:
     where = [s for s, present in
              (("program", in_programs), ("service", in_services), ("job", in_jobs)) if present]
 
+    # A program can't be removed while a deployment still references it. Refs
+    # named the same are removed in this call; any other referencing deployment
+    # would be left dangling, so refuse.
+    if in_programs:
+        dangling = [s for s, spec in config.services.items() if spec.program == name and s != name]
+        dangling += [j for j, spec in config.jobs.items() if spec.program == name and j != name]
+        if dangling:
+            print(
+                "Error: programs with active jobs or services cannot be removed.\n"
+                f"  Delete these first: {', '.join(dangling)}"
+            )
+            return 1
+
     # Resolve source dir (from the program entry) for the optional --source removal.
     source_dir: Path | None = None
     if in_programs and config.programs[name].source:
