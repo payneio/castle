@@ -109,6 +109,10 @@ def deploy(target_name: str | None = None, root: Path | None = None) -> DeployRe
     _generate_systemd_units(config, registry)
     result.messages.append(f"Systemd units written: {SYSTEMD_USER_DIR}")
 
+    # Converge: prune orphan units (full deploy only — partial deploys preserve siblings)
+    if target_name is None:
+        _prune_orphans(registry, result.messages)
+
     # Generate Caddyfile from registry
     caddyfile_path = SPECS_DIR / "Caddyfile"
     caddyfile_content = generate_caddyfile_from_registry(registry)
@@ -154,11 +158,13 @@ def _build_deployed_service(
     prefix = _env_prefix(config_key)
     env: dict[str, str] = {}
 
-    # Data dir convention (for managed services)
+    # Data dir convention (for managed services). Skipped for container runners:
+    # they use volume mounts, not a data-dir env var, and the injected name can
+    # collide with an image's own env namespace (e.g. neo4j claims NEO4J_*).
     managed = run.runner != "remote"
     if svc.manage and svc.manage.systemd and not svc.manage.systemd.enable:
         managed = False
-    if managed:
+    if managed and run.runner != "container":
         env[f"{prefix}_DATA_DIR"] = str(DATA_DIR / config_key)
 
     # Port convention (if exposed)
@@ -180,7 +186,7 @@ def _build_deployed_service(
     _ensure_python_tool(config, svc.component, messages)
 
     # Build run_cmd
-    run_cmd = _build_run_cmd(run, env, messages)
+    run_cmd = _build_run_cmd(name, run, env, messages)
 
     # Proxy path
     proxy_path = None
@@ -228,7 +234,7 @@ def _build_deployed_job(
 
     env = resolve_env_vars(env)
     _ensure_python_tool(config, job.component, messages)
-    run_cmd = _build_run_cmd(run, env, messages)
+    run_cmd = _build_run_cmd(name, run, env, messages)
 
     stack = None
     if job.component and job.component in config.programs:
@@ -297,7 +303,7 @@ def _ensure_python_tool(
         messages.append(f"Installed {component}")
 
 
-def _build_run_cmd(run: object, env: dict[str, str], messages: list[str]) -> list[str]:
+def _build_run_cmd(name: str, run: object, env: dict[str, str], messages: list[str]) -> list[str]:
     """Build a run command list from a RunSpec."""
     match run.runner:  # type: ignore[union-attr]
         case "python":
@@ -319,8 +325,9 @@ def _build_run_cmd(run: object, env: dict[str, str], messages: list[str]) -> lis
             return cmd
         case "container":
             runtime = shutil.which("docker") or shutil.which("podman") or "docker"
-            image_name = run.image.split("/")[-1].split(":")[0]  # type: ignore[union-attr]
-            cmd = [runtime, "run", "--rm", f"--name=castle-{image_name}"]
+            # Container name derives from the SERVICE name (matches the systemd unit),
+            # not the image name — so `castle-<service>` is stable and collision-free.
+            cmd = [runtime, "run", "--rm", f"--name=castle-{name}"]
             for container_port, host_port in run.ports.items():  # type: ignore[union-attr]
                 cmd.extend(["-p", f"{host_port}:{container_port}"])
             for vol in run.volumes:  # type: ignore[union-attr]
@@ -376,6 +383,46 @@ def _copy_app_static(config: CastleConfig, messages: list[str]) -> None:
                     shutil.rmtree(dest)
                 shutil.copytree(src, dest)
                 messages.append(f"Static: {src} → {dest}")
+
+
+def _desired_unit_files(registry: NodeRegistry) -> set[str]:
+    """Exact set of unit filenames that should exist on disk for this registry."""
+    files: set[str] = set()
+    for name, deployed in registry.deployed.items():
+        if not deployed.managed:
+            continue
+        files.add(unit_name(name))
+        if deployed.schedule:
+            files.add(timer_name(name))
+    return files
+
+
+def _teardown_unit(unit_file: str, messages: list[str]) -> None:
+    """Stop, disable, and unlink a systemd unit file. Caller batches daemon-reload."""
+    path = SYSTEMD_USER_DIR / unit_file
+    if not path.exists():
+        return
+    subprocess.run(["systemctl", "--user", "stop", unit_file], check=False)
+    subprocess.run(["systemctl", "--user", "disable", unit_file], check=False)
+    path.unlink()
+    messages.append(f"Pruned orphan unit: {unit_file}")
+
+
+def _prune_orphans(registry: NodeRegistry, messages: list[str]) -> None:
+    """Remove castle-* units no longer backed by a managed registry entry.
+
+    The `castle-` prefix is the ownership namespace: any castle-*.service/.timer on
+    disk that isn't in the desired set is an orphan (a removed/unmanaged/unscheduled
+    component) and is torn down. Only call on a FULL deploy — the desired set must
+    reflect the whole registry, not a single --target.
+    """
+    desired = _desired_unit_files(registry)
+    if not SYSTEMD_USER_DIR.is_dir():
+        return
+    for pattern in ("castle-*.service", "castle-*.timer"):
+        for path in sorted(SYSTEMD_USER_DIR.glob(pattern)):
+            if path.name not in desired:
+                _teardown_unit(path.name, messages)
 
 
 def _generate_systemd_units(config: CastleConfig, registry: NodeRegistry) -> None:

@@ -51,6 +51,7 @@ export interface ProgramSummary {
   commands: Record<string, string[][]> | null
   system_dependencies: string[]
   installed: boolean | null
+  active: boolean | null
   actions: string[]
   node: string | null
 }
@@ -83,6 +84,7 @@ export interface ComponentSummary {
   system_dependencies: string[]
   schedule: string | null
   installed: boolean | null
+  active: boolean | null
   node: string | null
 }
 

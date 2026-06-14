@@ -342,6 +342,13 @@ def _program_from_spec(
     if comp.source and (comp.stack or comp.commands):
         installed = shutil.which(name) is not None
 
+    # Uniform lifecycle state (on PATH / running / served) — needs full config.
+    active: bool | None = None
+    if config is not None:
+        from castle_core.lifecycle import is_active
+
+        active = is_active(name, config)
+
     return ProgramSummary(
         id=name,
         description=comp.description,
@@ -355,6 +362,7 @@ def _program_from_spec(
         commands=_declared_commands_dict(comp),
         system_dependencies=comp.system_dependencies,
         installed=installed,
+        active=active,
         actions=available_actions(comp),
     )
 
