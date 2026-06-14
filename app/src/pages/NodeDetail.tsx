@@ -62,7 +62,7 @@ export function NodeDetailPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-[var(--card)] border-b border-[var(--border)] text-left">
-                <th className="px-3 py-2 font-medium text-[var(--muted)]">Component</th>
+                <th className="px-3 py-2 font-medium text-[var(--muted)]">Deployment</th>
                 <th className="px-3 py-2 font-medium text-[var(--muted)]">Behavior</th>
                 <th className="px-3 py-2 font-medium text-[var(--muted)]">Stack</th>
                 <th className="px-3 py-2 font-medium text-[var(--muted)]">Runner</th>

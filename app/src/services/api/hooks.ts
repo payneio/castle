@@ -18,8 +18,8 @@ import type {
   NodeDetail,
 } from "@/types"
 
-// Legacy compat hook — used by ConfigEditorPage and ProgramRedirect
-export function useComponent(name: string) {
+// Compat hook for the /deployments/{name} unified detail endpoint
+export function useDeployment(name: string) {
   return useQuery({
     queryKey: ["deployments", name],
     queryFn: () => apiClient.get<DeploymentDetail>(`/deployments/${name}`),

@@ -9,7 +9,7 @@ import { ProgramActions, ActionOutputPanel, type ActionOutput } from "@/componen
 export function ProgramDetailPage() {
   useEventStream()
   const { name } = useParams<{ name: string }>()
-  const { data: component, isLoading, error, refetch } = useProgram(name ?? "")
+  const { data: deployment, isLoading, error, refetch } = useProgram(name ?? "")
   const [actionOutput, setActionOutput] = useState<ActionOutput | null>(null)
 
   if (isLoading) {
@@ -18,7 +18,7 @@ export function ProgramDetailPage() {
     )
   }
 
-  if (error || !component) {
+  if (error || !deployment) {
     return (
       <div className="max-w-3xl mx-auto px-6 py-8">
         <DetailHeader backTo="/" backLabel="Back" name={name ?? ""} />
@@ -32,12 +32,12 @@ export function ProgramDetailPage() {
       <DetailHeader
         backTo="/"
         backLabel="Back to Programs"
-        name={component.id}
-        behavior={component.behavior}
-        stack={component.stack}
-        source={component.source}
+        name={deployment.id}
+        behavior={deployment.behavior}
+        stack={deployment.stack}
+        source={deployment.source}
       >
-        <ProgramActions name={component.id} actions={component.actions} installed={component.installed} onOutput={setActionOutput} />
+        <ProgramActions name={deployment.id} actions={deployment.actions} installed={deployment.installed} onOutput={setActionOutput} />
       </DetailHeader>
 
       {actionOutput && actionOutput.action && (
@@ -46,8 +46,8 @@ export function ProgramDetailPage() {
         </div>
       )}
 
-      {component.description && (
-        <p className="text-sm text-[var(--muted)] -mt-4 mb-6">{component.description}</p>
+      {deployment.description && (
+        <p className="text-sm text-[var(--muted)] -mt-4 mb-6">{deployment.description}</p>
       )}
 
       <div className="bg-[var(--card)] border border-[var(--border)] rounded-lg p-5 mb-6">
@@ -58,48 +58,48 @@ export function ProgramDetailPage() {
           Where the source lives and how castle works with it.
         </p>
         <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm mb-4">
-          {component.source && (
+          {deployment.source && (
             <>
               <span className="text-[var(--muted)]">Source</span>
-              <span className="font-mono break-all">{component.source}</span>
+              <span className="font-mono break-all">{deployment.source}</span>
             </>
           )}
-          {component.repo && (
+          {deployment.repo && (
             <>
               <span className="text-[var(--muted)]">Repo</span>
               <span className="font-mono break-all">
-                {component.repo}
-                {component.ref ? ` @ ${component.ref}` : ""}
+                {deployment.repo}
+                {deployment.ref ? ` @ ${deployment.ref}` : ""}
               </span>
             </>
           )}
-          {component.version && (
+          {deployment.version && (
             <>
               <span className="text-[var(--muted)]">Version</span>
-              <span>{component.version}</span>
+              <span>{deployment.version}</span>
             </>
           )}
-          {component.runner && (
+          {deployment.runner && (
             <>
               <span className="text-[var(--muted)]">Runner</span>
-              <span>{runnerLabel(component.runner)}</span>
+              <span>{runnerLabel(deployment.runner)}</span>
             </>
           )}
-          {component.active !== null && (
+          {deployment.active !== null && (
             <>
               <span className="text-[var(--muted)]">Active</span>
-              <span className={component.active ? "text-green-400" : "text-[var(--muted)]"}>
-                {component.active ? "● active" : "○ inactive"}
+              <span className={deployment.active ? "text-green-400" : "text-[var(--muted)]"}>
+                {deployment.active ? "● active" : "○ inactive"}
               </span>
             </>
           )}
         </div>
 
-        {component.commands && Object.keys(component.commands).length > 0 && (
+        {deployment.commands && Object.keys(deployment.commands).length > 0 && (
           <div className="mb-4">
             <span className="text-sm text-[var(--muted)] block mb-1">Commands</span>
             <div className="space-y-1">
-              {Object.entries(component.commands).map(([verb, cmds]) => (
+              {Object.entries(deployment.commands).map(([verb, cmds]) => (
                 <div key={verb} className="flex gap-2 text-xs">
                   <span className="text-[var(--muted)] w-20 shrink-0">{verb}</span>
                   <span className="font-mono break-all">
@@ -111,11 +111,11 @@ export function ProgramDetailPage() {
           </div>
         )}
 
-        {component.system_dependencies.length > 0 && (
+        {deployment.system_dependencies.length > 0 && (
           <div className="mb-4">
             <span className="text-sm text-[var(--muted)] block mb-1">System Dependencies</span>
             <div className="flex flex-wrap gap-1">
-              {component.system_dependencies.map((dep) => (
+              {deployment.system_dependencies.map((dep) => (
                 <span
                   key={dep}
                   className="text-xs px-2 py-0.5 rounded bg-amber-900/30 text-amber-400 border border-amber-800"
@@ -128,7 +128,7 @@ export function ProgramDetailPage() {
         )}
       </div>
 
-      <ConfigPanel component={component} configSection="programs" onRefetch={refetch} />
+      <ConfigPanel deployment={deployment} configSection="programs" onRefetch={refetch} />
     </div>
   )
 }

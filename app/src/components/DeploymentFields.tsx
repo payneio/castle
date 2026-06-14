@@ -4,16 +4,16 @@ import type { AnyDetail } from "@/types"
 import { runnerLabel } from "@/lib/labels"
 import { SecretsEditor } from "./SecretsEditor"
 
-interface ComponentFieldsProps {
-  component: AnyDetail
+interface DeploymentFieldsProps {
+  deployment: AnyDetail
   onSave: (name: string, config: Record<string, unknown>) => Promise<void>
   onDelete?: (name: string) => Promise<void>
 }
 
 const SECRET_RE = /^\$\{secret:([^}]+)\}$/
 
-export function ComponentFields({ component, onSave, onDelete }: ComponentFieldsProps) {
-  const m = component.manifest
+export function DeploymentFields({ deployment, onSave, onDelete }: DeploymentFieldsProps) {
+  const m = deployment.manifest
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
 
@@ -93,7 +93,7 @@ export function ComponentFields({ component, onSave, onDelete }: ComponentFields
         delete config.proxy
       }
 
-      await onSave(component.id, config)
+      await onSave(deployment.id, config)
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
     } finally {
@@ -122,7 +122,7 @@ export function ComponentFields({ component, onSave, onDelete }: ComponentFields
         </Field>
       )}
 
-      {("managed" in component && component.managed || port) && (
+      {("managed" in deployment && deployment.managed || port) && (
         <Field label="Port">
           <input
             value={port}
@@ -133,7 +133,7 @@ export function ComponentFields({ component, onSave, onDelete }: ComponentFields
         </Field>
       )}
 
-      {("managed" in component && component.managed || healthPath) && (
+      {("managed" in deployment && deployment.managed || healthPath) && (
         <Field label="Health path">
           <input
             value={healthPath}
@@ -205,10 +205,10 @@ export function ComponentFields({ component, onSave, onDelete }: ComponentFields
         </Field>
       )}
 
-      {"managed" in component && (
+      {"managed" in deployment && (
         <Field label="Systemd">
           <span className="text-sm text-[var(--muted)]">
-            {component.managed ? "Yes" : "No"}
+            {deployment.managed ? "Yes" : "No"}
           </span>
         </Field>
       )}
@@ -217,13 +217,13 @@ export function ComponentFields({ component, onSave, onDelete }: ComponentFields
         {onDelete ? (
           <button
             onClick={() => {
-              if (confirm(`Delete component "${component.id}" from castle.yaml?`)) {
-                onDelete(component.id)
+              if (confirm(`Delete deployment "${deployment.id}" from castle.yaml?`)) {
+                onDelete(deployment.id)
               }
             }}
             className="flex items-center gap-1.5 text-xs text-red-400 hover:text-red-300"
           >
-            <Trash2 size={12} /> Remove component
+            <Trash2 size={12} /> Remove deployment
           </button>
         ) : (
           <div />

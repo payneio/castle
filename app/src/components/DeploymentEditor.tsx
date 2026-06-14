@@ -1,17 +1,17 @@
 import { useState } from "react"
 import { ChevronDown, ChevronRight } from "lucide-react"
 import type { DeploymentDetail } from "@/types"
-import { ComponentFields } from "./ComponentFields"
+import { DeploymentFields } from "./DeploymentFields"
 import { BehaviorBadge } from "./BehaviorBadge"
 import { StackBadge } from "./StackBadge"
 
-interface ComponentEditorProps {
-  component: DeploymentDetail
+interface DeploymentEditorProps {
+  deployment: DeploymentDetail
   onSave: (name: string, config: Record<string, unknown>) => Promise<void>
   onDelete: (name: string) => Promise<void>
 }
 
-export function ComponentEditor({ component, onSave, onDelete }: ComponentEditorProps) {
+export function DeploymentEditor({ deployment, onSave, onDelete }: DeploymentEditorProps) {
   const [expanded, setExpanded] = useState(false)
 
   return (
@@ -22,19 +22,19 @@ export function ComponentEditor({ component, onSave, onDelete }: ComponentEditor
       >
         <div className="flex items-center gap-3">
           {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-          <span className="font-semibold">{component.id}</span>
-          <span className="text-sm text-[var(--muted)]">{component.description}</span>
+          <span className="font-semibold">{deployment.id}</span>
+          <span className="text-sm text-[var(--muted)]">{deployment.description}</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <BehaviorBadge behavior={component.behavior} />
-          <StackBadge stack={component.stack} />
+          <BehaviorBadge behavior={deployment.behavior} />
+          <StackBadge stack={deployment.stack} />
         </div>
       </button>
 
       {expanded && (
         <div className="border-t border-[var(--border)] p-4">
-          <ComponentFields
-            component={component}
+          <DeploymentFields
+            deployment={deployment}
             onSave={onSave}
             onDelete={onDelete}
           />

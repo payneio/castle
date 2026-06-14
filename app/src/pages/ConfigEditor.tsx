@@ -4,8 +4,8 @@ import { ArrowLeft, Check, Loader2, Zap } from "lucide-react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { apiClient } from "@/services/api/client"
 import type { DeploymentDetail } from "@/types"
-import { AddComponent } from "@/components/AddComponent"
-import { ComponentEditor } from "@/components/ComponentEditor"
+import { AddDeployment } from "@/components/AddDeployment"
+import { DeploymentEditor } from "@/components/DeploymentEditor"
 
 interface ApplyResult {
   ok: boolean
@@ -124,18 +124,18 @@ export function ConfigEditorPage() {
       )}
 
       {isLoading ? (
-        <p className="text-[var(--muted)]">Loading components...</p>
+        <p className="text-[var(--muted)]">Loading entries...</p>
       ) : (
         <div className="space-y-2">
           {components?.map((comp) => (
-            <ComponentEditor
+            <DeploymentEditor
               key={comp.id}
-              component={comp}
+              deployment={comp}
               onSave={handleSave}
               onDelete={handleDelete}
             />
           ))}
-          <AddComponent
+          <AddDeployment
             existingNames={components?.map((c) => c.id) ?? []}
             onAdd={handleSave}
           />

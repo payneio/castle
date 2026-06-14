@@ -6,14 +6,14 @@ import { BehaviorBadge } from "./BehaviorBadge"
 import { StackBadge } from "./StackBadge"
 import { ProgramActions } from "./ProgramActions"
 
-interface ComponentTableProps {
-  components: ProgramSummary[]
+interface ProgramTableProps {
+  programs: ProgramSummary[]
 }
 
 type SortKey = "id" | "stack" | "behavior"
 type SortDir = "asc" | "desc"
 
-export function ComponentTable({ components }: ComponentTableProps) {
+export function ProgramTable({ programs }: ProgramTableProps) {
   const [search, setSearch] = useState("")
   const [sortKey, setSortKey] = useState<SortKey>("id")
   const [sortDir, setSortDir] = useState<SortDir>("asc")
@@ -28,14 +28,14 @@ export function ComponentTable({ components }: ComponentTableProps) {
   }
 
   const filtered = useMemo(() => {
-    if (!search) return components
+    if (!search) return programs
     const q = search.toLowerCase()
-    return components.filter(
+    return programs.filter(
       (c) =>
         c.id.toLowerCase().includes(q) ||
         (c.description?.toLowerCase().includes(q) ?? false),
     )
-  }, [components, search])
+  }, [programs, search])
 
   const sorted = useMemo(() => {
     const dir = sortDir === "asc" ? 1 : -1
@@ -76,7 +76,7 @@ export function ComponentTable({ components }: ComponentTableProps) {
           </thead>
           <tbody>
             {sorted.map((comp) => (
-              <ComponentRow key={comp.id} component={comp} />
+              <ProgramRow key={comp.id} program={comp} />
             ))}
             {sorted.length === 0 && (
               <tr>
@@ -120,30 +120,30 @@ function SortHeader({
   )
 }
 
-function ComponentRow({ component }: { component: ProgramSummary }) {
+function ProgramRow({ program }: { program: ProgramSummary }) {
   return (
     <tr className="border-b border-[var(--border)] last:border-b-0 hover:bg-[var(--card)]/50 transition-colors">
       <td className="px-3 py-2.5">
         <Link
-          to={`/programs/${component.id}`}
+          to={`/programs/${program.id}`}
           className="font-medium hover:text-[var(--primary)] transition-colors"
         >
-          {component.id}
+          {program.id}
         </Link>
-        {component.description && (
+        {program.description && (
           <p className="text-xs text-[var(--muted)] mt-0.5 truncate max-w-xs">
-            {component.description}
+            {program.description}
           </p>
         )}
       </td>
       <td className="px-3 py-2.5">
-        <StackBadge stack={component.stack} />
+        <StackBadge stack={program.stack} />
       </td>
       <td className="px-3 py-2.5">
-        <BehaviorBadge behavior={component.behavior} />
+        <BehaviorBadge behavior={program.behavior} />
       </td>
       <td className="px-3 py-2.5">
-        <ProgramActions name={component.id} actions={component.actions} installed={component.installed} compact />
+        <ProgramActions name={program.id} actions={program.actions} installed={program.installed} compact />
       </td>
     </tr>
   )

@@ -12,7 +12,7 @@ export function ScheduledDetailPage() {
   useEventStream()
   const logRef = useRef<LogViewerHandle>(null)
   const { name } = useParams<{ name: string }>()
-  const { data: component, isLoading, error, refetch } = useJob(name ?? "")
+  const { data: deployment, isLoading, error, refetch } = useJob(name ?? "")
   const { data: statusResp } = useStatus()
   const health = statusResp?.statuses.find((s) => s.id === name)
 
@@ -22,7 +22,7 @@ export function ScheduledDetailPage() {
     )
   }
 
-  if (error || !component) {
+  if (error || !deployment) {
     return (
       <div className="max-w-3xl mx-auto px-6 py-8">
         <DetailHeader backTo="/" backLabel="Back" name={name ?? ""} />
@@ -36,14 +36,14 @@ export function ScheduledDetailPage() {
       <DetailHeader
         backTo="/"
         backLabel="Back to Jobs"
-        name={component.id}
-        stack={component.stack}
-        source={component.source}
+        name={deployment.id}
+        stack={deployment.stack}
+        source={deployment.source}
       >
-        <ServiceControls name={component.id} health={health} />
+        <ServiceControls name={deployment.id} health={health} />
       </DetailHeader>
 
-      {component.schedule && (
+      {deployment.schedule && (
         <div className="bg-[var(--card)] border border-[var(--border)] rounded-lg p-5 mb-6">
           <h2 className="text-sm font-semibold text-[var(--muted)] uppercase tracking-wider mb-3">
             Schedule
@@ -52,13 +52,13 @@ export function ScheduledDetailPage() {
             <span className="text-[var(--muted)]">Cron</span>
             <span className="flex items-center gap-2 font-mono">
               <Clock size={14} className="text-[var(--muted)]" />
-              {component.schedule}
+              {deployment.schedule}
             </span>
-            {component.systemd && (
+            {deployment.systemd && (
               <>
                 <span className="text-[var(--muted)]">Timer unit</span>
                 <span className="font-mono">
-                  {component.systemd.unit_name.replace(".service", ".timer")}
+                  {deployment.systemd.unit_name.replace(".service", ".timer")}
                 </span>
               </>
             )}
@@ -66,13 +66,13 @@ export function ScheduledDetailPage() {
         </div>
       )}
 
-      {component.systemd && (
-        <SystemdPanel name={component.id} systemd={component.systemd} />
+      {deployment.systemd && (
+        <SystemdPanel name={deployment.id} systemd={deployment.systemd} />
       )}
 
-      <ConfigPanel component={component} configSection="jobs" onRefetch={refetch} />
+      <ConfigPanel deployment={deployment} configSection="jobs" onRefetch={refetch} />
 
-      {component.managed && (
+      {deployment.managed && (
         <div className="mb-6">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-lg font-semibold">Logs</h2>
@@ -83,7 +83,7 @@ export function ScheduledDetailPage() {
               <Trash2 size={14} /> Clear
             </button>
           </div>
-          <LogViewer ref={logRef} name={component.id} />
+          <LogViewer ref={logRef} name={deployment.id} />
         </div>
       )}
     </div>
