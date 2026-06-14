@@ -20,6 +20,10 @@ def castle_root(tmp_path: Path) -> Generator[Path, None, None]:
                 "description": "Test tool",
                 "behavior": "tool",
             },
+            "test-daemon": {
+                "description": "Test daemon program",
+                "behavior": "daemon",
+            },
         },
         "services": {
             "test-svc": {

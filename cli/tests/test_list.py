@@ -28,7 +28,7 @@ class TestListCommand:
         assert "test-tool" in captured.out
 
     def test_list_filter_daemon(self, castle_root: Path, capsys: object) -> None:
-        """List filtered to daemons."""
+        """--behavior filters the program catalog by its real behavior field."""
         with patch("castle_cli.commands.list_cmd.load_config") as mock_load:
             from castle_cli.config import load_config
 
@@ -38,8 +38,10 @@ class TestListCommand:
 
         assert result == 0
         captured = capsys.readouterr()  # type: ignore[attr-defined]
-        assert "test-svc" in captured.out
+        assert "test-daemon" in captured.out
         assert "test-tool" not in captured.out
+        # Services/jobs are deployment views, not behaviors — hidden under a filter.
+        assert "test-svc" not in captured.out
 
     def test_list_filter_tool(self, castle_root: Path, capsys: object) -> None:
         """List filtered to tools."""
@@ -55,22 +57,24 @@ class TestListCommand:
         assert "test-tool" in captured.out
         assert "test-svc" not in captured.out
 
-    def test_list_filter_job(self, castle_root: Path, capsys: object) -> None:
-        """List filtered to jobs (shown under tool behavior)."""
+    def test_list_jobs_are_deployments(self, castle_root: Path, capsys: object) -> None:
+        """Jobs are a deployment view: shown unfiltered, hidden under a behavior filter."""
         with patch("castle_cli.commands.list_cmd.load_config") as mock_load:
             from castle_cli.config import load_config
 
             mock_load.return_value = load_config(castle_root)
-            args = Namespace(behavior="tool", stack=None, json=False)
-            result = run_list(args)
-
-        assert result == 0
-        captured = capsys.readouterr()  # type: ignore[attr-defined]
-        assert "test-job" in captured.out
-        assert "test-svc" not in captured.out
+            # Unfiltered: the job appears.
+            run_list(Namespace(behavior=None, stack=None, json=False))
+            assert "test-job" in capsys.readouterr().out  # type: ignore[attr-defined]
+            # Behavior filter targets the catalog, so jobs drop out.
+            run_list(Namespace(behavior="tool", stack=None, json=False))
+            out = capsys.readouterr().out  # type: ignore[attr-defined]
+            assert "test-job" not in out
+            assert "test-svc" not in out
+            assert "test-tool" in out
 
     def test_list_json(self, castle_root: Path, capsys: object) -> None:
-        """List output as JSON."""
+        """JSON output tags each entry with its kind; behavior lives on programs."""
         with patch("castle_cli.commands.list_cmd.load_config") as mock_load:
             from castle_cli.config import load_config
 
@@ -85,4 +89,7 @@ class TestListCommand:
         assert "test-svc" in names
         assert "test-tool" in names
         svc = next(p for p in data if p["name"] == "test-svc")
-        assert svc["behavior"] == "daemon"
+        assert svc["kind"] == "service"
+        tool = next(p for p in data if p["name"] == "test-tool")
+        assert tool["kind"] == "program"
+        assert tool["behavior"] == "tool"

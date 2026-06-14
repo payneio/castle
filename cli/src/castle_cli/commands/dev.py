@@ -55,10 +55,10 @@ def _run_verb_all(config: CastleConfig, verb: str) -> bool:
 
 
 def run_verb(args: argparse.Namespace, verb: str) -> int:
-    """Generic entry point for a dev verb (single project or all)."""
+    """Generic entry point for a dev verb (single program or all)."""
     config = load_config()
-    if getattr(args, "project", None):
-        return 0 if _run_verb(config, args.project, verb) else 1
+    if getattr(args, "name", None):
+        return 0 if _run_verb(config, args.name, verb) else 1
     ok = _run_verb_all(config, verb)
     print(f"\n{'All ' + verb + ' passed.' if ok else 'Some ' + verb + ' failed.'}")
     return 0 if ok else 1
@@ -71,6 +71,10 @@ def run_test(args: argparse.Namespace) -> int:
 
 def run_lint(args: argparse.Namespace) -> int:
     return run_verb(args, "lint")
+
+
+def run_format(args: argparse.Namespace) -> int:
+    return run_verb(args, "format")
 
 
 def run_build(args: argparse.Namespace) -> int:
@@ -105,8 +109,8 @@ def _lifecycle(config: CastleConfig, name: str, deactivate: bool) -> bool:
 def run_install(args: argparse.Namespace) -> int:
     """Activate (install/deploy/serve) a program — verb word kept, meaning unified."""
     config = load_config()
-    if getattr(args, "project", None):
-        return 0 if _lifecycle(config, args.project, deactivate=False) else 1
+    if getattr(args, "name", None):
+        return 0 if _lifecycle(config, args.name, deactivate=False) else 1
     ok = all(
         _lifecycle(config, name, deactivate=False)
         for name, comp in config.programs.items()
@@ -118,7 +122,7 @@ def run_install(args: argparse.Namespace) -> int:
 def run_uninstall(args: argparse.Namespace) -> int:
     """Deactivate (uninstall/stop/unpublish) a program."""
     config = load_config()
-    if getattr(args, "project", None):
-        return 0 if _lifecycle(config, args.project, deactivate=True) else 1
+    if getattr(args, "name", None):
+        return 0 if _lifecycle(config, args.name, deactivate=True) else 1
     print("Refusing to deactivate all programs; name a target.")
     return 1

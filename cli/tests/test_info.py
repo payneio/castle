@@ -20,7 +20,7 @@ class TestInfoCommand:
 
             from castle_cli.commands.info import run_info
 
-            result = run_info(Namespace(project="test-svc", json=False))
+            result = run_info(Namespace(name="test-svc", json=False))
 
         assert result == 0
         output = capsys.readouterr().out
@@ -37,7 +37,7 @@ class TestInfoCommand:
 
             from castle_cli.commands.info import run_info
 
-            result = run_info(Namespace(project="test-tool", json=False))
+            result = run_info(Namespace(name="test-tool", json=False))
 
         assert result == 0
         output = capsys.readouterr().out
@@ -53,7 +53,7 @@ class TestInfoCommand:
 
             from castle_cli.commands.info import run_info
 
-            result = run_info(Namespace(project="nope", json=False))
+            result = run_info(Namespace(name="nope", json=False))
 
         assert result == 1
         output = capsys.readouterr().out
@@ -68,7 +68,7 @@ class TestInfoCommand:
 
             from castle_cli.commands.info import run_info
 
-            result = run_info(Namespace(project="test-svc", json=True))
+            result = run_info(Namespace(name="test-svc", json=True))
 
         assert result == 0
         output = capsys.readouterr().out
@@ -85,7 +85,7 @@ class TestInfoCommand:
 
             from castle_cli.commands.info import run_info
 
-            result = run_info(Namespace(project="test-svc", json=False))
+            result = run_info(Namespace(name="test-svc", json=False))
 
         assert result == 0
         output = capsys.readouterr().out
@@ -100,7 +100,7 @@ class TestInfoCommand:
 
             from castle_cli.commands.info import run_info
 
-            result = run_info(Namespace(project="test-svc", json=False))
+            result = run_info(Namespace(name="test-svc", json=False))
 
         assert result == 0
         output = capsys.readouterr().out
