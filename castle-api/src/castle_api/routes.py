@@ -230,17 +230,34 @@ def _backfill_source(name: str, config: object) -> str | None:
     return None
 
 
+def _run_target(run: object) -> str | None:
+    """A human label for what a run spec executes (program / argv / image / …)."""
+    if run is None:
+        return None
+    for attr in ("program", "image", "script", "base_url"):
+        val = getattr(run, attr, None)
+        if val:
+            return str(val)
+    argv = getattr(run, "argv", None)
+    if argv:
+        return " ".join(argv)
+    return None
+
+
 def _service_from_deployed(name: str, deployed: object) -> ServiceSummary:
     """Build a ServiceSummary from a Deployment."""
     systemd_info = _make_systemd_info(name) if deployed.managed else None
+    run_target = " ".join(deployed.run_cmd) if deployed.run_cmd else None
     return ServiceSummary(
         id=name,
         description=deployed.description,
         stack=deployed.stack,
         runner=deployed.runner,
+        run_target=run_target,
         port=deployed.port,
         health_path=deployed.health_path,
         proxy_path=deployed.proxy_path,
+        proxy_host=deployed.proxy_host,
         managed=deployed.managed,
         systemd=systemd_info,
     )
@@ -270,16 +287,20 @@ def _service_from_spec(name: str, svc: ServiceSpec, config: object) -> ServiceSu
         source = comp.source
         stack = comp.stack
 
+    proxy_host = svc.proxy.caddy.host if (svc.proxy and svc.proxy.caddy) else None
     return ServiceSummary(
         id=name,
         description=description,
         stack=stack,
         runner=svc.run.runner,
+        run_target=_run_target(svc.run),
         port=port,
         health_path=health_path,
         proxy_path=proxy_path,
+        proxy_host=proxy_host,
         managed=managed,
         systemd=systemd_info,
+        program=svc.program,
         source=source,
     )
 
@@ -287,11 +308,13 @@ def _service_from_spec(name: str, svc: ServiceSpec, config: object) -> ServiceSu
 def _job_from_deployed(name: str, deployed: object) -> JobSummary:
     """Build a JobSummary from a Deployment."""
     systemd_info = _make_systemd_info(name, timer=True) if deployed.managed else None
+    run_target = " ".join(deployed.run_cmd) if deployed.run_cmd else None
     return JobSummary(
         id=name,
         description=deployed.description,
         stack=deployed.stack,
         runner=deployed.runner,
+        run_target=run_target,
         schedule=deployed.schedule,
         managed=deployed.managed,
         systemd=systemd_info,
@@ -318,9 +341,11 @@ def _job_from_spec(name: str, job: JobSpec, config: object) -> JobSummary:
         description=description,
         stack=stack,
         runner=job.run.runner,
+        run_target=_run_target(job.run),
         schedule=job.schedule,
         managed=managed,
         systemd=systemd_info,
+        program=job.program,
         source=source,
     )
 
@@ -344,10 +369,15 @@ def _program_from_spec(
 
     # Uniform lifecycle state (on PATH / running / served) — needs full config.
     active: bool | None = None
+    services: list[str] = []
+    jobs: list[str] = []
     if config is not None:
         from castle_core.lifecycle import is_active
 
         active = is_active(name, config)
+        # Deployments that reference this program (a program → 0-N services/jobs).
+        services = [s for s, spec in config.services.items() if spec.program == name]
+        jobs = [j for j, spec in config.jobs.items() if spec.program == name]
 
     return ProgramSummary(
         id=name,
@@ -364,6 +394,8 @@ def _program_from_spec(
         installed=installed,
         active=active,
         actions=available_actions(comp),
+        services=services,
+        jobs=jobs,
     )
 
 
@@ -434,22 +466,36 @@ def list_services(include_remote: bool = False) -> list[ServiceSummary]:
     tags=["services-data"],
 )
 def get_service(name: str) -> ServiceDetail:
-    """Get detailed info for a single service."""
-    registry = get_registry()
+    """Get detailed info for a single service.
 
+    The `manifest` is the editable castle.yaml ServiceSpec whenever the service
+    is declared there — that's the source of truth the config editor reads and
+    writes. Only services that exist *only* in the runtime registry (e.g. infra
+    not in castle.yaml) fall back to the flat deployed shape (display-only).
+    """
+    root = get_castle_root()
+    config = None
+    if root:
+        try:
+            from castle_core.config import load_config
+
+            config = load_config(root)
+        except FileNotFoundError:
+            pass
+
+    if config is not None and name in config.services:
+        svc = config.services[name]
+        summary = _service_from_spec(name, svc, config)
+        manifest = svc.model_dump(mode="json", exclude_none=True)
+        return ServiceDetail(**summary.model_dump(), manifest=manifest)
+
+    registry = get_registry()
     if name in registry.deployed and not registry.deployed[name].schedule:
         deployed = registry.deployed[name]
         summary = _service_from_deployed(name, deployed)
-        root = get_castle_root()
-        if root and summary.source is None:
-            try:
-                from castle_core.config import load_config
-
-                config = load_config(root)
-                summary.source = _backfill_source(name, config)
-            except FileNotFoundError:
-                pass
-        raw = {
+        if config is not None and summary.source is None:
+            summary.source = _backfill_source(name, config)
+        manifest = {
             "runner": deployed.runner,
             "run_cmd": deployed.run_cmd,
             "env": deployed.env,
@@ -460,18 +506,7 @@ def get_service(name: str) -> ServiceDetail:
             "behavior": deployed.behavior,
             "stack": deployed.stack,
         }
-        return ServiceDetail(**summary.model_dump(), manifest=raw)
-
-    root = get_castle_root()
-    if root:
-        from castle_core.config import load_config
-
-        config = load_config(root)
-        if name in config.services:
-            svc = config.services[name]
-            summary = _service_from_spec(name, svc, config)
-            raw = svc.model_dump(mode="json", exclude_none=True)
-            return ServiceDetail(**summary.model_dump(), manifest=raw)
+        return ServiceDetail(**summary.model_dump(), manifest=manifest)
 
     raise HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,
@@ -536,22 +571,31 @@ def list_jobs(include_remote: bool = False) -> list[JobSummary]:
 
 @router.get("/jobs/{name}", response_model=JobDetail, tags=["jobs-data"])
 def get_job(name: str) -> JobDetail:
-    """Get detailed info for a single job."""
-    registry = get_registry()
+    """Get detailed info for a single job. `manifest` is the editable castle.yaml
+    JobSpec when declared there; falls back to the runtime registry otherwise."""
+    root = get_castle_root()
+    config = None
+    if root:
+        try:
+            from castle_core.config import load_config
 
+            config = load_config(root)
+        except FileNotFoundError:
+            pass
+
+    if config is not None and name in config.jobs:
+        job = config.jobs[name]
+        summary = _job_from_spec(name, job, config)
+        manifest = job.model_dump(mode="json", exclude_none=True)
+        return JobDetail(**summary.model_dump(), manifest=manifest)
+
+    registry = get_registry()
     if name in registry.deployed and registry.deployed[name].schedule:
         deployed = registry.deployed[name]
         summary = _job_from_deployed(name, deployed)
-        root = get_castle_root()
-        if root and summary.source is None:
-            try:
-                from castle_core.config import load_config
-
-                config = load_config(root)
-                summary.source = _backfill_source(name, config)
-            except FileNotFoundError:
-                pass
-        raw = {
+        if config is not None and summary.source is None:
+            summary.source = _backfill_source(name, config)
+        manifest = {
             "runner": deployed.runner,
             "run_cmd": deployed.run_cmd,
             "env": deployed.env,
@@ -560,18 +604,7 @@ def get_job(name: str) -> JobDetail:
             "behavior": deployed.behavior,
             "stack": deployed.stack,
         }
-        return JobDetail(**summary.model_dump(), manifest=raw)
-
-    root = get_castle_root()
-    if root:
-        from castle_core.config import load_config
-
-        config = load_config(root)
-        if name in config.jobs:
-            job = config.jobs[name]
-            summary = _job_from_spec(name, job, config)
-            raw = job.model_dump(mode="json", exclude_none=True)
-            return JobDetail(**summary.model_dump(), manifest=raw)
+        return JobDetail(**summary.model_dump(), manifest=manifest)
 
     raise HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,

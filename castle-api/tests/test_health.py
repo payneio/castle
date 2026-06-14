@@ -124,7 +124,9 @@ class TestServiceDetail:
         data = response.json()
         assert data["id"] == "test-svc"
         assert "manifest" in data
-        assert data["manifest"]["runner"] == "python"
+        # manifest is the editable castle.yaml ServiceSpec (nested run spec)
+        assert data["manifest"]["run"]["runner"] == "python"
+        assert data["run_target"] == "test-svc"
 
     def test_not_found(self, client: TestClient) -> None:
         """Returns 404 for unknown service."""

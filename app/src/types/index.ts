@@ -9,11 +9,14 @@ export interface ServiceSummary {
   description: string | null
   stack: string | null
   runner: string | null
+  run_target: string | null
   port: number | null
   health_path: string | null
   proxy_path: string | null
+  proxy_host: string | null
   managed: boolean
   systemd: SystemdInfo | null
+  program: string | null
   source: string | null
   node: string | null
 }
@@ -27,9 +30,11 @@ export interface JobSummary {
   description: string | null
   stack: string | null
   runner: string | null
+  run_target: string | null
   schedule: string | null
   managed: boolean
   systemd: SystemdInfo | null
+  program: string | null
   source: string | null
   node: string | null
 }
@@ -53,6 +58,8 @@ export interface ProgramSummary {
   installed: boolean | null
   active: boolean | null
   actions: string[]
+  services: string[]
+  jobs: string[]
   node: string | null
 }
 
