@@ -3,8 +3,10 @@ import { useNavigate } from "react-router-dom"
 import { useQueryClient } from "@tanstack/react-query"
 import { Check } from "lucide-react"
 import { apiClient } from "@/services/api/client"
-import type { AnyDetail } from "@/types"
-import { DeploymentFields } from "@/components/DeploymentFields"
+import type { AnyDetail, ProgramDetail, ServiceDetail, JobDetail } from "@/types"
+import { ProgramFields } from "./ProgramFields"
+import { ServiceFields } from "./ServiceFields"
+import { JobFields } from "./JobFields"
 
 interface ConfigPanelProps {
   deployment: AnyDetail
@@ -61,11 +63,25 @@ export function ConfigPanel({ deployment, configSection, onRefetch }: ConfigPane
         <h2 className="text-sm font-semibold text-[var(--muted)] uppercase tracking-wider mb-4">
           Configuration
         </h2>
-        <DeploymentFields
-          deployment={deployment}
-          onSave={handleSave}
-          onDelete={handleDelete}
-        />
+        {configSection === "programs" ? (
+          <ProgramFields
+            program={deployment as ProgramDetail}
+            onSave={handleSave}
+            onDelete={handleDelete}
+          />
+        ) : configSection === "services" ? (
+          <ServiceFields
+            service={deployment as ServiceDetail}
+            onSave={handleSave}
+            onDelete={handleDelete}
+          />
+        ) : (
+          <JobFields
+            job={deployment as JobDetail}
+            onSave={handleSave}
+            onDelete={handleDelete}
+          />
+        )}
       </div>
     </>
   )

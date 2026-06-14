@@ -67,7 +67,7 @@ export interface ProgramDetail extends ProgramSummary {
   manifest: Record<string, unknown>
 }
 
-// Union for shared detail components (ConfigPanel, DeploymentFields)
+// Union for the shared ConfigPanel (ProgramFields / ServiceFields / JobFields)
 export type AnyDetail = ServiceDetail | JobDetail | ProgramDetail
 
 // Legacy unified type — kept for NodeDetail.deployed and compat endpoint
