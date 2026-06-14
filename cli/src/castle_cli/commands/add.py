@@ -1,6 +1,6 @@
-"""castle add — adopt an existing repo as a program (no scaffolding).
+"""castle program add — adopt an existing repo as a program (no scaffolding).
 
-`castle create` makes new code from a stack. `castle add` adopts code that
+`castle program create` makes new code from a stack. `castle program add` adopts code that
 already exists — a local path, or a git URL to clone. It detects sensible dev
 verb commands so a non-castle project becomes usable without writing them by hand.
 """

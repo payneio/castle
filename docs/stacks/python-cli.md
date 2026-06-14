@@ -31,10 +31,10 @@ How to build CLI tools following Unix philosophy.
 
 ## Project layout
 
-Each tool is an independent project under `~/.castle/code/` with its own `pyproject.toml`:
+Each tool is an independent project under `/data/repos/` with its own `pyproject.toml`:
 
 ```
-~/.castle/code/my-tool/
+/data/repos/my-tool/
 ├── src/my_tool/
 │   ├── __init__.py
 │   └── main.py       # Entry point
@@ -50,7 +50,7 @@ Examples: `code/pdf2md/`, `code/gpt/`, `code/protonmail/`
 
 ```bash
 castle program create my-tool --stack python-cli --description "Does something"
-cd ~/.castle/code/my-tool && uv sync
+cd /data/repos/my-tool && uv sync
 ```
 
 This scaffolds the project and registers it in `castle.yaml`.
@@ -324,7 +324,7 @@ uv run ruff format .        # Format
 programs:
   my-tool:
     description: Does something useful
-    source: code/my-tool
+    source: /data/repos/my-tool
     stack: python-cli
     behavior: tool
 ```
@@ -335,13 +335,13 @@ Tools with system dependencies declare them directly on the program:
 programs:
   pdf2md:
     description: Convert PDF files to Markdown
-    source: code/pdf2md
+    source: /data/repos/pdf2md
     stack: python-cli
     behavior: tool
     system_dependencies: [pandoc, poppler-utils]
 ```
 
 Tools live in the `programs:` section. If a tool also runs on a schedule,
-add a separate entry in the `jobs:` section referencing the component.
+add a separate entry in the `jobs:` section referencing the program.
 
 See @docs/registry.md for the full registry reference.
