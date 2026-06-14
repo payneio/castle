@@ -73,21 +73,23 @@ The CLI lives in `cli/` and is installed via `uv tool install --editable cli/`.
 
 ```bash
 castle list                              # List all programs, services, and jobs
-castle list --behavior daemon             # Filter by behavior
+castle list --behavior daemon             # Filter the program catalog by behavior
 castle list --stack python-cli           # Filter by stack
 castle info <name>                       # Show details (--json for machine-readable)
+castle status                            # Unified status (services + jobs + programs)
 castle create <name> [--stack ...]       # Scaffold new project (--stack optional → bare program)
 castle add <path|git-url> [--name ...]   # Adopt an EXISTING repo as a program (detects verbs)
 castle clone [name]                      # Clone source for programs that declare repo:
 castle deploy [name]                     # Deploy to runtime (registry + systemd + Caddyfile)
-castle build|test|lint|type-check|check [project]   # Dev verbs (one or all)
-castle install|uninstall [program]       # Install/remove a program on PATH
+castle up                                # Deploy + start everything (one-shot bring-up)
+castle build|test|lint|format|type-check|check [name]   # Dev verbs (one program or all)
+castle install|uninstall [name]          # Activate/deactivate (tool→PATH, service→systemd, frontend→served)
 castle run <name>                        # Run a program (declared run) or service in foreground
+castle restart <name>                    # Restart a service or job
 castle logs <name> [-f] [-n 50]          # View service/job logs
 castle gateway start|stop|reload|status  # Manage Caddy reverse proxy
-castle service enable|disable <name>     # Manage individual systemd service
-castle service status                    # Show all service statuses
-castle services start|stop               # Start/stop everything
+castle service enable|disable <name>     # Manage an individual systemd service
+castle services start|stop|status        # Start/stop/inspect all services together
 ```
 
 **Dev verbs** resolve per-program: a declared `commands:` entry (or `build:`)

@@ -31,7 +31,7 @@ def _load_deployed_program(name: str) -> object | None:
 def run_info(args: argparse.Namespace) -> int:
     """Show detailed info for a program, service, or job."""
     config = load_config()
-    name = args.project
+    name = args.name
 
     # Look up in all sections
     program = config.programs.get(name)

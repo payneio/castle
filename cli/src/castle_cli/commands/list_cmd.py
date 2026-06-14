@@ -38,17 +38,6 @@ STACK_DISPLAY: dict[str, str] = {
 }
 
 
-def _load_deployed() -> dict[str, object] | None:
-    """Try to load deployed state from registry, return None if unavailable."""
-    try:
-        from castle_core.registry import load_registry
-
-        registry = load_registry()
-        return registry.deployed
-    except (FileNotFoundError, ValueError):
-        return None
-
-
 def _resolve_stack(config: object, name: str) -> str | None:
     """Resolve stack from program reference or direct program."""
     # Check services for program ref
@@ -70,96 +59,76 @@ def _resolve_stack(config: object, name: str) -> str | None:
 
 
 def run_list(args: argparse.Namespace) -> int:
-    """List all programs, services, and jobs."""
+    """List all programs, services, and jobs.
+
+    Two orthogonal axes: the **Programs** catalog (filtered by real `behavior`)
+    and the **Services**/**Jobs** deployment views. `--behavior` filters the
+    catalog only — it's a property of a program, not of a deployment.
+    """
+    from castle_core.lifecycle import is_active
+
     config = load_config()
-    deployed = _load_deployed()
 
     filter_behavior = getattr(args, "behavior", None)
     filter_stack = getattr(args, "stack", None)
 
     if getattr(args, "json", False):
-        return _list_json(config, deployed, filter_behavior, filter_stack)
+        return _list_json(config, filter_behavior, filter_stack)
+
+    def dot(name: str) -> str:
+        return f"{GREEN}●{RESET}" if is_active(name, config) else f"{RED}○{RESET}"
 
     any_output = False
 
-    # Daemons (services)
-    if not filter_behavior or filter_behavior == "daemon":
+    # Programs (the catalog) — filtered by real behavior + stack
+    progs = {
+        name: comp
+        for name, comp in config.programs.items()
+        if (not filter_behavior or comp.behavior == filter_behavior)
+        and (not filter_stack or comp.stack == filter_stack)
+    }
+    if progs:
+        any_output = True
+        print(f"\n{BOLD}{CYAN}Programs{RESET}")
+        print(f"{CYAN}{'─' * 40}{RESET}")
+        for name, comp in progs.items():
+            behavior = comp.behavior or "program"
+            bcolor = BEHAVIOR_COLORS.get(behavior, "")
+            behavior_str = f"  {bcolor}{behavior}{RESET}"
+            stack_str = f"  {DIM}{comp.stack}{RESET}" if comp.stack else ""
+            desc = f"  {DIM}{comp.description}{RESET}" if comp.description else ""
+            print(f"  {dot(name)} {BOLD}{name}{RESET}{behavior_str}{stack_str}{desc}")
+
+    # Services + Jobs (deployment views) — independent of behavior, so only shown
+    # when no behavior filter is applied.
+    if not filter_behavior:
         services = _filter_by_stack(config.services, config, filter_stack)
         if services:
             any_output = True
             color = BEHAVIOR_COLORS["daemon"]
-            print(f"\n{BOLD}{color}Daemons{RESET}")
+            print(f"\n{BOLD}{color}Services{RESET}")
             print(f"{color}{'─' * 40}{RESET}")
             for name, svc in services.items():
                 port_str = ""
                 if svc.expose and svc.expose.http:
                     port_str = f"  :{svc.expose.http.internal.port}"
-
-                if deployed is not None:
-                    status = f"{GREEN}●{RESET}" if name in deployed else f"{RED}○{RESET}"
-                else:
-                    status = f"{DIM}?{RESET}"
-
                 stack = _resolve_stack(config, name)
                 stack_str = f"  {DIM}{stack}{RESET}" if stack else ""
                 desc = f"  {DIM}{svc.description}{RESET}" if svc.description else ""
-                print(f"  {status} {BOLD}{name}{RESET}{port_str}{stack_str}{desc}")
+                print(f"  {dot(name)} {BOLD}{name}{RESET}{port_str}{stack_str}{desc}")
 
-    # Scheduled (jobs)
-    if not filter_behavior or filter_behavior == "tool":
         jobs = _filter_by_stack(config.jobs, config, filter_stack)
         if jobs:
             any_output = True
-            color = MAGENTA
-            print(f"\n{BOLD}{color}Scheduled{RESET}")
-            print(f"{color}{'─' * 40}{RESET}")
+            print(f"\n{BOLD}{MAGENTA}Jobs{RESET}")
+            print(f"{MAGENTA}{'─' * 40}{RESET}")
             for name, job in jobs.items():
-                if deployed is not None:
-                    status = f"{GREEN}●{RESET}" if name in deployed else f"{RED}○{RESET}"
-                else:
-                    status = f"{DIM}?{RESET}"
-
-                desc = f"  {DIM}{job.description}{RESET}" if job.description else ""
                 sched = f"  {DIM}[{job.schedule}]{RESET}"
-                print(f"  {status} {BOLD}{name}{RESET}{sched}{desc}")
-
-    # Programs (tools, frontends, etc.)
-    show_tools = not filter_behavior or filter_behavior == "tool"
-    show_frontends = not filter_behavior or filter_behavior == "frontend"
-
-    if show_tools or show_frontends:
-        # Collect non-daemon programs
-        comps: dict[str, tuple[str, str | None, str | None]] = {}
-
-        if show_tools:
-            for name, comp in config.tools.items():
-                if filter_stack and comp.stack != filter_stack:
-                    continue
-                comps[name] = ("tool", comp.stack, comp.description)
-
-        if show_frontends:
-            for name, comp in config.frontends.items():
-                if filter_stack and comp.stack != filter_stack:
-                    continue
-                if name not in comps:
-                    comps[name] = ("frontend", comp.stack, comp.description)
-
-        if comps:
-            any_output = True
-            color = CYAN
-            print(f"\n{BOLD}{color}Programs{RESET}")
-            print(f"{color}{'─' * 40}{RESET}")
-            for name, (behavior, stack, description) in comps.items():
-                stack_str = f"  {DIM}{stack}{RESET}" if stack else ""
-                behavior_str = f"  {behavior}"
-                desc = f"  {DIM}{description}{RESET}" if description else ""
-                print(f"  {BOLD}{name}{RESET}{stack_str}{behavior_str}{desc}")
+                desc = f"  {DIM}{job.description}{RESET}" if job.description else ""
+                print(f"  {dot(name)} {BOLD}{name}{RESET}{sched}{desc}")
 
     if not any_output:
         print("No programs found.")
-
-    if deployed is None:
-        print(f"\n{DIM}(no registry — run 'castle deploy' to generate){RESET}")
 
     print()
     return 0
@@ -182,23 +151,39 @@ def _filter_by_stack(
 
 def _list_json(
     config: object,
-    deployed: dict | None,
     filter_behavior: str | None,
     filter_stack: str | None,
 ) -> int:
-    """Output JSON list of all entries."""
+    """Output JSON: the program catalog (behavior-filterable) plus deployments."""
+    from castle_core.lifecycle import is_active
+
     output = []
 
-    if not filter_behavior or filter_behavior == "daemon":
+    # Programs (catalog) — filtered by real behavior + stack
+    for name, comp in config.programs.items():
+        if filter_behavior and comp.behavior != filter_behavior:
+            continue
+        if filter_stack and comp.stack != filter_stack:
+            continue
+        entry: dict = {
+            "name": name,
+            "kind": "program",
+            "behavior": comp.behavior,
+            "active": is_active(name, config),
+        }
+        if comp.stack:
+            entry["stack"] = comp.stack
+        if comp.description:
+            entry["description"] = comp.description
+        output.append(entry)
+
+    # Services + Jobs (deployments) — only when not filtering by behavior
+    if not filter_behavior:
         for name, svc in config.services.items():
             stack = _resolve_stack(config, name)
             if filter_stack and stack != filter_stack:
                 continue
-            entry: dict = {
-                "name": name,
-                "behavior": "daemon",
-                "deployed": deployed is not None and name in deployed,
-            }
+            entry = {"name": name, "kind": "service", "active": is_active(name, config)}
             if stack:
                 entry["stack"] = stack
             if svc.description:
@@ -207,43 +192,20 @@ def _list_json(
                 entry["port"] = svc.expose.http.internal.port
             output.append(entry)
 
-    if not filter_behavior or filter_behavior == "tool":
         for name, job in config.jobs.items():
             stack = _resolve_stack(config, name)
             if filter_stack and stack != filter_stack:
                 continue
             entry = {
                 "name": name,
-                "behavior": "tool",
-                "deployed": deployed is not None and name in deployed,
+                "kind": "job",
+                "active": is_active(name, config),
                 "schedule": job.schedule,
             }
             if stack:
                 entry["stack"] = stack
             if job.description:
                 entry["description"] = job.description
-            output.append(entry)
-
-    if not filter_behavior or filter_behavior == "tool":
-        for name, comp in config.tools.items():
-            if filter_stack and comp.stack != filter_stack:
-                continue
-            entry = {"name": name, "behavior": "tool"}
-            if comp.stack:
-                entry["stack"] = comp.stack
-            if comp.description:
-                entry["description"] = comp.description
-            output.append(entry)
-
-    if not filter_behavior or filter_behavior == "frontend":
-        for name, comp in config.frontends.items():
-            if filter_stack and comp.stack != filter_stack:
-                continue
-            entry = {"name": name, "behavior": "frontend"}
-            if comp.stack:
-                entry["stack"] = comp.stack
-            if comp.description:
-                entry["description"] = comp.description
             output.append(entry)
 
     print(json.dumps(output, indent=2))

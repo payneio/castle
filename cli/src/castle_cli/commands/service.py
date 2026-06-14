@@ -43,7 +43,7 @@ def _remove_unit(uname: str) -> None:
 def run_service(args: argparse.Namespace) -> int:
     """Manage individual services."""
     if not args.service_command:
-        print("Usage: castle service {enable|disable|status}")
+        print("Usage: castle service {enable|disable}")
         return 1
 
     config = load_config()
@@ -54,8 +54,6 @@ def run_service(args: argparse.Namespace) -> int:
         return _service_enable(config, args.name)
     elif args.service_command == "disable":
         return _service_disable(args.name)
-    elif args.service_command == "status":
-        return _service_status(config)
 
     return 1
 
@@ -63,7 +61,7 @@ def run_service(args: argparse.Namespace) -> int:
 def run_services(args: argparse.Namespace) -> int:
     """Manage all services together."""
     if not args.services_command:
-        print("Usage: castle services {start|stop}")
+        print("Usage: castle services {start|stop|status}")
         return 1
 
     config = load_config()
@@ -72,8 +70,65 @@ def run_services(args: argparse.Namespace) -> int:
         return _services_start(config)
     elif args.services_command == "stop":
         return _services_stop(config)
+    elif args.services_command == "status":
+        return _service_status(config)
 
     return 1
+
+
+def run_restart(args: argparse.Namespace) -> int:
+    """Restart a single deployed service or job."""
+    config = load_config()
+    name = args.name
+    if name not in config.services and name not in config.jobs:
+        print(f"Error: '{name}' is not a known service or job.")
+        return 1
+    # Jobs are driven by their timer; services by the service unit.
+    unit = timer_name(name) if name in config.jobs else unit_name(name)
+    result = subprocess.run(["systemctl", "--user", "restart", unit], check=False)
+    if result.returncode != 0:
+        print(f"Error: failed to restart {unit}")
+        return 1
+    print(f"  {name}: restarted")
+    return 0
+
+
+def run_status(args: argparse.Namespace) -> int:
+    """Unified status across the platform: services + jobs + programs."""
+    from castle_core.lifecycle import is_active
+
+    config = load_config()
+
+    # Services + jobs (deployment state); the gateway appears here as a service.
+    _service_status(config)
+
+    # Programs (catalog activation: tools on PATH, static frontends served)
+    catalog = {
+        n: c
+        for n, c in config.programs.items()
+        if n not in config.services and n not in config.jobs
+    }
+    if catalog:
+        print(f"{'─' * 50}")
+        print("Programs")
+        for name, comp in catalog.items():
+            on = is_active(name, config)
+            color = "\033[92m" if on else "\033[90m"
+            label = "active" if on else "inactive"
+            print(f"  {color}{label:10s}\033[0m  {name}  ({comp.behavior or 'program'})")
+        print()
+    return 0
+
+
+def run_up(args: argparse.Namespace) -> int:
+    """Bring everything online: deploy from castle.yaml, then start all services."""
+    from castle_cli.commands.deploy import run_deploy
+
+    config = load_config()
+    print("Deploying from castle.yaml...")
+    run_deploy(argparse.Namespace(name=None))
+    print("\nStarting services and gateway...")
+    return _services_start(config)
 
 
 def _service_enable(config: CastleConfig, name: str) -> int:

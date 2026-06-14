@@ -63,34 +63,42 @@ def build_parser() -> argparse.ArgumentParser:
 
     # castle info
     info_parser = subparsers.add_parser("info", help="Show program details")
-    info_parser.add_argument("project", help="Program, service, or job name")
+    info_parser.add_argument("name", help="Program, service, or job name")
     info_parser.add_argument("--json", action="store_true", help="Output as JSON")
 
     # castle test
     test_parser = subparsers.add_parser("test", help="Run tests")
-    test_parser.add_argument("project", nargs="?", help="Project to test (default: all)")
+    test_parser.add_argument("name", nargs="?", help="Program to test (default: all)")
 
     # castle lint
     lint_parser = subparsers.add_parser("lint", help="Run linter")
-    lint_parser.add_argument("project", nargs="?", help="Project to lint (default: all)")
+    lint_parser.add_argument("name", nargs="?", help="Program to lint (default: all)")
+
+    # castle format
+    format_parser = subparsers.add_parser("format", help="Format source code")
+    format_parser.add_argument("name", nargs="?", help="Program to format (default: all)")
 
     # castle build
-    build_parser = subparsers.add_parser("build", help="Build projects")
-    build_parser.add_argument("project", nargs="?", help="Project to build (default: all)")
+    build_parser = subparsers.add_parser("build", help="Build programs")
+    build_parser.add_argument("name", nargs="?", help="Program to build (default: all)")
 
     # castle type-check
     tc_parser = subparsers.add_parser("type-check", help="Run type checker")
-    tc_parser.add_argument("project", nargs="?", help="Project to type-check (default: all)")
+    tc_parser.add_argument("name", nargs="?", help="Program to type-check (default: all)")
 
     # castle check (composite: lint + type-check + test)
     check_parser = subparsers.add_parser("check", help="Run lint + type-check + test")
-    check_parser.add_argument("project", nargs="?", help="Project to check (default: all)")
+    check_parser.add_argument("name", nargs="?", help="Program to check (default: all)")
 
-    # castle install / uninstall
-    install_parser = subparsers.add_parser("install", help="Install a program to PATH")
-    install_parser.add_argument("project", nargs="?", help="Program to install (default: all)")
-    uninstall_parser = subparsers.add_parser("uninstall", help="Uninstall a program")
-    uninstall_parser.add_argument("project", nargs="?", help="Program to uninstall (default: all)")
+    # castle install / uninstall — activate / deactivate a program in its mode
+    install_parser = subparsers.add_parser(
+        "install", help="Activate a program (tool→PATH, service/job→systemd, frontend→served)"
+    )
+    install_parser.add_argument("name", nargs="?", help="Program to activate (default: all)")
+    uninstall_parser = subparsers.add_parser(
+        "uninstall", help="Deactivate a program (reverse of install)"
+    )
+    uninstall_parser.add_argument("name", nargs="?", help="Program to deactivate")
 
     # castle gateway
     gateway_parser = subparsers.add_parser("gateway", help="Manage the Caddy gateway")
@@ -116,13 +124,23 @@ def build_parser() -> argparse.ArgumentParser:
     )
     disable_parser = service_sub.add_parser("disable", help="Stop and disable a service")
     disable_parser.add_argument("name", help="Service name")
-    service_sub.add_parser("status", help="Show status of all services")
 
     # castle services (plural - manage all services)
     services_parser = subparsers.add_parser("services", help="Manage all services together")
     services_sub = services_parser.add_subparsers(dest="services_command")
     services_sub.add_parser("start", help="Start all services and gateway")
     services_sub.add_parser("stop", help="Stop all services and gateway")
+    services_sub.add_parser("status", help="Show status of all services and jobs")
+
+    # castle restart — restart a single deployed service or job
+    restart_parser = subparsers.add_parser("restart", help="Restart a service or job")
+    restart_parser.add_argument("name", help="Service or job name")
+
+    # castle status — unified status (gateway + services + jobs + programs)
+    subparsers.add_parser("status", help="Show overall status across the platform")
+
+    # castle up — bring everything online (deploy + start all services)
+    subparsers.add_parser("up", help="Deploy and start all services and the gateway")
 
     # castle logs
     logs_parser = subparsers.add_parser("logs", help="View service/job logs")
@@ -196,6 +214,11 @@ def main() -> int:
 
         return run_lint(args)
 
+    elif args.command == "format":
+        from castle_cli.commands.dev import run_format
+
+        return run_format(args)
+
     elif args.command == "build":
         from castle_cli.commands.dev import run_build
 
@@ -235,6 +258,21 @@ def main() -> int:
         from castle_cli.commands.service import run_services
 
         return run_services(args)
+
+    elif args.command == "restart":
+        from castle_cli.commands.service import run_restart
+
+        return run_restart(args)
+
+    elif args.command == "status":
+        from castle_cli.commands.service import run_status
+
+        return run_status(args)
+
+    elif args.command == "up":
+        from castle_cli.commands.service import run_up
+
+        return run_up(args)
 
     elif args.command == "logs":
         from castle_cli.commands.logs import run_logs

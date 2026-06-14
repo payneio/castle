@@ -10,12 +10,12 @@ from pathlib import Path
 
 from castle_core.manifest import ProgramSpec
 
-DEV_ACTIONS = ["build", "test", "lint", "type-check", "check", "run"]
+DEV_ACTIONS = ["build", "test", "lint", "format", "type-check", "check", "run"]
 INSTALL_ACTIONS = ["install", "uninstall"]
 ALL_ACTIONS = DEV_ACTIONS + INSTALL_ACTIONS
 
 # Verbs a stack handler can provide (everything except `run`, which is declared-only).
-_STACK_VERBS = {"build", "test", "lint", "type-check", "check", "install", "uninstall"}
+_STACK_VERBS = {"build", "test", "lint", "format", "type-check", "check", "install", "uninstall"}
 # Verbs whose handler method name differs from the verb spelling.
 _VERB_METHOD = {"type-check": "type_check"}
 
@@ -77,6 +77,9 @@ class StackHandler:
     async def lint(self, name: str, comp: ProgramSpec, root: Path) -> ActionResult:
         raise NotImplementedError
 
+    async def format(self, name: str, comp: ProgramSpec, root: Path) -> ActionResult:
+        raise NotImplementedError
+
     async def type_check(self, name: str, comp: ProgramSpec, root: Path) -> ActionResult:
         raise NotImplementedError
 
@@ -131,6 +134,13 @@ class PythonHandler(StackHandler):
         rc, output = await _run(["uv", "run", "ruff", "check", "."], src)
         return ActionResult(
             program=name, action="lint", status="ok" if rc == 0 else "error", output=output
+        )
+
+    async def format(self, name: str, comp: ProgramSpec, root: Path) -> ActionResult:
+        src = _source_dir(comp, root)
+        rc, output = await _run(["uv", "run", "ruff", "format", "."], src)
+        return ActionResult(
+            program=name, action="format", status="ok" if rc == 0 else "error", output=output
         )
 
     async def type_check(self, name: str, comp: ProgramSpec, root: Path) -> ActionResult:
@@ -188,6 +198,13 @@ class ReactViteHandler(StackHandler):
         rc, output = await _run(["pnpm", "lint"], src)
         return ActionResult(
             program=name, action="lint", status="ok" if rc == 0 else "error", output=output
+        )
+
+    async def format(self, name: str, comp: ProgramSpec, root: Path) -> ActionResult:
+        src = _source_dir(comp, root)
+        rc, output = await _run(["pnpm", "format"], src)
+        return ActionResult(
+            program=name, action="format", status="ok" if rc == 0 else "error", output=output
         )
 
     async def type_check(self, name: str, comp: ProgramSpec, root: Path) -> ActionResult:
