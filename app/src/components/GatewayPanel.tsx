@@ -57,14 +57,14 @@ export function GatewayPanel({ gateway, statuses }: GatewayPanelProps) {
         </div>
       </div>
 
-      {/* Route table */}
+      {/* Route table — every gateway route, of every kind */}
       {gateway.routes.length > 0 && (
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-[var(--border)] text-left">
-              <th className="px-4 py-2 font-medium text-[var(--muted)]">Path</th>
-              <th className="px-4 py-2 font-medium text-[var(--muted)]">Program</th>
-              <th className="px-4 py-2 font-medium text-[var(--muted)]">Port</th>
+              <th className="px-4 py-2 font-medium text-[var(--muted)]">Address</th>
+              <th className="px-4 py-2 font-medium text-[var(--muted)]">Kind</th>
+              <th className="px-4 py-2 font-medium text-[var(--muted)]">Target</th>
               {multiNode && (
                 <th className="px-4 py-2 font-medium text-[var(--muted)]">Node</th>
               )}
@@ -73,25 +73,26 @@ export function GatewayPanel({ gateway, statuses }: GatewayPanelProps) {
           </thead>
           <tbody>
             {gateway.routes.map((route) => {
-              const health = statusMap.get(route.program)
+              // Health applies to proxy/remote targets (a running service);
+              // static targets are files on disk.
+              const health = route.kind !== "static" && route.name ? statusMap.get(route.name) : undefined
               return (
                 <tr
-                  key={route.path}
+                  key={`${route.address}-${route.node}`}
                   className="border-b border-[var(--border)] last:border-b-0 hover:bg-black/20 transition-colors"
                 >
-                  <td className="px-4 py-2 font-mono text-[var(--primary)]">
-                    {route.path}
-                  </td>
+                  <td className="px-4 py-2 font-mono text-[var(--primary)]">{route.address}</td>
                   <td className="px-4 py-2">
-                    <Link
-                      to={`/deployment/${route.program}`}
-                      className="hover:text-[var(--primary)] transition-colors"
-                    >
-                      {route.program}
-                    </Link>
+                    <KindBadge kind={route.kind} />
                   </td>
-                  <td className="px-4 py-2 font-mono text-[var(--muted)]">
-                    {route.target_port}
+                  <td className="px-4 py-2 font-mono text-xs text-[var(--muted)]">
+                    {route.name ? (
+                      <Link to={`/deployment/${route.name}`} className="hover:text-[var(--primary)]">
+                        {route.kind === "static" ? shortDir(route.target) : route.target}
+                      </Link>
+                    ) : (
+                      route.target
+                    )}
                   </td>
                   {multiNode && (
                     <td className="px-4 py-2">
@@ -104,10 +105,10 @@ export function GatewayPanel({ gateway, statuses }: GatewayPanelProps) {
                     </td>
                   )}
                   <td className="px-4 py-2">
-                    {health ? (
-                      <HealthBadge status={health.status} latency={health.latency_ms} />
+                    {route.kind === "static" ? (
+                      <span className="text-xs text-[var(--muted)]">—</span>
                     ) : (
-                      <HealthBadge status="unknown" />
+                      <HealthBadge status={health?.status ?? "unknown"} latency={health?.latency_ms} />
                     )}
                   </td>
                 </tr>
@@ -119,7 +120,7 @@ export function GatewayPanel({ gateway, statuses }: GatewayPanelProps) {
 
       {gateway.routes.length === 0 && (
         <p className="px-4 py-6 text-center text-[var(--muted)] text-sm">
-          No proxy routes configured.
+          No gateway routes configured.
         </p>
       )}
 
@@ -133,4 +134,25 @@ export function GatewayPanel({ gateway, statuses }: GatewayPanelProps) {
       )}
     </section>
   )
+}
+
+const KIND_STYLE: Record<string, string> = {
+  static: "bg-cyan-900/30 text-cyan-300 border-cyan-800",
+  proxy: "bg-green-900/30 text-green-300 border-green-800",
+  remote: "bg-purple-900/30 text-purple-300 border-purple-800",
+}
+
+/** Caddy serves static files; proxy/remote forward to a process. */
+function KindBadge({ kind }: { kind: string }) {
+  return (
+    <span className={`text-xs px-2 py-0.5 rounded border ${KIND_STYLE[kind] ?? "text-[var(--muted)]"}`}>
+      {kind}
+    </span>
+  )
+}
+
+/** Show the tail of a serve directory (…/app/dist). */
+function shortDir(path: string): string {
+  const parts = path.split("/").filter(Boolean)
+  return parts.length <= 2 ? path : "…/" + parts.slice(-2).join("/")
 }

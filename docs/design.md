@@ -251,8 +251,12 @@ Coordination handles discovery and communication — both between
 programs on a single node and across multiple Castle nodes.
 
 **Intra-node coordination:**
-- Components find each other through the gateway (path-based routing)
-  or direct port access via env vars.
+- Programs find each other through the gateway or direct port access via env
+  vars. A gateway route maps an address (path prefix or host) to a target of one
+  kind: **proxy** (a local service port), **remote** (a service on another
+  node), or **static** (a built frontend's `dist/`, served as files). The same
+  computed route list drives the Caddyfile, `castle gateway status`, and the
+  dashboard, so they always agree.
 - The registry (CLI/API) provides discoverability.
 - No service mesh or message broker required for basic operation.
 

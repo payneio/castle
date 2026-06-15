@@ -252,20 +252,19 @@ class TestGateway:
         assert data["managed_count"] == 1
 
     def test_gateway_routes(self, client: TestClient) -> None:
-        """Returns proxy routes from deployed components."""
+        """Returns the full route table, tagged with kind + target."""
         response = client.get("/gateway")
         data = response.json()
-        routes = data["routes"]
-        assert len(routes) == 1
-        route = routes[0]
-        assert route["path"] == "/test-svc"
-        assert route["target_port"] == 19000
-        assert route["program"] == "test-svc"
+        route = next(r for r in data["routes"] if r["address"] == "/test-svc")
+        assert route["kind"] == "proxy"
+        assert route["target"] == "localhost:19000"
+        assert route["name"] == "test-svc"
         assert route["node"] == "test-node"
 
-    def test_gateway_routes_sorted(self, client: TestClient) -> None:
-        """Routes are sorted by path."""
+    def test_gateway_route_kinds_valid(self, client: TestClient) -> None:
+        """Every route declares a known kind."""
         response = client.get("/gateway")
         data = response.json()
-        paths = [r["path"] for r in data["routes"]]
-        assert paths == sorted(paths)
+        assert data["routes"]
+        for r in data["routes"]:
+            assert r["kind"] in ("static", "proxy", "remote")
