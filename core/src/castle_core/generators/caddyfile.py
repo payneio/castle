@@ -112,6 +112,16 @@ def generate_caddyfile_from_registry(
     # named host doesn't pull the listener into TLS or try to bind :80/:443.
     lines = ["{", "    auto_https off", "}", "", f":{gw_port} {{"]
 
+    # Trailing-slash redirect: `handle_path /foo/*` doesn't match the bare `/foo`,
+    # so without this the no-slash form falls through to the root catch-all
+    # (serving the wrong app). Redirect /foo → /foo/ for each path-prefix route.
+    # (Caddy's bare path matcher is exact, so /foo/bar is unaffected.)
+    redirs = [r.address for r in routes if r.address.startswith("/") and r.address != "/"]
+    for prefix in redirs:
+        lines.append(f"    redir {prefix} {prefix}/")
+    if redirs:
+        lines.append("")
+
     root_static: GatewayRoute | None = None
     for r in routes:
         if r.kind == "static" and r.address == "/":
