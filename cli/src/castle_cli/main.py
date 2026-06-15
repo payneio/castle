@@ -77,12 +77,17 @@ def _add_service_create(sub: argparse._SubParsersAction, kind: str) -> None:
     p.add_argument("--description", default="", help="Description")
     p.add_argument("--run", help="Console script / command to run (default: --program or name)")
     p.add_argument("--runner", choices=["python", "command"], default="python")
+    p.add_argument(
+        "--env",
+        action="append",
+        metavar="KEY=VALUE",
+        help="Env var for the program (repeatable). Use ${port}/${data_dir}/${name} placeholders.",
+    )
     if kind == "service":
         p.add_argument("--port", type=int, help="HTTP port")
         p.add_argument("--health", default="/health", help="Health path (default: /health)")
         p.add_argument("--path", help="Gateway proxy prefix (default: /<name>)")
         p.add_argument("--host", help="Route by hostname instead of a path prefix")
-        p.add_argument("--port-env", help="Env var the program reads for its port")
         p.add_argument("--no-proxy", action="store_true", help="Don't add a gateway route")
     else:
         p.add_argument("--schedule", default="0 2 * * *", help="Cron schedule (default: 0 2 * * *)")

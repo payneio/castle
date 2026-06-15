@@ -111,12 +111,6 @@ class HttpInternal(BaseModel):
     host: str = "127.0.0.1"
     port: int = Field(ge=1, le=65535)
     unix_socket: str | None = None
-    # Env var the program actually reads for its bind port. Castle's convention
-    # injects <PREFIX>_PORT, but an adopted program may read a different name
-    # (e.g. lakehoused reads LAKEHOUSED_DAEMON_PORT). When set, deploy also sets
-    # this var to `port`, so castle genuinely drives the bind instead of relying
-    # on the program's default happening to match.
-    port_env: str | None = None
 
 
 class HttpPublic(BaseModel):

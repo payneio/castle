@@ -28,7 +28,6 @@ export function ServiceFields({ service, onSave, onDelete }: Props) {
     (run.program as string) ?? ((run.argv as string[]) ?? []).join(" "),
   )
   const [port, setPort] = useState(internal.port != null ? String(internal.port) : "")
-  const [portEnv, setPortEnv] = useState((internal.port_env as string) ?? "")
   const [health, setHealth] = useState((httpExpose.health_path as string) ?? "")
   const [proxyPath, setProxyPath] = useState((caddy.path_prefix as string) ?? "")
   const [proxyHost, setProxyHost] = useState((caddy.host as string) ?? "")
@@ -55,10 +54,7 @@ export function ServiceFields({ service, onSave, onDelete }: Props) {
       if (port) {
         config.expose = {
           http: {
-            internal: {
-              port: parseInt(port, 10),
-              ...(portEnv ? { port_env: portEnv } : {}),
-            },
+            internal: { port: parseInt(port, 10) },
             ...(health ? { health_path: health } : {}),
           },
         }
@@ -101,14 +97,6 @@ export function ServiceFields({ service, onSave, onDelete }: Props) {
         />
       </Field>
       <TextField label="Port" value={port} onChange={setPort} width="w-32" mono placeholder="9001" />
-      <TextField
-        label="Port env"
-        value={portEnv}
-        onChange={setPortEnv}
-        width="w-64"
-        mono
-        placeholder="(only if the program reads a custom var)"
-      />
       <TextField label="Health path" value={health} onChange={setHealth} width="w-48" mono placeholder="/health" />
       <TextField label="Proxy path" value={proxyPath} onChange={setProxyPath} width="w-48" mono placeholder="/my-service" />
       <TextField label="Proxy host" value={proxyHost} onChange={setProxyHost} mono placeholder="my-service.lan" />

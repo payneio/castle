@@ -40,10 +40,13 @@ the daemon's built-in default and we declared the same value. Castle's
 convention assumes a castle-aware program; an adopted one doesn't read
 `<PREFIX>_PORT`.
 
-**Fix:** let a service declare which env var carries the port, e.g.
-`expose.http.port_env: LAKEHOUSED_DAEMON_PORT`, so castle sets *that* to the
-configured port and genuinely drives the bind. (`defaults.env` is the manual
-workaround.)
+**Fixed** (superseding the interim `port_env` field): auto-injection of the
+convention vars was dropped entirely. A service's env is now exactly its
+`defaults.env`, with `${port}`/`${data_dir}`/`${name}` placeholders for castle's
+computed values. lakehouse maps just what it reads —
+`LAKEHOUSED_DAEMON_PORT: ${port}` — and keeps its own data root, with no dead
+vars. Castle-native services map their `<PREFIX>_PORT`/`_DATA_DIR` the same way
+(scaffolded by `castle program create`).
 
 ### #3 — `castle deploy` regenerates the Caddyfile but never reloads Caddy (High, bug)
 

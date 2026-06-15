@@ -157,9 +157,12 @@ def _reload_gateway(messages: list[str]) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _env_prefix(name: str) -> str:
-    """Derive env var prefix from name: central-context → CENTRAL_CONTEXT."""
-    return name.replace("-", "_").upper()
+def _env_context(name: str, config_key: str, port: int | None) -> dict[str, str]:
+    """Placeholder values for defaults.env: ${name}/${data_dir}/${port}."""
+    ctx = {"name": name, "data_dir": str(DATA_DIR / config_key)}
+    if port is not None:
+        ctx["port"] = str(port)
+    return ctx
 
 
 def _resolve_description(config: CastleConfig, spec: ServiceSpec | JobSpec) -> str | None:
@@ -176,41 +179,26 @@ def _build_deployed_service(
 ) -> Deployment:
     """Build a Deployment from a ServiceSpec."""
     run = svc.run
-    # Env prefix and data dir are keyed by the program (component) the service
-    # runs, not the service name — that's the prefix the program's settings read
-    # (e.g. job `protonmail-sync` runs program `protonmail` → PROTONMAIL_DATA_DIR).
-    # Falls back to the service name when no component is referenced.
+    # The data-dir placeholder is keyed by the program the service runs, not the
+    # service name (e.g. job `protonmail-sync` runs program `protonmail` →
+    # /data/castle/protonmail). Falls back to the service name.
     config_key = svc.program or name
-    prefix = _env_prefix(config_key)
-    env: dict[str, str] = {}
 
-    # Data dir convention (for managed services). Skipped for container runners:
-    # they use volume mounts, not a data-dir env var, and the injected name can
-    # collide with an image's own env namespace (e.g. neo4j claims NEO4J_*).
     managed = run.runner != "remote"
     if svc.manage and svc.manage.systemd and not svc.manage.systemd.enable:
         managed = False
-    if managed and run.runner != "container":
-        env[f"{prefix}_DATA_DIR"] = str(DATA_DIR / config_key)
 
-    # Port convention (if exposed)
     port = None
     health_path = None
     if svc.expose and svc.expose.http:
         port = svc.expose.http.internal.port
-        env[f"{prefix}_PORT"] = str(port)
-        # If the program reads a non-convention port var, set that too so castle
-        # actually controls the bind (e.g. adopted lakehoused → LAKEHOUSED_DAEMON_PORT).
-        if svc.expose.http.internal.port_env:
-            env[svc.expose.http.internal.port_env] = str(port)
         health_path = svc.expose.http.health_path
 
-    # Merge defaults.env (overrides conventions)
-    if svc.defaults and svc.defaults.env:
-        env.update(svc.defaults.env)
-
-    # Resolve secrets
-    env = resolve_env_vars(env)
+    # Env is exactly what's declared in defaults.env — no hidden convention
+    # injection. ${port}/${data_dir}/${name} let the program's own env var names
+    # map to castle's computed values without hardcoding them.
+    env = dict(svc.defaults.env) if (svc.defaults and svc.defaults.env) else {}
+    env = resolve_env_vars(env, _env_context(name, config_key, port))
 
     # Ensure python tool is installed before resolving binary
     _ensure_python_tool(config, svc.program, messages)
@@ -260,18 +248,11 @@ def _build_deployed_job(
 ) -> Deployment:
     """Build a Deployment from a JobSpec."""
     run = job.run
-    # Keyed by the program (component) the job runs, not the job name — see
-    # _build_deployed_service for rationale. Falls back to the job name.
+    # ${data_dir} is keyed by the program the job runs, not the job name — see
+    # _build_deployed_service. Falls back to the job name.
     config_key = job.program or name
-    prefix = _env_prefix(config_key)
-    env: dict[str, str] = {}
-
-    env[f"{prefix}_DATA_DIR"] = str(DATA_DIR / config_key)
-
-    if job.defaults and job.defaults.env:
-        env.update(job.defaults.env)
-
-    env = resolve_env_vars(env)
+    env = dict(job.defaults.env) if (job.defaults and job.defaults.env) else {}
+    env = resolve_env_vars(env, _env_context(name, config_key, None))
     _ensure_python_tool(config, job.program, messages)
     run_cmd = _build_run_cmd(name, run, env, messages)
 

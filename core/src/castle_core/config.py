@@ -141,16 +141,27 @@ class CastleConfig:
         }
 
 
-def resolve_env_vars(env: dict[str, str]) -> dict[str, str]:
-    """Resolve ${secret:NAME} references in env values."""
+def resolve_env_vars(
+    env: dict[str, str], context: dict[str, str] | None = None
+) -> dict[str, str]:
+    """Resolve placeholders in env values.
+
+    - ``${secret:NAME}`` reads `~/.castle/secrets/NAME`.
+    - ``${port}`` / ``${data_dir}`` / ``${name}`` (and anything else in
+      ``context``) expand to castle's computed values, so a service maps them to
+      whatever env var its program reads (e.g. ``MY_PORT: ${port}``) without
+      hardcoding or castle silently injecting a guessed var name.
+    """
+    context = context or {}
     resolved = {}
     for key, value in env.items():
 
         def replace_var(match: re.Match[str]) -> str:
             ref = match.group(1)
             if ref.startswith("secret:"):
-                secret_name = ref[7:]
-                return _read_secret(secret_name)
+                return _read_secret(ref[7:])
+            if ref in context:
+                return context[ref]
             return match.group(0)
 
         resolved[key] = re.sub(r"\$\{([^}]+)\}", replace_var, value)

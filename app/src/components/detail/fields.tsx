@@ -71,6 +71,12 @@ export function useEnvSecrets(initial: Record<string, string>) {
     <div className="space-y-4">
       <Field label="Environment">
         <div className="space-y-2">
+          <p className="text-xs text-[var(--muted)]">
+            Use <code className="font-mono">${"{port}"}</code>,{" "}
+            <code className="font-mono">${"{data_dir}"}</code>,{" "}
+            <code className="font-mono">${"{name}"}</code> for castle's computed values,
+            and <code className="font-mono">${"{secret:NAME}"}</code> for secrets.
+          </p>
           {Object.entries(env).map(([key, val]) => (
             <div key={key} className="flex items-center gap-2">
               <input value={key} readOnly className={`w-56 ${INPUT} text-xs text-[var(--muted)]`} />

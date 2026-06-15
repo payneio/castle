@@ -38,7 +38,6 @@ export function CreateDeploymentForm({
   const [runner, setRunner] = useState(prefill?.runner ?? "python")
   const [runTarget, setRunTarget] = useState(prefill?.runTarget ?? prefill?.name ?? "")
   const [port, setPort] = useState("")
-  const [portEnv, setPortEnv] = useState("")
   const [health, setHealth] = useState("/health")
   const [path, setPath] = useState("")
   const [host, setHost] = useState("")
@@ -71,7 +70,7 @@ export function CreateDeploymentForm({
     if (port) {
       base.expose = {
         http: {
-          internal: { port: parseInt(port, 10), ...(portEnv ? { port_env: portEnv } : {}) },
+          internal: { port: parseInt(port, 10) },
           ...(health ? { health_path: health } : {}),
         },
       }
@@ -160,7 +159,6 @@ export function CreateDeploymentForm({
       {kind === "service" ? (
         <>
           <TextField label="Port" value={port} onChange={setPort} width="w-32" mono placeholder="9001" />
-          <TextField label="Port env" value={portEnv} onChange={setPortEnv} width="w-64" mono placeholder="(custom port var, optional)" />
           <TextField label="Health path" value={health} onChange={setHealth} width="w-48" mono />
           <TextField label="Proxy path" value={path} onChange={setPath} width="w-48" mono placeholder={`/${name || "name"}`} />
           <TextField label="Proxy host" value={host} onChange={setHost} mono placeholder="my-service.lan (optional)" />
