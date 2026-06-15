@@ -12,6 +12,7 @@ import argparse
 from castle_cli.config import load_config, save_config
 from castle_cli.manifest import (
     CaddySpec,
+    DefaultsSpec,
     ExposeSpec,
     HttpExposeSpec,
     HttpInternal,
@@ -23,6 +24,17 @@ from castle_cli.manifest import (
     ServiceSpec,
     SystemdSpec,
 )
+
+
+def _defaults(env_args: list[str] | None) -> DefaultsSpec | None:
+    """Parse repeated --env KEY=VALUE into a DefaultsSpec, or None."""
+    if not env_args:
+        return None
+    env: dict[str, str] = {}
+    for item in env_args:
+        key, _, value = item.partition("=")
+        env[key.strip()] = value
+    return DefaultsSpec(env=env)
 
 
 def _run_spec(runner: str, target: str, name: str) -> RunPython | RunCommand:
@@ -54,7 +66,7 @@ def run_service_create(args: argparse.Namespace) -> int:
     if args.port is not None:
         expose = ExposeSpec(
             http=HttpExposeSpec(
-                internal=HttpInternal(port=args.port, port_env=args.port_env),
+                internal=HttpInternal(port=args.port),
                 health_path=args.health,
             )
         )
@@ -76,13 +88,14 @@ def run_service_create(args: argparse.Namespace) -> int:
         expose=expose,
         proxy=proxy,
         manage=ManageSpec(systemd=SystemdSpec()),
+        defaults=_defaults(args.env),
     )
     save_config(config)
 
     print(f"Created service '{name}'.")
     print(f"  runs:   {args.runner} ({args.run or args.program or name})")
     if expose:
-        print(f"  port:   {args.port}" + (f"  (env: {args.port_env})" if args.port_env else ""))
+        print(f"  port:   {args.port}")
     if proxy and proxy.caddy:
         if proxy.caddy.path_prefix:
             print(f"  proxy:  {proxy.caddy.path_prefix}")
@@ -109,6 +122,7 @@ def run_job_create(args: argparse.Namespace) -> int:
         run=run,
         schedule=args.schedule,
         manage=ManageSpec(systemd=SystemdSpec()),
+        defaults=_defaults(args.env),
     )
     save_config(config)
 

@@ -255,17 +255,36 @@ manage:
     exec_reload: "caddy reload ..."
 ```
 
-### `defaults` — Default environment
+### `defaults` — Environment
+
+`defaults.env` is the **single, explicit source** of the env a service/job runs
+with — what you write here is exactly what lands in the systemd unit. Castle
+does **not** inject hidden convention vars; whatever env var your program reads
+for its port, data dir, etc., you map here.
 
 ```yaml
+expose: { http: { internal: { port: 9001 }, health_path: /health } }
 defaults:
   env:
+    MY_SERVICE_PORT: ${port}          # the program's own port var ← expose.port
+    MY_SERVICE_DATA_DIR: ${data_dir}  # = $CASTLE_DATA_DIR/<name>
     CENTRAL_CONTEXT_URL: http://localhost:9001
     API_KEY: ${secret:MY_API_KEY}
 ```
 
-Castle resolves `${secret:NAME}` by reading `~/.castle/secrets/NAME`.
-Never store secrets in castle.yaml or project directories.
+Values may contain placeholders that castle resolves at deploy:
+
+| Placeholder | Expands to |
+|-------------|------------|
+| `${port}` | the service's `expose.http.internal.port` (so it can't drift) |
+| `${data_dir}` | `$CASTLE_DATA_DIR/<program-or-name>` (the dedicated data volume) |
+| `${name}` | the deployment name |
+| `${secret:NAME}` | the contents of `~/.castle/secrets/NAME` |
+
+Hardcode the values instead if you prefer; the placeholders just save you from
+repeating castle's computed paths/ports. `castle program create` scaffolds the
+`${port}`/`${data_dir}` lines for new services. Never store secrets in
+castle.yaml — use `${secret:…}`.
 
 ## Job blocks
 
@@ -431,9 +450,10 @@ variable (both expand `~` and resolve relative paths):
 
 Defined in `core/src/castle_core/config.py`: `CASTLE_HOME` (with derived
 `CODE_DIR`, `SECRETS_DIR`, `SPECS_DIR`, `CONTENT_DIR`) and the independent
-`DATA_DIR` (`CASTLE_DATA_DIR`). `castle deploy` passes each service its data
-path via the generated `<PREFIX>_DATA_DIR` env var. Systemd unit/timer paths are
-fixed by systemd's user-unit convention.
+`DATA_DIR` (`CASTLE_DATA_DIR`). A service reaches its data path by mapping
+`${data_dir}` (= `$CASTLE_DATA_DIR/<name>`) to the env var its program reads, in
+`defaults.env`. Systemd unit/timer paths are fixed by systemd's user-unit
+convention.
 
 ## Manifest models
 

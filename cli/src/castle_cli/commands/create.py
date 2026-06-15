@@ -8,6 +8,7 @@ import subprocess
 from castle_cli.config import REPOS_DIR, load_config, save_config
 from castle_cli.manifest import (
     CaddySpec,
+    DefaultsSpec,
     ExposeSpec,
     HttpExposeSpec,
     HttpInternal,
@@ -92,6 +93,7 @@ def run_create(args: argparse.Namespace) -> int:
         behavior=behavior,
     )
     if behavior == "daemon":
+        prefix = name.replace("-", "_").upper()
         config.services[name] = ServiceSpec(
             id=name,
             program=name,
@@ -104,6 +106,11 @@ def run_create(args: argparse.Namespace) -> int:
             ),
             proxy=ProxySpec(caddy=CaddySpec(path_prefix=f"/{name}")),
             manage=ManageSpec(systemd=SystemdSpec()),
+            # python-fastapi scaffold reads env_prefix MY_SERVICE_ — map castle's
+            # computed port/data dir to those vars (explicit, no hidden injection).
+            defaults=DefaultsSpec(
+                env={f"{prefix}_PORT": "${port}", f"{prefix}_DATA_DIR": "${data_dir}"}
+            ),
         )
 
     save_config(config)

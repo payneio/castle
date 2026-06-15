@@ -129,15 +129,20 @@ services:
       systemd: {}
 ```
 
-Convention-based env vars (`MY_SERVICE_DATA_DIR`, `MY_SERVICE_PORT`) are
-generated automatically by `castle deploy`. Only non-convention values
-need `defaults.env`:
+The env a service runs with is exactly what's in `defaults.env` — castle injects
+nothing implicitly. Map the vars your settings read (above, `env_prefix:
+"MY_SERVICE_"` → `MY_SERVICE_PORT`/`MY_SERVICE_DATA_DIR`) to castle's computed
+values with the `${port}`/`${data_dir}` placeholders:
 
 ```yaml
     defaults:
       env:
+        MY_SERVICE_PORT: ${port}            # = expose.http.internal.port
+        MY_SERVICE_DATA_DIR: ${data_dir}    # = $CASTLE_DATA_DIR/my-service
         CENTRAL_CONTEXT_URL: http://localhost:9001
 ```
+
+`castle program create` scaffolds the `${port}`/`${data_dir}` lines for you.
 
 ## Application entry point
 
@@ -305,8 +310,9 @@ $CASTLE_DATA_DIR/my-service/     # default /data/castle/my-service/
     └── item-name.meta.json
 ```
 
-The service receives this path via the generated `<PREFIX>_DATA_DIR` env var —
-it never hardcodes it. Use the `data_dir` setting from your config.
+The service receives this path via its `<PREFIX>_DATA_DIR` env var, which
+`defaults.env` maps from `${data_dir}` — it never hardcodes it. Use the
+`data_dir` setting from your config.
 
 ```python
 # storage.py
