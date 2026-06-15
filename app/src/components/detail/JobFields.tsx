@@ -58,8 +58,16 @@ export function JobFields({ job, onSave, onDelete }: Props) {
   return (
     <div className="space-y-4">
       <TextField label="Description" value={description} onChange={setDescription} />
-      <TextField label="Schedule" value={schedule} onChange={setSchedule} width="w-48" mono placeholder="0 2 * * *" />
-      <Field label="Runs">
+      <TextField
+        label="Schedule"
+        value={schedule}
+        onChange={setSchedule}
+        width="w-48"
+        mono
+        placeholder="0 2 * * *"
+        hint="Cron expression — castle generates a systemd timer that runs the job on this schedule."
+      />
+      <Field label="Runs" hint="The console script or command the job runs on each tick, then exits.">
         <span className="text-sm font-mono text-[var(--muted)]">{runnerLabel(runner)} &middot; </span>
         <input
           value={runTarget}

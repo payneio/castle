@@ -5,11 +5,22 @@ import { SecretsEditor } from "@/components/SecretsEditor"
 const INPUT =
   "bg-black/30 border border-[var(--border)] rounded px-3 py-1.5 text-sm focus:outline-none focus:border-[var(--primary)]"
 
-export function Field({ label, children }: { label: string; children: React.ReactNode }) {
+export function Field({
+  label,
+  children,
+  hint,
+}: {
+  label: string
+  children: React.ReactNode
+  hint?: string
+}) {
   return (
     <div className="flex items-start gap-4">
       <label className="w-32 shrink-0 text-sm font-medium pt-1.5">{label}</label>
-      <div className="flex-1">{children}</div>
+      <div className="flex-1">
+        {children}
+        {hint && <p className="text-xs text-[var(--muted)] mt-1 leading-snug">{hint}</p>}
+      </div>
     </div>
   )
 }
@@ -21,6 +32,7 @@ export function TextField({
   placeholder,
   mono,
   width,
+  hint,
 }: {
   label: string
   value: string
@@ -28,9 +40,10 @@ export function TextField({
   placeholder?: string
   mono?: boolean
   width?: string
+  hint?: string
 }) {
   return (
-    <Field label={label}>
+    <Field label={label} hint={hint}>
       <input
         value={value}
         onChange={(e) => onChange(e.target.value)}

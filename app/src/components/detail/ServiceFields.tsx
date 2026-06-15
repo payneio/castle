@@ -88,7 +88,10 @@ export function ServiceFields({ service, onSave, onDelete }: Props) {
   return (
     <div className="space-y-4">
       <TextField label="Description" value={description} onChange={setDescription} />
-      <Field label="Runs">
+      <Field
+        label="Runs"
+        hint="The console script (python runner) or command this service executes."
+      >
         <span className="text-sm font-mono text-[var(--muted)]">{runnerLabel(runner)} &middot; </span>
         <input
           value={runProgram}
@@ -96,10 +99,41 @@ export function ServiceFields({ service, onSave, onDelete }: Props) {
           className="w-56 bg-black/30 border border-[var(--border)] rounded px-2 py-1 text-xs font-mono focus:outline-none focus:border-[var(--primary)]"
         />
       </Field>
-      <TextField label="Port" value={port} onChange={setPort} width="w-32" mono placeholder="9001" />
-      <TextField label="Health path" value={health} onChange={setHealth} width="w-48" mono placeholder="/health" />
-      <TextField label="Proxy path" value={proxyPath} onChange={setProxyPath} width="w-48" mono placeholder="/my-service" />
-      <TextField label="Proxy host" value={proxyHost} onChange={setProxyHost} mono placeholder="my-service.lan" />
+      <TextField
+        label="Port"
+        value={port}
+        onChange={setPort}
+        width="w-32"
+        mono
+        placeholder="9001"
+        hint="The port the service listens on. Castle health-checks and proxies this port; map it to the program's own var with ${port} in Environment."
+      />
+      <TextField
+        label="Health path"
+        value={health}
+        onChange={setHealth}
+        width="w-48"
+        mono
+        placeholder="/health"
+        hint="HTTP path castle polls to report up/down."
+      />
+      <TextField
+        label="Proxy path"
+        value={proxyPath}
+        onChange={setProxyPath}
+        width="w-48"
+        mono
+        placeholder="/my-service"
+        hint="Gateway prefix — reachable at gateway:9000<path>/ (reverse-proxied to the port)."
+      />
+      <TextField
+        label="Proxy host"
+        value={proxyHost}
+        onChange={setProxyHost}
+        mono
+        placeholder="my-service.lan"
+        hint="Optional: route a whole hostname to this service instead of a path (lets a root-based app serve unchanged)."
+      />
       {envEditor}
       <FormFooter
         saving={saving}
