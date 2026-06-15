@@ -28,6 +28,16 @@ export function ProgramDetailPage() {
     )
   }
 
+  // A static frontend (frontend behavior, build outputs, no service) is served
+  // by the gateway in place — show where.
+  const buildOutputs = (deployment.manifest.build as { outputs?: string[] } | undefined)?.outputs
+  const servedAt =
+    deployment.behavior === "frontend" && deployment.services.length === 0 && buildOutputs?.length
+      ? deployment.id === "castle-app"
+        ? "/"
+        : `/${deployment.id}/`
+      : null
+
   return (
     <div className="max-w-3xl mx-auto px-6 py-8">
       <DetailHeader
@@ -99,6 +109,14 @@ export function ProgramDetailPage() {
               <span className={deployment.active ? "text-green-400" : "text-[var(--muted)]"}>
                 {deployment.active ? "● active" : "○ inactive"}
               </span>
+            </>
+          )}
+          {servedAt && (
+            <>
+              <span className="text-[var(--muted)]">Reachable at</span>
+              <a href={servedAt} className="font-mono text-[var(--primary)] hover:underline">
+                {servedAt} <span className="text-[var(--muted)]">· served (static)</span>
+              </a>
             </>
           )}
         </div>

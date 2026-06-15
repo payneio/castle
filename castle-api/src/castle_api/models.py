@@ -133,11 +133,17 @@ class StatusResponse(BaseModel):
 
 
 class GatewayRoute(BaseModel):
-    """A single route in the gateway's reverse proxy table."""
+    """One gateway route: a public address mapped to a target.
 
-    path: str
-    target_port: int
-    program: str
+    kind is `static` (Caddy serves a built dir), `proxy` (reverse-proxy a local
+    service), or `remote` (reverse-proxy another node). address is a path prefix
+    (`/foo`) or a host (`foo.lan`); target is the serve dir or `host:port`.
+    """
+
+    address: str
+    kind: str
+    target: str
+    name: str | None = None
     node: str
 
 

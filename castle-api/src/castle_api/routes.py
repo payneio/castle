@@ -844,39 +844,40 @@ async def get_status() -> StatusResponse:
 
 @router.get("/gateway", response_model=GatewayInfo)
 def get_gateway() -> GatewayInfo:
-    """Get gateway configuration summary."""
+    """Get gateway configuration summary, including the full route table.
+
+    Routes are computed by the same function that generates the Caddyfile, so
+    the table matches reality: static-served frontends, path/host proxies, and
+    cross-node routes all appear, each tagged with its kind and target.
+    """
+    from castle_core.generators.caddyfile import compute_routes
+
     registry = get_registry()
     deployed_count = len(registry.deployed)
     service_count = sum(1 for d in registry.deployed.values() if d.port is not None)
     managed_count = sum(1 for d in registry.deployed.values() if d.managed)
 
-    # Local routes
-    routes: list[GatewayRoute] = [
+    config = None
+    root = get_castle_root()
+    if root:
+        try:
+            from castle_core.config import load_config
+
+            config = load_config(root)
+        except FileNotFoundError:
+            pass
+
+    remote = {h: r.registry for h, r in mesh_state.all_nodes().items()}
+    routes = [
         GatewayRoute(
-            path=d.proxy_path,
-            target_port=d.port,
-            program=name,
-            node=registry.node.hostname,
+            address=r.address,
+            kind=r.kind,
+            target=r.target,
+            name=r.name,
+            node=r.node or registry.node.hostname,
         )
-        for name, d in registry.deployed.items()
-        if d.proxy_path and d.port
+        for r in compute_routes(registry, config, remote or None)
     ]
-
-    # Remote routes from mesh (local paths take precedence)
-    local_paths = {r.path for r in routes}
-    for hostname, remote in mesh_state.all_nodes().items():
-        for name, d in remote.registry.deployed.items():
-            if d.proxy_path and d.port and d.proxy_path not in local_paths:
-                routes.append(
-                    GatewayRoute(
-                        path=d.proxy_path,
-                        target_port=d.port,
-                        program=name,
-                        node=hostname,
-                    )
-                )
-
-    routes.sort(key=lambda r: r.path)
 
     return GatewayInfo(
         port=registry.node.gateway_port,

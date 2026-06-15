@@ -110,9 +110,10 @@ export interface StatusResponse {
 }
 
 export interface GatewayRoute {
-  path: string
-  target_port: number
-  program: string
+  address: string // "/foo" (path prefix) or "foo.lan" (host)
+  kind: "static" | "proxy" | "remote"
+  target: string // serve dir, "localhost:PORT", or "host:PORT"
+  name: string | null
   node: string
 }
 

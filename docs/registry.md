@@ -221,16 +221,31 @@ expose:
     health_path: /health     # Used by health polling
 ```
 
-### `proxy` — How to proxy it
+### `proxy` — How the gateway routes to it
 
 ```yaml
 proxy:
   caddy:
-    path_prefix: /my-service   # Proxied at gateway:9000/my-service/
+    path_prefix: /my-service   # reachable at gateway:9000/my-service/
+    host: my-service.lan       # …or by hostname (whole host → backend root)
 ```
 
-Castle generates a Caddyfile from these entries. Only needed for services
-accessible through the gateway.
+Castle generates the Caddyfile from these entries. Only needed for services
+reachable through the gateway.
+
+**Gateway routes — one concept, three target kinds.** The gateway (`:9000`) maps
+a public **address** (a path prefix `/foo`, or a host `foo.lan`) to a **target**:
+
+| Kind | Target | Declared by |
+|------|--------|-------------|
+| **proxy** | a local service on a port — Caddy `reverse_proxy localhost:PORT` | a service's `proxy.caddy` |
+| **remote** | a service on another node — `reverse_proxy host:PORT` | mesh discovery |
+| **static** | a built frontend's `dist/` — Caddy `file_server` (no process) | a `frontend` program with `build.outputs` and **no** service (implicit; served at `/<name>/`, `castle-app` at `/`) |
+
+"Serving a frontend" and "proxying a service" are the same thing — a route —
+differing only in whether the target is files on disk or a live process. The
+complete table (all kinds) is shown by `castle gateway status`, the dashboard
+Gateway panel, and `GET /gateway`; the Caddyfile is generated from it.
 
 ### `manage` — How to manage it
 

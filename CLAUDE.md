@@ -128,8 +128,12 @@ code, artifacts, secrets; default `~/.castle`) and `CASTLE_DATA_DIR` (program
 data I/O on a dedicated volume; default `/data/castle`). Paths below use
 `$CASTLE_HOME` and `$CASTLE_DATA_DIR` accordingly.
 
-- **Gateway**: Caddy reverse proxy at port 9000, config generated from `castle.yaml`
-  into `$CASTLE_HOME/artifacts/specs/Caddyfile`. Dashboard served at root.
+- **Gateway**: Caddy at port 9000 — both a reverse proxy (to local/remote
+  services) and a static file server (for built frontends, served in place from
+  `<source>/<dist>`). Config generated from `castle.yaml` into
+  `$CASTLE_HOME/artifacts/specs/Caddyfile`. A route maps an address (path or
+  host) to a target of kind static/proxy/remote; `castle gateway status` lists
+  them. Dashboard (castle-app) served at root.
 - **Systemd**: User units generated under `~/.config/systemd/user/castle-*.service`.
   Use drop-in overrides (`*.service.d/*.conf`) for extra env vars that `castle deploy`
   shouldn't overwrite (e.g., `CASTLE_API_MQTT_ENABLED`).
@@ -165,7 +169,7 @@ Config:
 - `POST /apply` — Apply registry changes; `POST /deploy` — Deploy to runtime
 
 Gateway:
-- `GET /gateway` — Gateway info with route table and hostname
+- `GET /gateway` — Gateway info + full route table (every route tagged kind=static|proxy|remote, with its address and target)
 - `GET /gateway/caddyfile` — Generated Caddyfile content
 - `POST /gateway/reload` — Regenerate Caddyfile and reload Caddy
 

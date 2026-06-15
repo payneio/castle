@@ -116,17 +116,30 @@ def _gateway_reload() -> int:
 
 
 def _gateway_status() -> int:
-    """Show gateway status via systemd."""
+    """Show gateway status + the full route table (static, proxy, remote)."""
     result = subprocess.run(
         ["systemctl", "--user", "is-active", GATEWAY_UNIT],
         capture_output=True,
         text=True,
     )
     status = result.stdout.strip()
+    print(f"Gateway: {'running' if status == 'active' else status}")
 
-    if status == "active":
-        print("Gateway: running")
-    else:
-        print(f"Gateway: {status}")
+    if not REGISTRY_PATH.exists():
+        print("  (no registry — run 'castle deploy')")
+        return 0
 
+    from castle_core.generators.caddyfile import compute_routes
+
+    routes = compute_routes(load_registry())
+    if not routes:
+        print("  No routes configured.")
+        return 0
+
+    # Each route: address → target, tagged by kind. static = files served in
+    # place; proxy/remote = reverse-proxied to a process.
+    print(f"\n  {'ADDRESS':24} {'KIND':7} TARGET")
+    for r in routes:
+        target = r.target.replace("localhost:", ":") if r.kind != "static" else r.target
+        print(f"  {r.address:24} {r.kind:7} {target}")
     return 0

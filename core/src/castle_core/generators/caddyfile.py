@@ -1,138 +1,165 @@
-"""Caddyfile generation from node registry."""
+"""Gateway routes + Caddyfile generation from the node registry.
+
+A single source of truth: `compute_routes()` produces the structured list of
+gateway routes; `generate_caddyfile_from_registry()` renders that list to a
+Caddyfile, and the API serves the same list to the dashboard — so the route
+table always matches what Caddy actually does.
+
+A route maps a public **address** (a path prefix `/foo`, or a host `foo.lan`) to
+a **target**, of one **kind**:
+  - ``static`` — a built frontend's `dist/`; Caddy serves files (`file_server`).
+  - ``proxy``  — a local service on a port; Caddy reverse-proxies.
+  - ``remote`` — a service on another node; Caddy reverse-proxies cross-node.
+"""
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 
 from castle_core.config import SPECS_DIR
 from castle_core.registry import NodeRegistry
 
 
+@dataclass
+class GatewayRoute:
+    """One gateway route: address → target."""
+
+    address: str  # "/foo" (path prefix, served at /foo/*) or "foo.lan" (host)
+    kind: str  # "static" | "proxy" | "remote"
+    target: str  # static: serve dir; proxy: "localhost:PORT"/base_url; remote: "host:PORT"
+    name: str | None = None  # backing program/service
+    node: str | None = None
+
+    @property
+    def is_host(self) -> bool:
+        return not self.address.startswith("/")
+
+
+def compute_routes(
+    registry: NodeRegistry,
+    config: object | None = None,
+    remote_registries: dict[str, NodeRegistry] | None = None,
+) -> list[GatewayRoute]:
+    """Build the full ordered list of gateway routes (host, proxy, remote, static).
+
+    Order matters for Caddy precedence: host matchers first, then path proxies,
+    then cross-node, then static frontends (the root app last)."""
+    if config is None:
+        try:
+            from castle_core.config import load_config
+
+            config = load_config()
+        except Exception:
+            config = None
+
+    node = registry.node.hostname
+    routes: list[GatewayRoute] = []
+    local_paths: set[str] = set()
+
+    # Host-based proxy routes (whole host → backend root).
+    for name, d in registry.deployed.items():
+        if d.proxy_host and (d.port or d.base_url):
+            target = d.base_url or f"localhost:{d.port}"
+            routes.append(GatewayRoute(d.proxy_host, "proxy", target, name, node))
+
+    # Path-prefix proxy routes.
+    for name, d in registry.deployed.items():
+        if d.proxy_path and (d.port or d.base_url):
+            local_paths.add(d.proxy_path)
+            target = d.base_url or f"localhost:{d.port}"
+            routes.append(GatewayRoute(d.proxy_path, "proxy", target, name, node))
+
+    # Cross-node routes — local paths take precedence.
+    if remote_registries:
+        for hostname, remote_reg in remote_registries.items():
+            for name, d in remote_reg.deployed.items():
+                if d.proxy_path and d.port and d.proxy_path not in local_paths:
+                    local_paths.add(d.proxy_path)
+                    routes.append(
+                        GatewayRoute(d.proxy_path, "remote", f"{hostname}:{d.port}", name, hostname)
+                    )
+
+    # Static frontends — a behavior=frontend program with build outputs and no
+    # service of its own; served in place from <source>/<dist>. castle-app is the
+    # root app (/), others mount at /<name>.
+    if config is not None:
+        for name, prog in sorted(config.programs.items()):
+            if prog.behavior != "frontend" or not prog.source:
+                continue
+            if not (prog.build and prog.build.outputs):
+                continue
+            if name in config.services:  # self-serving frontend → already a proxy route
+                continue
+            serve_dir = str(Path(prog.source) / prog.build.outputs[0])
+            address = "/" if name == "castle-app" else f"/{name}"
+            if address != "/" and address in local_paths:
+                continue
+            routes.append(GatewayRoute(address, "static", serve_dir, name, node))
+
+    return routes
+
+
 def generate_caddyfile_from_registry(
     registry: NodeRegistry,
     remote_registries: dict[str, NodeRegistry] | None = None,
 ) -> str:
-    """Generate Caddyfile from the node registry.
-
-    Static files served from ~/.castle/artifacts/content/castle-app/.
-    No repo-relative paths.
-
-    If remote_registries is provided, cross-node routes are added for
-    remote services whose proxy_path doesn't conflict with local ones.
-    """
+    """Render the route list to a Caddyfile."""
+    routes = compute_routes(registry, None, remote_registries)
     gw_port = registry.node.gateway_port
 
-    # Global options: the gateway is an internal HTTP-only reverse proxy on a
-    # non-standard port. Disable automatic HTTPS so named hosts don't pull the
-    # listener into TLS or try to bind :80/:443 (which fails for a user service).
-    lines = ["{", "    auto_https off", "}", ""]
+    # HTTP-only internal gateway on a non-standard port → disable auto-HTTPS so a
+    # named host doesn't pull the listener into TLS or try to bind :80/:443.
+    lines = ["{", "    auto_https off", "}", "", f":{gw_port} {{"]
 
-    lines.append(f":{gw_port} {{")
-
-    # Track local proxy paths for precedence
-    local_paths: set[str] = set()
-
-    # Host-based routes: a `host` matcher inside the single :9000 site (NOT a
-    # separate site block — that would split the listener and flip it to TLS).
-    # The whole host maps to the backend root, so a root-based SPA (base="/")
-    # serves unchanged. Emitted first so a host match wins over path routes.
-    for name, deployed in registry.deployed.items():
-        if not deployed.proxy_host:
+    root_static: GatewayRoute | None = None
+    for r in routes:
+        if r.kind == "static" and r.address == "/":
+            root_static = r  # the root app is the catch-all, emitted last
             continue
-        if not deployed.port and not deployed.base_url:
-            continue
-        target = deployed.base_url or f"localhost:{deployed.port}"
-        matcher = f"@host_{name.replace('-', '_')}"
-        lines.append(f"    {matcher} host {deployed.proxy_host}")
-        lines.append(f"    handle {matcher} {{")
-        lines.append(f"        reverse_proxy {target}")
-        lines.append("    }")
-        lines.append("")
+        if r.kind == "static":
+            lines += [
+                f"    handle_path {r.address}/* {{",
+                f"        root * {r.target}",
+                "        try_files {path} /index.html",
+                "        file_server",
+                "    }",
+                "",
+            ]
+        elif r.is_host:  # host-based proxy
+            matcher = f"@host_{(r.name or r.address).replace('-', '_').replace('.', '_')}"
+            lines += [
+                f"    {matcher} host {r.address}",
+                f"    handle {matcher} {{",
+                f"        reverse_proxy {r.target}",
+                "    }",
+                "",
+            ]
+        else:  # path-prefix proxy (local or remote)
+            if r.kind == "remote":
+                lines.append(f"    # {r.name} on {r.node}")
+            lines += [
+                f"    handle_path {r.address}/* {{",
+                f"        reverse_proxy {r.target}",
+                "    }",
+                "",
+            ]
 
-    for name, deployed in registry.deployed.items():
-        if not deployed.proxy_path:
-            continue
-        # Need either a local port or a remote base_url to proxy to
-        if not deployed.port and not deployed.base_url:
-            continue
-
-        local_paths.add(deployed.proxy_path)
-        target = deployed.base_url or f"localhost:{deployed.port}"
-        lines.append(f"    handle_path {deployed.proxy_path}/* {{")
-        lines.append(f"        reverse_proxy {target}")
-        lines.append("    }")
-        lines.append("")
-
-    # Remote routes (cross-node) — local paths take precedence
-    if remote_registries:
-        for hostname, remote_reg in remote_registries.items():
-            for name, deployed in remote_reg.deployed.items():
-                if not deployed.proxy_path or not deployed.port:
-                    continue
-                if deployed.proxy_path in local_paths:
-                    continue
-
-                local_paths.add(deployed.proxy_path)
-                lines.append(f"    # {name} on {hostname}")
-                lines.append(f"    handle_path {deployed.proxy_path}/* {{")
-                lines.append(f"        reverse_proxy {hostname}:{deployed.port}")
-                lines.append("    }")
-                lines.append("")
-
-    # Static frontends — served IN PLACE from each program's repo build output.
-    # A behavior=frontend program with no service is static; Caddy roots directly
-    # at <source>/<build.outputs[0]> (no central copy). castle-app is the root app
-    # (served at /); other static frontends mount at /<name>.
-    root_serve = _root_static_serve(lines, local_paths)
-
-    if root_serve is not None:
-        lines.append("    handle {")
-        lines.append(f"        root * {root_serve}")
-        lines.append("        try_files {path} /index.html")
-        lines.append("        file_server")
-        lines.append("    }")
+    if root_static is not None:
+        lines += [
+            "    handle {",
+            f"        root * {root_static.target}",
+            "        try_files {path} /index.html",
+            "        file_server",
+            "    }",
+        ]
     else:
-        fallback = SPECS_DIR / "app"
-        lines.append("    handle / {")
-        lines.append(f"        root * {fallback}")
-        lines.append("        file_server")
-        lines.append("    }")
+        lines += [
+            "    handle / {",
+            f"        root * {SPECS_DIR / 'app'}",
+            "        file_server",
+            "    }",
+        ]
 
     lines.append("}")
     return "\n".join(lines)
-
-
-def _root_static_serve(lines: list[str], local_paths: set[str]) -> Path | None:
-    """Emit handle_path blocks for non-root static frontends; return the root app's
-    serve dir (castle-app), or None. Static frontends are served from their repo
-    build output in place — no copy into a central content dir."""
-    try:
-        from castle_core.config import load_config
-
-        config = load_config()
-    except Exception:
-        return None
-
-    root_serve: Path | None = None
-    for name, prog in sorted(config.programs.items()):
-        if prog.behavior != "frontend" or not prog.source:
-            continue
-        if not (prog.build and prog.build.outputs):
-            continue
-        if name in config.services:  # self-serving frontend → handled as a proxy route
-            continue
-        serve_dir = Path(prog.source) / prog.build.outputs[0]
-        if name == "castle-app":
-            root_serve = serve_dir
-            continue
-        path_prefix = f"/{name}"
-        if path_prefix in local_paths:
-            continue
-        local_paths.add(path_prefix)
-        lines.append(f"    handle_path {path_prefix}/* {{")
-        lines.append(f"        root * {serve_dir}")
-        lines.append("        try_files {path} /index.html")
-        lines.append("        file_server")
-        lines.append("    }")
-        lines.append("")
-    return root_serve
