@@ -878,6 +878,8 @@ def get_gateway() -> GatewayInfo:
         )
         for r in compute_routes(registry, config, remote or None)
     ]
+    # Caddyfile order is precedence-sensitive; the displayed table is alphabetical.
+    routes.sort(key=lambda r: r.address)
 
     return GatewayInfo(
         port=registry.node.gateway_port,

@@ -137,9 +137,10 @@ def _gateway_status() -> int:
         return 0
 
     # Each route: address → target, tagged by kind. static = files served in
-    # place; proxy/remote = reverse-proxied to a process.
+    # place; proxy/remote = reverse-proxied to a process. (Caddyfile order is
+    # precedence-sensitive; this table is alphabetical.)
     print(f"\n  {'ADDRESS':24} {'KIND':7} TARGET")
-    for r in routes:
+    for r in sorted(routes, key=lambda r: r.address):
         target = r.target.replace("localhost:", ":") if r.kind != "static" else r.target
         print(f"  {r.address:24} {r.kind:7} {target}")
     return 0
