@@ -338,14 +338,20 @@ async def run_action(verb: str, name: str, comp: ProgramSpec, root: Path) -> Act
                 program=name, action="check", status="error",
                 output="No checkable verbs available.",
             )
+        sections: list[str] = []
         for sub in subs:
             result = await run_action(sub, name, comp, root)
+            mark = "✓" if result.status == "ok" else "✗"
+            body = result.output.strip()
+            sections.append(f"{mark} {sub}" + (f"\n{body}" if body else ""))
             if result.status != "ok":
                 return ActionResult(
                     program=name, action="check", status="error",
-                    output=f"{sub} failed:\n{result.output}",
+                    output="\n\n".join(sections),
                 )
-        return ActionResult(program=name, action="check", status="ok")
+        return ActionResult(
+            program=name, action="check", status="ok", output="\n\n".join(sections)
+        )
 
     # 1. Declared command overrides the stack default.
     declared = _declared_commands(comp, verb)
