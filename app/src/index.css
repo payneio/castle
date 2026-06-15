@@ -17,3 +17,13 @@ body {
   color: var(--foreground);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
+
+/* Native <select> popups otherwise fall back to the OS default (light)
+   background while inheriting the light theme text — unreadable. Pin both. */
+select {
+  color: var(--foreground);
+}
+select option {
+  background-color: var(--card);
+  color: var(--foreground);
+}
