@@ -199,11 +199,20 @@ Discriminated union on `runner`:
 
 | Runner | Sync | Deploy | Key fields |
 |--------|------|--------|------------|
-| `python` | `uv sync` | `which(program)` → installed binary | `program`, `args` |
+| `python` | *(none — `uv run` self-syncs)* | `uv run --project <source> --no-dev <program>` | `program`, `args` |
 | `command` | *(none)* | `which(argv[0])` → resolved path | `argv` |
 | `container` | *(none)* | `docker`/`podman` `run` | `image`, `command`, `ports`, `volumes` |
 | `node` | `package_manager install` | `package_manager run script` | `script`, `package_manager` |
 | `remote` | *(none)* | *(none — no local process)* | `base_url`, `health_url` |
+
+A `python` service runs **in place from its own project venv** via `uv run`, which
+syncs the env to the project's lockfile before launching. There is no separate
+tool venv and no `uv tool install` step: **a restart picks up both code and
+dependency changes** (the deploy-time `ExecStart` is deterministic from `source`,
+so it never goes stale). `uv tool install` is reserved for `tool`-behavior
+programs, where being on a human's PATH is the point. If a `python` service
+declares a `program` with no resolvable `source`, deploy falls back to a PATH
+lookup of the script.
 
 ```yaml
 run:

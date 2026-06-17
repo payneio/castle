@@ -200,11 +200,15 @@ def _build_deployed_service(
     env = dict(svc.defaults.env) if (svc.defaults and svc.defaults.env) else {}
     env = resolve_env_vars(env, _env_context(name, config_key, port))
 
-    # Ensure python tool is installed before resolving binary
-    _ensure_python_tool(config, svc.program, messages)
+    # `command`-runner services resolve a tool on PATH → ensure it's installed.
+    # `python`-runner services run in place via `uv run` (below) — no tool venv.
+    if run.runner == "command":
+        _ensure_python_tool(config, svc.program, messages)
 
     # Build run_cmd
-    run_cmd = _build_run_cmd(name, run, env, messages)
+    run_cmd = _build_run_cmd(
+        name, run, env, messages, _program_source_dir(config, svc.program)
+    )
 
     # Proxy: a path prefix (handle_path on the gateway) and/or a hostname (a
     # dedicated host site block, so a root-based app serves unchanged).
@@ -253,8 +257,11 @@ def _build_deployed_job(
     config_key = job.program or name
     env = dict(job.defaults.env) if (job.defaults and job.defaults.env) else {}
     env = resolve_env_vars(env, _env_context(name, config_key, None))
-    _ensure_python_tool(config, job.program, messages)
-    run_cmd = _build_run_cmd(name, run, env, messages)
+    if run.runner == "command":
+        _ensure_python_tool(config, job.program, messages)
+    run_cmd = _build_run_cmd(
+        name, run, env, messages, _program_source_dir(config, job.program)
+    )
 
     stack = None
     if job.program and job.program in config.programs:
@@ -293,10 +300,25 @@ def _python_tool_needs_install(program: str) -> bool:
     return False
 
 
+def _program_source_dir(config: CastleConfig, program: str | None) -> Path | None:
+    """The absolute source dir of a referenced program, if any.
+
+    `load_config` has already resolved `source` to an absolute path (repo: and
+    relative forms included), so this is a plain lookup."""
+    if program and program in config.programs:
+        src = config.programs[program].source
+        if src:
+            return Path(src)
+    return None
+
+
 def _ensure_python_tool(
     config: CastleConfig, program: str | None, messages: list[str]
 ) -> None:
-    """Ensure a Python program's editable install is current."""
+    """Ensure a Python program's editable install is current.
+
+    Only the `command` runner needs this — it resolves a tool on PATH. The
+    `python` runner runs in place via `uv run` and never touches a tool venv."""
     if not program or program not in config.programs:
         return
     comp = config.programs[program]
@@ -323,17 +345,33 @@ def _ensure_python_tool(
         messages.append(f"Installed {program}")
 
 
-def _build_run_cmd(name: str, run: object, env: dict[str, str], messages: list[str]) -> list[str]:
+def _build_run_cmd(
+    name: str,
+    run: object,
+    env: dict[str, str],
+    messages: list[str],
+    source_dir: Path | None = None,
+) -> list[str]:
     """Build a run command list from a RunSpec."""
     match run.runner:  # type: ignore[union-attr]
         case "python":
-            resolved = shutil.which(run.program)  # type: ignore[union-attr]
-            if not resolved:
-                messages.append(
-                    f"Warning: '{run.program}' not on PATH. "  # type: ignore[union-attr]
-                    f"Install with: uv tool install --editable <source>"
-                )
-            cmd = [resolved or run.program]  # type: ignore[union-attr]
+            # Run the program in place from its own project venv via `uv run`,
+            # which syncs the env to the lockfile before launching. One venv per
+            # program (no separate tool venv); restart picks up both code and
+            # dependency changes. Falls back to a PATH lookup only when there's no
+            # resolvable source (a service that declares run.program without a
+            # catalog program).
+            if source_dir and source_dir.is_dir():
+                uv = shutil.which("uv") or "uv"
+                cmd = [uv, "run", "--project", str(source_dir), "--no-dev", run.program]  # type: ignore[union-attr]
+            else:
+                resolved = shutil.which(run.program)  # type: ignore[union-attr]
+                if not resolved:
+                    messages.append(
+                        f"Warning: '{run.program}' has no source dir and is not on "  # type: ignore[union-attr]
+                        f"PATH. Declare a program source, or install it."
+                    )
+                cmd = [resolved or run.program]  # type: ignore[union-attr]
             if run.args:  # type: ignore[union-attr]
                 cmd.extend(run.args)  # type: ignore[union-attr]
             return cmd
