@@ -8,6 +8,7 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
+from castle_core.config import USER_TOOL_PATH_DIRS
 from castle_core.manifest import ProgramSpec
 
 DEV_ACTIONS = ["build", "test", "lint", "format", "type-check", "check", "run"]
@@ -15,15 +16,18 @@ INSTALL_ACTIONS = ["install", "uninstall"]
 ALL_ACTIONS = DEV_ACTIONS + INSTALL_ACTIONS
 
 # Verbs a stack handler can provide (everything except `run`, which is declared-only).
-_STACK_VERBS = {"build", "test", "lint", "format", "type-check", "check", "install", "uninstall"}
+_STACK_VERBS = {
+    "build",
+    "test",
+    "lint",
+    "format",
+    "type-check",
+    "check",
+    "install",
+    "uninstall",
+}
 # Verbs whose handler method name differs from the verb spelling.
 _VERB_METHOD = {"type-check": "type_check"}
-
-# User-local tool directories that may not be on the systemd service PATH.
-_EXTRA_PATH_DIRS = [
-    Path.home() / ".local" / "share" / "pnpm",
-    Path.home() / ".local" / "bin",
-]
 
 
 @dataclass
@@ -39,13 +43,15 @@ class ActionResult:
 def _build_env() -> dict[str, str]:
     """Build a subprocess env with user tool dirs on PATH."""
     env = os.environ.copy()
-    extra = ":".join(str(d) for d in _EXTRA_PATH_DIRS if d.exists())
+    extra = ":".join(str(d) for d in USER_TOOL_PATH_DIRS if d.exists())
     if extra:
         env["PATH"] = extra + ":" + env.get("PATH", "")
     return env
 
 
-async def _run(cmd: list[str], cwd: Path, env: dict[str, str] | None = None) -> tuple[int, str]:
+async def _run(
+    cmd: list[str], cwd: Path, env: dict[str, str] | None = None
+) -> tuple[int, str]:
     """Run a subprocess and return (returncode, combined output)."""
     run_env = _build_env()
     if env:
@@ -93,7 +99,9 @@ class StackHandler:
     async def format(self, name: str, comp: ProgramSpec, root: Path) -> ActionResult:
         raise NotImplementedError
 
-    async def type_check(self, name: str, comp: ProgramSpec, root: Path) -> ActionResult:
+    async def type_check(
+        self, name: str, comp: ProgramSpec, root: Path
+    ) -> ActionResult:
         raise NotImplementedError
 
     async def check(self, name: str, comp: ProgramSpec, root: Path) -> ActionResult:
@@ -127,40 +135,59 @@ class PythonHandler(StackHandler):
         src = _source_dir(comp, root)
         rc, output = await _run(["uv", "sync"], src)
         return ActionResult(
-            program=name, action="build", status="ok" if rc == 0 else "error", output=output
+            program=name,
+            action="build",
+            status="ok" if rc == 0 else "error",
+            output=output,
         )
 
     async def test(self, name: str, comp: ProgramSpec, root: Path) -> ActionResult:
         src = _source_dir(comp, root)
         if not (src / "tests").exists():
             return ActionResult(
-                program=name, action="test", status="ok",
+                program=name,
+                action="test",
+                status="ok",
                 output="No tests directory found, skipping.",
             )
         rc, output = await _run(["uv", "run", "pytest", "tests/", "-v"], src)
         return ActionResult(
-            program=name, action="test", status="ok" if rc == 0 else "error", output=output
+            program=name,
+            action="test",
+            status="ok" if rc == 0 else "error",
+            output=output,
         )
 
     async def lint(self, name: str, comp: ProgramSpec, root: Path) -> ActionResult:
         src = _source_dir(comp, root)
         rc, output = await _run(["uv", "run", "ruff", "check", "."], src)
         return ActionResult(
-            program=name, action="lint", status="ok" if rc == 0 else "error", output=output
+            program=name,
+            action="lint",
+            status="ok" if rc == 0 else "error",
+            output=output,
         )
 
     async def format(self, name: str, comp: ProgramSpec, root: Path) -> ActionResult:
         src = _source_dir(comp, root)
         rc, output = await _run(["uv", "run", "ruff", "format", "."], src)
         return ActionResult(
-            program=name, action="format", status="ok" if rc == 0 else "error", output=output
+            program=name,
+            action="format",
+            status="ok" if rc == 0 else "error",
+            output=output,
         )
 
-    async def type_check(self, name: str, comp: ProgramSpec, root: Path) -> ActionResult:
+    async def type_check(
+        self, name: str, comp: ProgramSpec, root: Path
+    ) -> ActionResult:
         src = _source_dir(comp, root)
         rc, output = await _run(["uv", "run", "pyright"], src)
         return ActionResult(
-            program=name, action="type-check", status="ok" if rc == 0 else "error", output=output
+            program=name,
+            action="type-check",
+            status="ok" if rc == 0 else "error",
+            output=output,
         )
 
     async def install(self, name: str, comp: ProgramSpec, root: Path) -> ActionResult:
@@ -172,7 +199,10 @@ class PythonHandler(StackHandler):
             ["uv", "tool", "install", "--editable", pkg_spec, "--force"], src
         )
         return ActionResult(
-            program=name, action="install", status="ok" if rc == 0 else "error", output=output
+            program=name,
+            action="install",
+            status="ok" if rc == 0 else "error",
+            output=output,
         )
 
     async def uninstall(self, name: str, comp: ProgramSpec, root: Path) -> ActionResult:
@@ -185,7 +215,10 @@ class PythonHandler(StackHandler):
             pkg_name = data.get("project", {}).get("name", pkg_name)
         rc, output = await _run(["uv", "tool", "uninstall", pkg_name], src)
         return ActionResult(
-            program=name, action="uninstall", status="ok" if rc == 0 else "error", output=output
+            program=name,
+            action="uninstall",
+            status="ok" if rc == 0 else "error",
+            output=output,
         )
 
 
@@ -196,37 +229,56 @@ class ReactViteHandler(StackHandler):
         src = _source_dir(comp, root)
         # Build against the gateway serve prefix so absolute asset URLs resolve at
         # /<name>/ (vite.config reads VITE_BASE). Removes the hand-tuned-base footgun.
-        rc, output = await _run(["pnpm", "build"], src, env={"VITE_BASE": _vite_base(name)})
+        rc, output = await _run(
+            ["pnpm", "build"], src, env={"VITE_BASE": _vite_base(name)}
+        )
         return ActionResult(
-            program=name, action="build", status="ok" if rc == 0 else "error", output=output
+            program=name,
+            action="build",
+            status="ok" if rc == 0 else "error",
+            output=output,
         )
 
     async def test(self, name: str, comp: ProgramSpec, root: Path) -> ActionResult:
         src = _source_dir(comp, root)
         rc, output = await _run(["pnpm", "test"], src)
         return ActionResult(
-            program=name, action="test", status="ok" if rc == 0 else "error", output=output
+            program=name,
+            action="test",
+            status="ok" if rc == 0 else "error",
+            output=output,
         )
 
     async def lint(self, name: str, comp: ProgramSpec, root: Path) -> ActionResult:
         src = _source_dir(comp, root)
         rc, output = await _run(["pnpm", "lint"], src)
         return ActionResult(
-            program=name, action="lint", status="ok" if rc == 0 else "error", output=output
+            program=name,
+            action="lint",
+            status="ok" if rc == 0 else "error",
+            output=output,
         )
 
     async def format(self, name: str, comp: ProgramSpec, root: Path) -> ActionResult:
         src = _source_dir(comp, root)
         rc, output = await _run(["pnpm", "format"], src)
         return ActionResult(
-            program=name, action="format", status="ok" if rc == 0 else "error", output=output
+            program=name,
+            action="format",
+            status="ok" if rc == 0 else "error",
+            output=output,
         )
 
-    async def type_check(self, name: str, comp: ProgramSpec, root: Path) -> ActionResult:
+    async def type_check(
+        self, name: str, comp: ProgramSpec, root: Path
+    ) -> ActionResult:
         src = _source_dir(comp, root)
         rc, output = await _run(["pnpm", "type-check"], src)
         return ActionResult(
-            program=name, action="type-check", status="ok" if rc == 0 else "error", output=output
+            program=name,
+            action="type-check",
+            status="ok" if rc == 0 else "error",
+            output=output,
         )
 
     async def install(self, name: str, comp: ProgramSpec, root: Path) -> ActionResult:
@@ -235,18 +287,24 @@ class ReactViteHandler(StackHandler):
         result = await self.build(name, comp, root)
         if result.status != "ok":
             return ActionResult(
-                program=name, action="install", status="error",
+                program=name,
+                action="install",
+                status="error",
                 output=f"Build failed:\n{result.output}",
             )
         outputs = comp.build.outputs if comp.build else []
         if not outputs:
             return ActionResult(
-                program=name, action="install", status="error",
+                program=name,
+                action="install",
+                status="error",
                 output="No build outputs configured.",
             )
         dist = _source_dir(comp, root) / outputs[0]
         return ActionResult(
-            program=name, action="install", status="ok",
+            program=name,
+            action="install",
+            status="ok",
             output=f"Built; served in place from {dist}",
         )
 
@@ -256,7 +314,9 @@ class ReactViteHandler(StackHandler):
         Deactivating one means dropping its gateway route — handled by removing the
         program from the registry, not by deleting build output."""
         return ActionResult(
-            program=name, action="uninstall", status="ok",
+            program=name,
+            action="uninstall",
+            status="ok",
             output=f"{name}: served in place; nothing to uninstall.",
         )
 
@@ -291,7 +351,11 @@ def _declared_commands(comp: ProgramSpec, verb: str) -> list[list[str]] | None:
 
 def _stack_provides(comp: ProgramSpec, verb: str) -> bool:
     """Whether the program's stack handler can run this verb."""
-    return bool(comp.source) and verb in _STACK_VERBS and get_handler(comp.stack) is not None
+    return (
+        bool(comp.source)
+        and verb in _STACK_VERBS
+        and get_handler(comp.stack) is not None
+    )
 
 
 def is_available(comp: ProgramSpec, verb: str) -> bool:
@@ -319,11 +383,15 @@ async def _run_declared(
         rc, output = await _run(argv, src)
         outputs.append(output)
         if rc != 0:
-            return ActionResult(program=name, action=verb, status="error", output="".join(outputs))
+            return ActionResult(
+                program=name, action=verb, status="error", output="".join(outputs)
+            )
     return ActionResult(program=name, action=verb, status="ok", output="".join(outputs))
 
 
-async def run_action(verb: str, name: str, comp: ProgramSpec, root: Path) -> ActionResult:
+async def run_action(
+    verb: str, name: str, comp: ProgramSpec, root: Path
+) -> ActionResult:
     """Resolve and run a verb: declared command → stack default → unavailable.
 
     This is the single entry point callers should use; it replaces reaching for
@@ -335,7 +403,9 @@ async def run_action(verb: str, name: str, comp: ProgramSpec, root: Path) -> Act
         subs = [s for s in ("lint", "type-check", "test") if is_available(comp, s)]
         if not subs:
             return ActionResult(
-                program=name, action="check", status="error",
+                program=name,
+                action="check",
+                status="error",
                 output="No checkable verbs available.",
             )
         sections: list[str] = []
@@ -346,7 +416,9 @@ async def run_action(verb: str, name: str, comp: ProgramSpec, root: Path) -> Act
             sections.append(f"{mark} {sub}" + (f"\n{body}" if body else ""))
             if result.status != "ok":
                 return ActionResult(
-                    program=name, action="check", status="error",
+                    program=name,
+                    action="check",
+                    status="error",
                     output="\n\n".join(sections),
                 )
         return ActionResult(
@@ -359,7 +431,9 @@ async def run_action(verb: str, name: str, comp: ProgramSpec, root: Path) -> Act
         try:
             src = _source_dir(comp, root)
         except ValueError:
-            return ActionResult(program=name, action=verb, status="error", output="No source directory")
+            return ActionResult(
+                program=name, action=verb, status="error", output="No source directory"
+            )
         return await _run_declared(name, verb, declared, src)
 
     # 2. Stack default.
@@ -371,7 +445,9 @@ async def run_action(verb: str, name: str, comp: ProgramSpec, root: Path) -> Act
 
     # 3. Unavailable.
     return ActionResult(
-        program=name, action=verb, status="error",
+        program=name,
+        action=verb,
+        status="error",
         output=f"Verb '{verb}' is not available for '{name}' "
         f"(no declared command and no stack handler provides it).",
     )

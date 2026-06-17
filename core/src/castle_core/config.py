@@ -75,6 +75,20 @@ DATA_DIR = _resolve_data_dir()
 SECRETS_DIR = CASTLE_HOME / "secrets"
 REPOS_DIR = _resolve_repos_dir()
 
+# User tool directories — the single source of truth for "where our CLIs live".
+# Used both at build time (dev-verb subprocess PATH) and at run time (generated
+# systemd unit PATH) so a service sees the same tools castle used to build it.
+# Order matters: pnpm's modern standalone installer puts its shim in
+# $PNPM_HOME/bin, which must win over the bare dir (older installs leave a stale
+# version wrapper there). nvm/node is intentionally omitted — it's versioned and
+# brittle; a service needing a specific node should pin it via defaults.env.
+USER_TOOL_PATH_DIRS = [
+    Path.home() / ".local" / "bin",
+    Path.home() / ".local" / "share" / "pnpm" / "bin",
+    Path.home() / ".local" / "share" / "pnpm",
+    Path("/usr/local/go/bin"),
+]
+
 # Backwards-compat aliases (used by existing imports)
 GENERATED_DIR = SPECS_DIR
 STATIC_DIR = CONTENT_DIR
@@ -97,8 +111,7 @@ def find_castle_root() -> Path:
             return current
         current = current.parent
     raise FileNotFoundError(
-        "Could not find castle.yaml.\n"
-        f"Expected at: {CASTLE_HOME / 'castle.yaml'}"
+        f"Could not find castle.yaml.\nExpected at: {CASTLE_HOME / 'castle.yaml'}"
     )
 
 
@@ -125,11 +138,7 @@ class CastleConfig:
     @property
     def tools(self) -> dict[str, ProgramSpec]:
         """Return programs that are tools (behavior == 'tool')."""
-        return {
-            k: v
-            for k, v in self.programs.items()
-            if v.behavior == "tool"
-        }
+        return {k: v for k, v in self.programs.items() if v.behavior == "tool"}
 
     @property
     def frontends(self) -> dict[str, ProgramSpec]:
@@ -230,8 +239,7 @@ def _expand_units(
     for name, unit in units.items():
         if name in programs or name in services or name in jobs:
             raise ValueError(
-                f"Unit '{name}' conflicts with existing entry in "
-                f"programs/services/jobs"
+                f"Unit '{name}' conflicts with existing entry in programs/services/jobs"
             )
 
         defaults = _STACK_DEFAULTS.get(unit.stack or "", {})

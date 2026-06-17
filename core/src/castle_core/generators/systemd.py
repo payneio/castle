@@ -5,6 +5,7 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
+from castle_core.config import USER_TOOL_PATH_DIRS
 from castle_core.manifest import RestartPolicy, SystemdSpec
 from castle_core.registry import Deployment
 
@@ -86,7 +87,8 @@ def generate_unit_from_deployed(
     env_lines = ""
     for key, value in deployed.env.items():
         env_lines += f"Environment={key}={value}\n"
-    env_lines += f'Environment="PATH={Path.home() / ".local/bin"}:/usr/local/bin:/usr/bin:/bin"\n'
+    tool_path = ":".join(str(d) for d in USER_TOOL_PATH_DIRS if d.exists())
+    env_lines += f'Environment="PATH={tool_path}:/usr/local/bin:/usr/bin:/bin"\n'
 
     sd = systemd_spec
     description = deployed.description or name
