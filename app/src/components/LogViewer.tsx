@@ -1,4 +1,5 @@
 import { useEffect, useImperativeHandle, useRef, useState, forwardRef } from "react"
+import { Maximize2, Minimize2, Trash2 } from "lucide-react"
 import { apiClient } from "@/services/api/client"
 
 interface LogViewerProps {
@@ -17,53 +18,83 @@ export const LogViewer = forwardRef<LogViewerHandle, LogViewerProps>(function Lo
 ) {
   const [logs, setLogs] = useState<string[]>([])
   const [connected, setConnected] = useState(false)
+  const [maximized, setMaximized] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!follow) {
-      // Static fetch
       apiClient
         .get<{ lines: string[] }>(`/logs/${name}?n=${lines}`)
         .then((data) => setLogs(data.lines))
       return
     }
 
-    // SSE follow
     const url = apiClient.streamUrl(`/logs/${name}?n=${lines}&follow=true`)
     const es = new EventSource(url)
-
     es.onopen = () => setConnected(true)
-
     es.onmessage = (e) => {
       setLogs((prev) => {
         const next = [...prev, e.data]
-        // Keep last 500 lines in memory
         return next.length > 500 ? next.slice(-500) : next
       })
     }
-
     es.onerror = () => setConnected(false)
-
     return () => es.close()
   }, [name, lines, follow])
 
-  useImperativeHandle(ref, () => ({ clear: () => setLogs([]) }), [])
+  const clear = () => setLogs([])
+  useImperativeHandle(ref, () => ({ clear }), [])
+
+  // Esc exits fullscreen.
+  useEffect(() => {
+    if (!maximized) return
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setMaximized(false)
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [maximized])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [logs])
 
+  const btn =
+    "p-1 rounded text-[var(--muted)] hover:text-[var(--foreground)] hover:bg-white/10 transition-colors"
+
   return (
-    <div className="bg-black/40 border border-[var(--border)] rounded-lg overflow-hidden">
+    <div
+      className={
+        maximized
+          ? "fixed inset-0 z-50 bg-[var(--background)] flex flex-col"
+          : "bg-black/40 border border-[var(--border)] rounded-lg overflow-hidden"
+      }
+    >
       <div className="flex items-center justify-between px-3 py-1.5 border-b border-[var(--border)] text-xs text-[var(--muted)]">
-        <span>logs: {name}</span>
-        {follow && (
-          <span className={connected ? "text-green-400" : "text-red-400"}>
-            {connected ? "streaming" : "disconnected"}
-          </span>
-        )}
+        <span className="flex items-center gap-2">
+          <span>logs: {name}</span>
+          {follow && (
+            <span className={connected ? "text-green-400" : "text-red-400"}>
+              {connected ? "streaming" : "disconnected"}
+            </span>
+          )}
+        </span>
+        <span className="flex items-center gap-0.5">
+          <button onClick={clear} className={btn} title="Clear">
+            <Trash2 size={13} />
+          </button>
+          <button
+            onClick={() => setMaximized((m) => !m)}
+            className={btn}
+            title={maximized ? "Restore (Esc)" : "Maximize"}
+          >
+            {maximized ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+          </button>
+        </span>
       </div>
-      <pre className="p-3 text-xs font-mono text-gray-300 overflow-x-auto max-h-96 overflow-y-auto">
+      <pre
+        className={`p-3 text-xs font-mono text-gray-300 ${
+          maximized ? "flex-1 overflow-auto" : "overflow-x-auto max-h-96 overflow-y-auto"
+        }`}
+      >
         {logs.length === 0 ? (
           <span className="text-[var(--muted)]">No logs yet</span>
         ) : (

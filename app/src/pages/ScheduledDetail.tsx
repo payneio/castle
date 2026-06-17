@@ -1,8 +1,7 @@
-import { useRef } from "react"
 import { useParams } from "react-router-dom"
-import { Clock, Trash2 } from "lucide-react"
+import { Clock } from "lucide-react"
 import { useJob, useStatus, useEventStream } from "@/services/api/hooks"
-import { LogViewer, type LogViewerHandle } from "@/components/LogViewer"
+import { LogViewer } from "@/components/LogViewer"
 import { DetailHeader } from "@/components/detail/DetailHeader"
 import { ServiceControls } from "@/components/detail/ServiceControls"
 import { SystemdPanel } from "@/components/detail/SystemdPanel"
@@ -10,7 +9,6 @@ import { ConfigPanel } from "@/components/detail/ConfigPanel"
 
 export function ScheduledDetailPage() {
   useEventStream()
-  const logRef = useRef<LogViewerHandle>(null)
   const { name } = useParams<{ name: string }>()
   const { data: deployment, isLoading, error, refetch } = useJob(name ?? "")
   const { data: statusResp } = useStatus()
@@ -74,16 +72,8 @@ export function ScheduledDetailPage() {
 
       {deployment.managed && (
         <div className="mb-6">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-lg font-semibold">Logs</h2>
-            <button
-              onClick={() => logRef.current?.clear()}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded border border-[var(--border)] text-[var(--muted)] hover:text-[var(--foreground)] hover:border-[var(--foreground)] transition-colors"
-            >
-              <Trash2 size={14} /> Clear
-            </button>
-          </div>
-          <LogViewer ref={logRef} name={deployment.id} />
+          <h2 className="text-lg font-semibold mb-3">Logs</h2>
+          <LogViewer name={deployment.id} />
         </div>
       )}
     </div>
