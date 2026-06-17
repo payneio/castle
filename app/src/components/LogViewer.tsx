@@ -1,5 +1,5 @@
 import { useEffect, useImperativeHandle, useRef, useState, forwardRef } from "react"
-import { Maximize2, Minimize2, Trash2 } from "lucide-react"
+import { Maximize2, Minimize2, Pause, Play, Trash2 } from "lucide-react"
 import { apiClient } from "@/services/api/client"
 
 interface LogViewerProps {
@@ -19,7 +19,11 @@ export const LogViewer = forwardRef<LogViewerHandle, LogViewerProps>(function Lo
   const [logs, setLogs] = useState<string[]>([])
   const [connected, setConnected] = useState(false)
   const [maximized, setMaximized] = useState(false)
+  // When true, new log lines scroll the view to the bottom. Scrolling up to read
+  // pauses it; scrolling back to the bottom (or the play button) resumes.
+  const [autoScroll, setAutoScroll] = useState(true)
   const bottomRef = useRef<HTMLDivElement>(null)
+  const preRef = useRef<HTMLPreElement>(null)
 
   useEffect(() => {
     if (!follow) {
@@ -53,9 +57,20 @@ export const LogViewer = forwardRef<LogViewerHandle, LogViewerProps>(function Lo
     return () => window.removeEventListener("keydown", onKey)
   }, [maximized])
 
+  // Jump to the newest line only while auto-scroll is on. Instant (not smooth) so
+  // the scroll-position check below never sees a mid-animation false "scrolled up".
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [logs])
+    if (autoScroll) bottomRef.current?.scrollIntoView()
+  }, [logs, autoScroll])
+
+  // Keep auto-scroll in sync with where the user is: away from the bottom pauses,
+  // back at the bottom resumes — so the button and the scroll position never disagree.
+  const onScroll = () => {
+    const el = preRef.current
+    if (!el) return
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40
+    setAutoScroll(atBottom)
+  }
 
   const btn =
     "p-1 rounded text-[var(--muted)] hover:text-[var(--foreground)] hover:bg-white/10 transition-colors"
@@ -76,8 +91,16 @@ export const LogViewer = forwardRef<LogViewerHandle, LogViewerProps>(function Lo
               {connected ? "streaming" : "disconnected"}
             </span>
           )}
+          {follow && !autoScroll && <span className="text-amber-400">paused</span>}
         </span>
         <span className="flex items-center gap-0.5">
+          <button
+            onClick={() => setAutoScroll((s) => !s)}
+            className={btn}
+            title={autoScroll ? "Pause auto-scroll" : "Resume auto-scroll (jump to latest)"}
+          >
+            {autoScroll ? <Pause size={13} /> : <Play size={13} />}
+          </button>
           <button onClick={clear} className={btn} title="Clear">
             <Trash2 size={13} />
           </button>
@@ -91,6 +114,8 @@ export const LogViewer = forwardRef<LogViewerHandle, LogViewerProps>(function Lo
         </span>
       </div>
       <pre
+        ref={preRef}
+        onScroll={onScroll}
         className={`p-3 text-xs font-mono text-gray-300 ${
           maximized ? "flex-1 overflow-auto" : "overflow-x-auto max-h-96 overflow-y-auto"
         }`}
