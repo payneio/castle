@@ -222,6 +222,20 @@ class PythonHandler(StackHandler):
         )
 
 
+# pnpm (10+) runs a deps-status check before `pnpm <script>` that wants to purge +
+# reinstall node_modules and aborts when there's no TTY
+# (ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY). It's a false positive for a build —
+# the verb builds, it doesn't install — so skip the check and use the existing
+# modules. (The env-var form isn't honored; the CLI flag is.) CI=true guards any
+# other interactive prompt.
+_PNPM_ENV = {"CI": "true"}
+
+
+def _pnpm(*args: str) -> list[str]:
+    """A pnpm argv with the pre-run deps check disabled."""
+    return ["pnpm", "--config.verify-deps-before-run=false", *args]
+
+
 class ReactViteHandler(StackHandler):
     """Handler for react-vite stack."""
 
@@ -230,7 +244,7 @@ class ReactViteHandler(StackHandler):
         # Build against the gateway serve prefix so absolute asset URLs resolve at
         # /<name>/ (vite.config reads VITE_BASE). Removes the hand-tuned-base footgun.
         rc, output = await _run(
-            ["pnpm", "build"], src, env={"VITE_BASE": _vite_base(name)}
+            _pnpm("build"), src, env={**_PNPM_ENV, "VITE_BASE": _vite_base(name)}
         )
         return ActionResult(
             program=name,
@@ -241,7 +255,7 @@ class ReactViteHandler(StackHandler):
 
     async def test(self, name: str, comp: ProgramSpec, root: Path) -> ActionResult:
         src = _source_dir(comp, root)
-        rc, output = await _run(["pnpm", "test"], src)
+        rc, output = await _run(_pnpm("test"), src, env=_PNPM_ENV)
         return ActionResult(
             program=name,
             action="test",
@@ -251,7 +265,7 @@ class ReactViteHandler(StackHandler):
 
     async def lint(self, name: str, comp: ProgramSpec, root: Path) -> ActionResult:
         src = _source_dir(comp, root)
-        rc, output = await _run(["pnpm", "lint"], src)
+        rc, output = await _run(_pnpm("lint"), src, env=_PNPM_ENV)
         return ActionResult(
             program=name,
             action="lint",
@@ -261,7 +275,7 @@ class ReactViteHandler(StackHandler):
 
     async def format(self, name: str, comp: ProgramSpec, root: Path) -> ActionResult:
         src = _source_dir(comp, root)
-        rc, output = await _run(["pnpm", "format"], src)
+        rc, output = await _run(_pnpm("format"), src, env=_PNPM_ENV)
         return ActionResult(
             program=name,
             action="format",
@@ -273,7 +287,7 @@ class ReactViteHandler(StackHandler):
         self, name: str, comp: ProgramSpec, root: Path
     ) -> ActionResult:
         src = _source_dir(comp, root)
-        rc, output = await _run(["pnpm", "type-check"], src)
+        rc, output = await _run(_pnpm("type-check"), src, env=_PNPM_ENV)
         return ActionResult(
             program=name,
             action="type-check",
