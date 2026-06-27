@@ -8,6 +8,7 @@ copies frontend build outputs.
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from dataclasses import dataclass, field
@@ -19,13 +20,16 @@ from castle_core.config import (
     CastleConfig,
     ensure_dirs,
     load_config,
-    resolve_env_vars,
+    resolve_env_split,
 )
 from castle_core.generators.caddyfile import generate_caddyfile_from_registry
 from castle_core.generators.systemd import (
+    SECRET_ENV_DIR,
     generate_timer,
     generate_unit_from_deployed,
+    secret_env_path,
     timer_name,
+    unit_env_file,
     unit_name,
 )
 from castle_core.manifest import JobSpec, ServiceSpec
@@ -143,9 +147,13 @@ def _reload_gateway(messages: list[str]) -> None:
         text=True,
     )
     if active.stdout.strip() != "active":
-        messages.append("Gateway not running — skipped reload (start it with 'castle gateway start').")
+        messages.append(
+            "Gateway not running — skipped reload (start it with 'castle gateway start')."
+        )
         return
-    result = subprocess.run(["systemctl", "--user", "reload", gw_unit], capture_output=True, text=True)
+    result = subprocess.run(
+        ["systemctl", "--user", "reload", gw_unit], capture_output=True, text=True
+    )
     if result.returncode == 0:
         messages.append("Gateway reloaded.")
     else:
@@ -165,7 +173,32 @@ def _env_context(name: str, config_key: str, port: int | None) -> dict[str, str]
     return ctx
 
 
-def _resolve_description(config: CastleConfig, spec: ServiceSpec | JobSpec) -> str | None:
+def _write_secret_env_file(name: str, secret_env: dict[str, str]) -> Path | None:
+    """Write a deployment's resolved secrets to a mode-0600 env file.
+
+    Keeps secrets out of the generated unit file and the process argv: systemd
+    loads it via ``EnvironmentFile=`` and docker via ``--env-file``. Returns the
+    path, or ``None`` (after removing any stale file) when there are no secrets,
+    so a service that drops its last secret doesn't leave a dangling file.
+    """
+    path = secret_env_path(name)
+    if not secret_env:
+        path.unlink(missing_ok=True)
+        return None
+    SECRET_ENV_DIR.mkdir(parents=True, exist_ok=True)
+    os.chmod(SECRET_ENV_DIR, 0o700)
+    # O_TRUNC keeps a pre-existing file's mode, so chmod explicitly afterwards.
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        for key, value in secret_env.items():
+            f.write(f"{key}={value}\n")
+    os.chmod(path, 0o600)
+    return path
+
+
+def _resolve_description(
+    config: CastleConfig, spec: ServiceSpec | JobSpec
+) -> str | None:
     """Get description, falling through to program if referenced."""
     if spec.description:
         return spec.description
@@ -196,18 +229,26 @@ def _build_deployed_service(
 
     # Env is exactly what's declared in defaults.env — no hidden convention
     # injection. ${port}/${data_dir}/${name} let the program's own env var names
-    # map to castle's computed values without hardcoding them.
-    env = dict(svc.defaults.env) if (svc.defaults and svc.defaults.env) else {}
-    env = resolve_env_vars(env, _env_context(name, config_key, port))
+    # map to castle's computed values without hardcoding them. Secret-bearing vars
+    # are split out so they never land in the unit file or process argv — they're
+    # written to a mode-0600 env file referenced via EnvironmentFile=/--env-file.
+    raw_env = dict(svc.defaults.env) if (svc.defaults and svc.defaults.env) else {}
+    env, secret_env = resolve_env_split(raw_env, _env_context(name, config_key, port))
+    secret_env_file = _write_secret_env_file(name, secret_env)
 
     # `command`-runner services resolve a tool on PATH → ensure it's installed.
     # `python`-runner services run in place via `uv run` (below) — no tool venv.
     if run.runner == "command":
         _ensure_python_tool(config, svc.program, messages)
 
-    # Build run_cmd
+    # Build run_cmd (container runners get --env-file for the secrets).
     run_cmd = _build_run_cmd(
-        name, run, env, messages, _program_source_dir(config, svc.program)
+        name,
+        run,
+        env,
+        messages,
+        _program_source_dir(config, svc.program),
+        secret_env_file=secret_env_file,
     )
 
     # Proxy: a path prefix (handle_path on the gateway) and/or a hostname (a
@@ -235,6 +276,7 @@ def _build_deployed_service(
         runner=run.runner,
         run_cmd=run_cmd,
         env=env,
+        secret_env_keys=sorted(secret_env),
         description=_resolve_description(config, svc),
         behavior="daemon",
         stack=stack,
@@ -255,12 +297,18 @@ def _build_deployed_job(
     # ${data_dir} is keyed by the program the job runs, not the job name — see
     # _build_deployed_service. Falls back to the job name.
     config_key = job.program or name
-    env = dict(job.defaults.env) if (job.defaults and job.defaults.env) else {}
-    env = resolve_env_vars(env, _env_context(name, config_key, None))
+    raw_env = dict(job.defaults.env) if (job.defaults and job.defaults.env) else {}
+    env, secret_env = resolve_env_split(raw_env, _env_context(name, config_key, None))
+    secret_env_file = _write_secret_env_file(name, secret_env)
     if run.runner == "command":
         _ensure_python_tool(config, job.program, messages)
     run_cmd = _build_run_cmd(
-        name, run, env, messages, _program_source_dir(config, job.program)
+        name,
+        run,
+        env,
+        messages,
+        _program_source_dir(config, job.program),
+        secret_env_file=secret_env_file,
     )
 
     stack = None
@@ -271,6 +319,7 @@ def _build_deployed_job(
         runner=run.runner,
         run_cmd=run_cmd,
         env=env,
+        secret_env_keys=sorted(secret_env),
         description=_resolve_description(config, job),
         behavior="tool",
         stack=stack,
@@ -340,7 +389,9 @@ def _ensure_python_tool(
         text=True,
     )
     if result.returncode != 0:
-        messages.append(f"Error: {program} install failed:\n{result.stdout}{result.stderr}")
+        messages.append(
+            f"Error: {program} install failed:\n{result.stdout}{result.stderr}"
+        )
     else:
         messages.append(f"Installed {program}")
 
@@ -351,8 +402,16 @@ def _build_run_cmd(
     env: dict[str, str],
     messages: list[str],
     source_dir: Path | None = None,
+    secret_env_file: Path | None = None,
 ) -> list[str]:
-    """Build a run command list from a RunSpec."""
+    """Build a run command list from a RunSpec.
+
+    ``env`` holds plain (non-secret) vars only; ``secret_env_file`` is the
+    mode-0600 file holding the deployment's secrets. For container runners the
+    secrets are passed via ``--env-file`` (keeping them out of the argv);
+    systemd-launched runners get them via ``EnvironmentFile=`` on the unit, so
+    ``secret_env_file`` is unused here for those.
+    """
     match run.runner:  # type: ignore[union-attr]
         case "python":
             # Run the program in place from its own project venv via `uv run`,
@@ -392,8 +451,11 @@ def _build_run_cmd(
                 cmd.extend(["-v", vol])
             for key, val in run.env.items():  # type: ignore[union-attr]
                 cmd.extend(["-e", f"{key}={val}"])
+            # env is plain-only; secrets go via --env-file so they never hit argv.
             for key, val in env.items():
                 cmd.extend(["-e", f"{key}={val}"])
+            if secret_env_file is not None:
+                cmd.extend(["--env-file", str(secret_env_file)])
             if run.workdir:  # type: ignore[union-attr]
                 cmd.extend(["-w", run.workdir])  # type: ignore[union-attr]
             cmd.append(run.image)  # type: ignore[union-attr]
@@ -446,6 +508,9 @@ def _teardown_unit(unit_file: str, messages: list[str]) -> None:
     subprocess.run(["systemctl", "--user", "disable", unit_file], check=False)
     path.unlink()
     messages.append(f"Pruned orphan unit: {unit_file}")
+    # Remove the matching secret env file (only services have one; not timers).
+    if unit_file.endswith(".service"):
+        (SECRET_ENV_DIR / f"{unit_file}.env").unlink(missing_ok=True)
 
 
 def _prune_orphans(registry: NodeRegistry, messages: list[str]) -> None:
@@ -484,7 +549,9 @@ def _generate_systemd_units(config: CastleConfig, registry: NodeRegistry) -> Non
                 systemd_spec = job.manage.systemd
 
         svc_name = unit_name(name)
-        svc_content = generate_unit_from_deployed(name, deployed, systemd_spec)
+        svc_content = generate_unit_from_deployed(
+            name, deployed, systemd_spec, env_file=unit_env_file(deployed, name)
+        )
         (SYSTEMD_USER_DIR / svc_name).write_text(svc_content)
 
         if deployed.schedule:

@@ -5,17 +5,38 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-from castle_core.config import USER_TOOL_PATH_DIRS
+from castle_core.config import SECRETS_DIR, USER_TOOL_PATH_DIRS
 from castle_core.manifest import RestartPolicy, SystemdSpec
 from castle_core.registry import Deployment
 
 SYSTEMD_USER_DIR = Path.home() / ".config" / "systemd" / "user"
 UNIT_PREFIX = "castle-"
 
+# Generated mode-0600 env files holding a deployment's resolved secrets, kept out
+# of the unit file and the process argv (loaded via EnvironmentFile= / --env-file).
+SECRET_ENV_DIR = SECRETS_DIR / "env"
+
 
 def unit_name(service_name: str) -> str:
     """Get the systemd unit name for a service."""
     return f"{UNIT_PREFIX}{service_name}.service"
+
+
+def secret_env_path(service_name: str) -> Path:
+    """Path to a deployment's generated secret env file (1:1 with its unit name)."""
+    return SECRET_ENV_DIR / f"{unit_name(service_name)}.env"
+
+
+def unit_env_file(deployed: Deployment, name: str) -> Path | None:
+    """The ``EnvironmentFile=`` path for a systemd-launched runner, or None.
+
+    Container runners load secrets via docker ``--env-file`` (baked into run_cmd),
+    so systemd must not also read them — return None there. Only deployments that
+    actually have secrets get a file.
+    """
+    if deployed.runner == "container" or not deployed.secret_env_keys:
+        return None
+    return secret_env_path(name)
 
 
 def timer_name(service_name: str) -> str:
@@ -77,10 +98,14 @@ def generate_unit_from_deployed(
     name: str,
     deployed: Deployment,
     systemd_spec: SystemdSpec | None = None,
+    env_file: Path | None = None,
 ) -> str:
     """Generate a systemd unit from a deployed component (registry-based).
 
     No repo-relative paths — uses only resolved run_cmd and env from the registry.
+    Secrets are never inlined as ``Environment=`` lines: ``env_file`` (when set)
+    is loaded via ``EnvironmentFile=`` so the values stay out of the unit. The
+    path is referenced fail-loud (no ``-`` prefix): a missing file blocks start.
     """
     exec_start = " ".join(deployed.run_cmd)
 
@@ -89,6 +114,8 @@ def generate_unit_from_deployed(
         env_lines += f"Environment={key}={value}\n"
     tool_path = ":".join(str(d) for d in USER_TOOL_PATH_DIRS if d.exists())
     env_lines += f'Environment="PATH={tool_path}:/usr/local/bin:/usr/bin:/bin"\n'
+    if env_file is not None:
+        env_lines += f"EnvironmentFile={env_file}\n"
 
     sd = systemd_spec
     description = deployed.description or name

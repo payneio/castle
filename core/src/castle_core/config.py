@@ -150,10 +150,16 @@ class CastleConfig:
         }
 
 
-def resolve_env_vars(
+def resolve_env_split(
     env: dict[str, str], context: dict[str, str] | None = None
-) -> dict[str, str]:
-    """Resolve placeholders in env values.
+) -> tuple[dict[str, str], dict[str, str]]:
+    """Resolve placeholders, splitting secret-bearing vars from plain ones.
+
+    Returns ``(plain, secret)``. A var is *secret-bearing* if its raw value
+    contained a ``${secret:...}`` reference — including composite values like
+    ``neo4j/${secret:NEO4J_PASSWORD}``. Both dicts hold fully-resolved values;
+    partitioning lets callers keep secrets out of unit files and process argv
+    (routing them through a mode-0600 env file) while inlining the rest.
 
     - ``${secret:NAME}`` reads `~/.castle/secrets/NAME`.
     - ``${port}`` / ``${data_dir}`` / ``${name}`` (and anything else in
@@ -162,7 +168,8 @@ def resolve_env_vars(
       hardcoding or castle silently injecting a guessed var name.
     """
     context = context or {}
-    resolved = {}
+    plain: dict[str, str] = {}
+    secret: dict[str, str] = {}
     for key, value in env.items():
 
         def replace_var(match: re.Match[str]) -> str:
@@ -173,8 +180,25 @@ def resolve_env_vars(
                 return context[ref]
             return match.group(0)
 
-        resolved[key] = re.sub(r"\$\{([^}]+)\}", replace_var, value)
-    return resolved
+        resolved = re.sub(r"\$\{([^}]+)\}", replace_var, value)
+        if re.search(r"\$\{secret:[^}]+\}", value):
+            secret[key] = resolved
+        else:
+            plain[key] = resolved
+    return plain, secret
+
+
+def resolve_env_vars(
+    env: dict[str, str], context: dict[str, str] | None = None
+) -> dict[str, str]:
+    """Resolve placeholders in env values (secrets included), preserving order.
+
+    Convenience wrapper over :func:`resolve_env_split` for callers that want a
+    single flat dict. Prefer ``resolve_env_split`` when secrets must be kept out
+    of generated artifacts.
+    """
+    plain, secret = resolve_env_split(env, context)
+    return {k: secret[k] if k in secret else plain[k] for k in env}
 
 
 def _read_secret(name: str) -> str:
@@ -513,3 +537,8 @@ def ensure_dirs() -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     SECRETS_DIR.mkdir(parents=True, exist_ok=True)
     os.chmod(SECRETS_DIR, 0o700)
+    # Generated per-deployment secret env files (EnvironmentFile= / --env-file)
+    # live here, kept out of unit files and process argv.
+    secret_env_dir = SECRETS_DIR / "env"
+    secret_env_dir.mkdir(parents=True, exist_ok=True)
+    os.chmod(secret_env_dir, 0o700)

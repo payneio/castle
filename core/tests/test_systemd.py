@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from castle_core.generators.systemd import (
     generate_timer,
     generate_unit_from_deployed,
+    secret_env_path,
+    unit_env_file,
     unit_name,
 )
 from castle_core.registry import Deployment
@@ -82,7 +86,10 @@ class TestUnitFromDeployed:
         deployed = Deployment(
             runner="python",
             run_cmd=["/home/user/.local/bin/uv", "run", "my-svc"],
-            env={"MY_SVC_PORT": "9001", "MY_SVC_DATA_DIR": "/home/user/.castle/data/my-svc"},
+            env={
+                "MY_SVC_PORT": "9001",
+                "MY_SVC_DATA_DIR": "/home/user/.castle/data/my-svc",
+            },
             description="My service",
         )
         unit = generate_unit_from_deployed("my-svc", deployed)
@@ -116,6 +123,70 @@ class TestUnitFromDeployed:
         )
         unit = generate_unit_from_deployed("my-svc", deployed)
         assert "/data/repos/" not in unit
+
+
+class TestSecretEnvFile:
+    """Secrets are referenced via EnvironmentFile=, never inlined."""
+
+    def test_environment_file_added_for_simple_unit(self) -> None:
+        deployed = Deployment(
+            runner="python",
+            run_cmd=["/uv", "run", "my-svc"],
+            env={"PORT": "9001"},
+            secret_env_keys=["API_KEY"],
+        )
+        path = Path("/home/u/.castle/secrets/env/castle-my-svc.service.env")
+        unit = generate_unit_from_deployed("my-svc", deployed, env_file=path)
+        assert f"EnvironmentFile={path}" in unit
+        # fail-loud: no '-' prefix
+        assert f"EnvironmentFile=-{path}" not in unit
+
+    def test_environment_file_added_for_oneshot_job(self) -> None:
+        deployed = Deployment(
+            runner="command",
+            run_cmd=["/bin/job"],
+            env={},
+            schedule="0 2 * * *",
+            secret_env_keys=["TOKEN"],
+        )
+        path = Path("/home/u/.castle/secrets/env/castle-my-job.service.env")
+        unit = generate_unit_from_deployed("my-job", deployed, env_file=path)
+        assert "Type=oneshot" in unit
+        assert f"EnvironmentFile={path}" in unit
+
+    def test_no_environment_file_when_none(self) -> None:
+        deployed = Deployment(runner="python", run_cmd=["/uv", "run", "x"], env={})
+        unit = generate_unit_from_deployed("x", deployed, env_file=None)
+        assert "EnvironmentFile" not in unit
+
+    def test_secret_values_never_in_unit(self) -> None:
+        """The unit references the file path; resolved secret values never appear."""
+        deployed = Deployment(
+            runner="python",
+            run_cmd=["/uv", "run", "x"],
+            env={"PORT": "9001"},
+            secret_env_keys=["API_KEY"],
+        )
+        path = secret_env_path("x")
+        unit = generate_unit_from_deployed("x", deployed, env_file=path)
+        assert "sk-secret" not in unit  # value is in the file, not the unit
+
+
+class TestUnitEnvFile:
+    """unit_env_file decides which runners get an EnvironmentFile= path."""
+
+    def test_none_without_secrets(self) -> None:
+        d = Deployment(runner="python", run_cmd=[], env={}, secret_env_keys=[])
+        assert unit_env_file(d, "x") is None
+
+    def test_path_for_python_with_secrets(self) -> None:
+        d = Deployment(runner="python", run_cmd=[], env={}, secret_env_keys=["K"])
+        assert unit_env_file(d, "x") == secret_env_path("x")
+
+    def test_none_for_container(self) -> None:
+        """Containers load secrets via docker --env-file, not systemd."""
+        d = Deployment(runner="container", run_cmd=[], env={}, secret_env_keys=["K"])
+        assert unit_env_file(d, "x") is None
 
 
 class TestGenerateTimer:

@@ -8,6 +8,7 @@ import pytest
 from castle_core.config import (
     CastleConfig,
     load_config,
+    resolve_env_split,
     resolve_env_vars,
     save_config,
 )
@@ -151,3 +152,71 @@ class TestResolveEnvVars:
         env = {"API_KEY": "${secret:NONEXISTENT}"}
         resolved = resolve_env_vars(env)
         assert resolved["API_KEY"] == "<MISSING_SECRET:NONEXISTENT>"
+
+
+class TestResolveEnvSplit:
+    """Tests for the secret/plain partition used to keep secrets out of units."""
+
+    def _secrets(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, **vals: str):
+        secrets_dir = tmp_path / "secrets"
+        secrets_dir.mkdir()
+        for name, val in vals.items():
+            (secrets_dir / name).write_text(val + "\n")
+        monkeypatch.setattr("castle_core.config.SECRETS_DIR", secrets_dir)
+
+    def test_plain_only(self) -> None:
+        plain, secret = resolve_env_split({"PORT": "9001", "URL": "http://x"})
+        assert plain == {"PORT": "9001", "URL": "http://x"}
+        assert secret == {}
+
+    def test_context_placeholders_are_plain(self) -> None:
+        plain, secret = resolve_env_split(
+            {"P": "${port}", "D": "${data_dir}"}, {"port": "9001", "data_dir": "/d"}
+        )
+        assert plain == {"P": "9001", "D": "/d"}
+        assert secret == {}
+
+    def test_pure_secret_partitioned(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._secrets(tmp_path, monkeypatch, API_KEY="sk-123")
+        plain, secret = resolve_env_split({"API_KEY": "${secret:API_KEY}"})
+        assert plain == {}
+        assert secret == {"API_KEY": "sk-123"}
+
+    def test_composite_secret_partitioned(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A value embedding a secret is secret-bearing; the whole value resolves."""
+        self._secrets(tmp_path, monkeypatch, NEO4J_PASSWORD="pw")
+        plain, secret = resolve_env_split(
+            {"NEO4J_AUTH": "neo4j/${secret:NEO4J_PASSWORD}"}
+        )
+        assert plain == {}
+        assert secret == {"NEO4J_AUTH": "neo4j/pw"}
+
+    def test_mixed(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._secrets(tmp_path, monkeypatch, K="v")
+        plain, secret = resolve_env_split(
+            {"PORT": "${port}", "K": "${secret:K}"}, {"port": "9001"}
+        )
+        assert plain == {"PORT": "9001"}
+        assert secret == {"K": "v"}
+
+    def test_missing_secret_still_partitioned(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._secrets(tmp_path, monkeypatch)
+        plain, secret = resolve_env_split({"K": "${secret:NOPE}"})
+        assert plain == {}
+        assert secret == {"K": "<MISSING_SECRET:NOPE>"}
+
+    def test_resolve_env_vars_matches_merged_split(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The flat wrapper equals the merged split and preserves key order."""
+        self._secrets(tmp_path, monkeypatch, K="v")
+        env = {"PORT": "${port}", "K": "${secret:K}", "Z": "lit"}
+        flat = resolve_env_vars(env, {"port": "9001"})
+        assert flat == {"PORT": "9001", "K": "v", "Z": "lit"}
+        assert list(flat.keys()) == ["PORT", "K", "Z"]

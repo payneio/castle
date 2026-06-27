@@ -34,6 +34,10 @@ class Deployment:
     runner: str
     run_cmd: list[str]
     env: dict[str, str] = field(default_factory=dict)
+    # Names (never values) of secret-bearing env vars. Their resolved values live
+    # only in the mode-0600 env file, never in env/run_cmd/registry — this is for
+    # visibility (which secrets a deployment expects).
+    secret_env_keys: list[str] = field(default_factory=list)
     description: str | None = None
     behavior: str = "daemon"
     stack: str | None = None
@@ -97,6 +101,7 @@ def load_registry(path: Path | None = None) -> NodeRegistry:
             runner=comp_data.get("runner", "command"),
             run_cmd=comp_data.get("run_cmd", []),
             env=comp_data.get("env", {}),
+            secret_env_keys=comp_data.get("secret_env_keys", []),
             description=comp_data.get("description"),
             behavior=behavior,
             stack=comp_data.get("stack"),
@@ -137,6 +142,8 @@ def save_registry(registry: NodeRegistry, path: Path | None = None) -> None:
         }
         if comp.env:
             entry["env"] = comp.env
+        if comp.secret_env_keys:
+            entry["secret_env_keys"] = comp.secret_env_keys
         if comp.description:
             entry["description"] = comp.description
         entry["behavior"] = comp.behavior

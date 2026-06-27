@@ -20,7 +20,9 @@ from castle_core.generators.systemd import (
     SYSTEMD_USER_DIR,
     generate_timer,
     generate_unit_from_deployed,
+    secret_env_path,
     timer_name,
+    unit_env_file,
     unit_name,
 )
 from castle_core.registry import REGISTRY_PATH, load_registry
@@ -86,13 +88,19 @@ def is_active(name: str, config: CastleConfig) -> bool:
 def enable_service(name: str, config: CastleConfig) -> ActionResult:
     """Generate+install the unit (and timer) from the registry, enable and start it."""
     if not REGISTRY_PATH.exists():
-        return ActionResult(name, "activate", "error", "No registry. Run 'castle deploy' first.")
+        return ActionResult(
+            name, "activate", "error", "No registry. Run 'castle deploy' first."
+        )
     registry = load_registry()
     if name not in registry.deployed:
-        return ActionResult(name, "activate", "error", f"'{name}' not in registry; run 'castle deploy'.")
+        return ActionResult(
+            name, "activate", "error", f"'{name}' not in registry; run 'castle deploy'."
+        )
     deployed = registry.deployed[name]
     if not deployed.managed:
-        return ActionResult(name, "activate", "error", f"'{name}' is not a managed service.")
+        return ActionResult(
+            name, "activate", "error", f"'{name}' is not a managed service."
+        )
 
     systemd_spec = None
     if name in config.services and config.services[name].manage:
@@ -102,12 +110,18 @@ def enable_service(name: str, config: CastleConfig) -> ActionResult:
 
     SYSTEMD_USER_DIR.mkdir(parents=True, exist_ok=True)
     svc_unit = unit_name(name)
-    (SYSTEMD_USER_DIR / svc_unit).write_text(generate_unit_from_deployed(name, deployed, systemd_spec))
+    (SYSTEMD_USER_DIR / svc_unit).write_text(
+        generate_unit_from_deployed(
+            name, deployed, systemd_spec, env_file=unit_env_file(deployed, name)
+        )
+    )
     primary = svc_unit
     if deployed.schedule:
         tmr_unit = timer_name(name)
         (SYSTEMD_USER_DIR / tmr_unit).write_text(
-            generate_timer(name, schedule=deployed.schedule, description=deployed.description)
+            generate_timer(
+                name, schedule=deployed.schedule, description=deployed.description
+            )
         )
         primary = tmr_unit
 
@@ -115,8 +129,9 @@ def enable_service(name: str, config: CastleConfig) -> ActionResult:
     subprocess.run(["systemctl", "--user", "enable", primary], check=False)
     subprocess.run(["systemctl", "--user", "start", primary], check=False)
     status = "active" if _systemctl_active(primary) else "inactive"
-    return ActionResult(name, "activate", "ok" if status == "active" else "error",
-                        f"{name}: {status}")
+    return ActionResult(
+        name, "activate", "ok" if status == "active" else "error", f"{name}: {status}"
+    )
 
 
 def disable_service(name: str) -> ActionResult:
@@ -127,6 +142,8 @@ def disable_service(name: str) -> ActionResult:
             subprocess.run(["systemctl", "--user", "stop", unit], check=False)
             subprocess.run(["systemctl", "--user", "disable", unit], check=False)
             path.unlink()
+    # Drop the generated secret env file alongside the unit.
+    secret_env_path(name).unlink(missing_ok=True)
     subprocess.run(["systemctl", "--user", "daemon-reload"], check=False)
     return ActionResult(name, "deactivate", "ok", f"{name}: deactivated")
 
