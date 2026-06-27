@@ -40,7 +40,15 @@ def _declared_commands_dict(comp: ProgramSpec) -> dict[str, list[list[str]]] | N
     if comp.build and comp.build.commands:
         out["build"] = comp.build.commands
     if comp.commands is not None:
-        for verb in ("lint", "test", "type-check", "check", "run", "install", "uninstall"):
+        for verb in (
+            "lint",
+            "test",
+            "type-check",
+            "check",
+            "run",
+            "install",
+            "uninstall",
+        ):
             cmds = comp.commands.for_verb(verb)
             if cmds:
                 out[verb] = cmds
@@ -171,7 +179,9 @@ def _summary_from_job(name: str, job: JobSpec, config: object) -> DeploymentSumm
     )
 
 
-def _summary_from_program(name: str, comp: ProgramSpec, root: Path) -> DeploymentSummary:
+def _summary_from_program(
+    name: str, comp: ProgramSpec, root: Path
+) -> DeploymentSummary:
     """Build a DeploymentSummary from a ProgramSpec (tools/frontends)."""
     source = comp.source
 
@@ -499,6 +509,7 @@ def get_service(name: str) -> ServiceDetail:
             "runner": deployed.runner,
             "run_cmd": deployed.run_cmd,
             "env": deployed.env,
+            "secret_env_keys": deployed.secret_env_keys,
             "port": deployed.port,
             "health_path": deployed.health_path,
             "proxy_path": deployed.proxy_path,
@@ -599,6 +610,7 @@ def get_job(name: str) -> JobDetail:
             "runner": deployed.runner,
             "run_cmd": deployed.run_cmd,
             "env": deployed.env,
+            "secret_env_keys": deployed.secret_env_keys,
             "managed": deployed.managed,
             "schedule": deployed.schedule,
             "behavior": deployed.behavior,
@@ -794,6 +806,7 @@ def get_component(name: str) -> DeploymentDetail:
             "runner": deployed.runner,
             "run_cmd": deployed.run_cmd,
             "env": deployed.env,
+            "secret_env_keys": deployed.secret_env_keys,
             "port": deployed.port,
             "health_path": deployed.health_path,
             "proxy_path": deployed.proxy_path,
