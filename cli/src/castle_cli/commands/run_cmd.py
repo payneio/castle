@@ -12,9 +12,27 @@ import os
 import subprocess
 from pathlib import Path
 
+from castle_core.generators.systemd import secret_env_path
 from castle_core.registry import REGISTRY_PATH, load_registry
 
 from castle_cli.config import load_config
+
+
+def _load_secret_env(name: str) -> dict[str, str]:
+    """Read a deployment's generated secret env file (KEY=value lines), if any.
+
+    Secrets are kept out of the registry, so a foreground run merges them from the
+    file systemd/docker would otherwise load, matching the deployed environment.
+    """
+    path = secret_env_path(name)
+    if not path.exists():
+        return {}
+    out: dict[str, str] = {}
+    for line in path.read_text().splitlines():
+        if "=" in line and not line.startswith("#"):
+            key, val = line.split("=", 1)
+            out[key] = val
+    return out
 
 
 def _run_program(name: str, extra: list[str]) -> int | None:
@@ -76,5 +94,6 @@ def run_run(args: argparse.Namespace) -> int:
     cmd = list(deployed.run_cmd) + extra_args
     env = dict(os.environ)
     env.update(deployed.env)
+    env.update(_load_secret_env(name))
     print(f"Running {name}: {' '.join(cmd)}")
     return subprocess.run(cmd, env=env).returncode

@@ -144,6 +144,8 @@ def run_info(args: argparse.Namespace) -> int:
             print(f"  {BOLD}env{RESET}:")
             for key, val in deployed.env.items():
                 print(f"    {key}={val}")
+        if deployed.secret_env_keys:
+            print(f"  {BOLD}secrets{RESET}:    {', '.join(deployed.secret_env_keys)}")
     else:
         print(f"\n  {DIM}not deployed (run 'castle deploy'){RESET}")
 
@@ -205,6 +207,7 @@ def _info_json(
             "runner": deployed.runner,
             "run_cmd": deployed.run_cmd,
             "env": deployed.env,
+            "secret_env_keys": deployed.secret_env_keys,
             "port": deployed.port,
             "managed": deployed.managed,
         }
