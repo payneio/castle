@@ -65,7 +65,7 @@ export function ServiceDetailPage() {
           {deployment.health_path && (
             <>
               <span className="text-[var(--muted)]">Health</span>
-              <span className="font-mono">{deployment.health_path}</span>
+              <span className="font-mono break-all">{deployment.health_path}</span>
             </>
           )}
           {deployment.proxy_path && (
@@ -73,25 +73,25 @@ export function ServiceDetailPage() {
               <span className="text-[var(--muted)]">Proxy</span>
               <a
                 href={deployment.proxy_path + "/"}
-                className="flex items-center gap-1 text-[var(--primary)] hover:underline font-mono"
+                className="flex items-center gap-1 min-w-0 break-all text-[var(--primary)] hover:underline font-mono"
               >
-                <ExternalLink size={12} />{deployment.proxy_path}
+                <ExternalLink size={12} className="shrink-0" />{deployment.proxy_path}
               </a>
             </>
           )}
           {deployment.proxy_host && (
             <>
               <span className="text-[var(--muted)]">Host</span>
-              <span className="font-mono">{deployment.proxy_host}</span>
+              <span className="font-mono break-all">{deployment.proxy_host}</span>
             </>
           )}
           {deployment.runner && (
             <>
               <span className="text-[var(--muted)]">Runs</span>
-              <span className="flex items-center gap-1">
-                <Terminal size={12} />
+              <span className="flex items-center gap-1 min-w-0">
+                <Terminal size={12} className="shrink-0" />
                 {runnerLabel(deployment.runner)}
-                {deployment.run_target && <> &middot; <span className="font-mono">{deployment.run_target}</span></>}
+                {deployment.run_target && <> &middot; <span className="font-mono break-all">{deployment.run_target}</span></>}
               </span>
             </>
           )}

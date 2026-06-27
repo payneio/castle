@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { Check, Eye, EyeOff, Loader2, Plus, Save, Trash2 } from "lucide-react"
+import { Check, Copy, Eye, EyeOff, Loader2, Plus, Save, Trash2 } from "lucide-react"
 import { apiClient } from "@/services/api/client"
 
 interface SecretsEditorProps {
@@ -15,6 +15,38 @@ interface SecretState {
   saving: boolean
   saved: boolean
   loaded: boolean
+  copied: boolean
+}
+
+/** Copy text to the clipboard, returning whether it succeeded.
+ *
+ * `navigator.clipboard` only exists in a secure context (HTTPS or
+ * localhost). The dashboard is reached over plain HTTP across the LAN
+ * (e.g. from a phone), where it's undefined — so fall back to the legacy
+ * execCommand path, which works in insecure contexts. */
+async function writeClipboard(text: string): Promise<boolean> {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text)
+      return true
+    } catch {
+      // Fall through to the legacy path below.
+    }
+  }
+  try {
+    const ta = document.createElement("textarea")
+    ta.value = text
+    // Keep it out of view and unfocusable to the page layout.
+    ta.style.position = "fixed"
+    ta.style.opacity = "0"
+    document.body.appendChild(ta)
+    ta.select()
+    const ok = document.execCommand("copy")
+    document.body.removeChild(ta)
+    return ok
+  } catch {
+    return false
+  }
 }
 
 export function SecretsEditor({ secrets, onSecretsChange }: SecretsEditorProps) {
@@ -28,7 +60,7 @@ export function SecretsEditor({ secrets, onSecretsChange }: SecretsEditorProps) 
         ...prev,
         [envKey]: {
           value: "", original: "", visible: false,
-          saving: false, saved: false, loaded: false,
+          saving: false, saved: false, loaded: false, copied: false,
         },
       }))
       apiClient
@@ -78,9 +110,19 @@ export function SecretsEditor({ secrets, onSecretsChange }: SecretsEditorProps) 
       ...prev,
       [envKey]: {
         value: "", original: "", visible: true,
-        saving: false, saved: false, loaded: true,
+        saving: false, saved: false, loaded: true, copied: false,
       },
     }))
+  }
+
+  const handleCopy = async (envKey: string) => {
+    const s = states[envKey]
+    if (!s?.loaded) return
+    if (!(await writeClipboard(s.value))) return
+    setStates((prev) => ({ ...prev, [envKey]: { ...prev[envKey], copied: true } }))
+    setTimeout(() => {
+      setStates((prev) => ({ ...prev, [envKey]: { ...prev[envKey], copied: false } }))
+    }, 2000)
   }
 
   const handleRemove = (envKey: string) => {
@@ -102,10 +144,10 @@ export function SecretsEditor({ secrets, onSecretsChange }: SecretsEditorProps) 
 
         return (
           <div key={envKey} className="flex items-center gap-2">
-            <span className="w-56 shrink-0 text-xs font-mono text-[var(--muted)] truncate" title={`${envKey} → ${secretName}`}>
+            <span className="w-24 sm:w-56 shrink-0 text-xs font-mono text-[var(--muted)] truncate" title={`${envKey} → ${secretName}`}>
               {envKey}
             </span>
-            <div className="flex-1 flex items-center gap-1.5">
+            <div className="flex-1 min-w-0 flex items-center gap-1.5">
               <input
                 type={s?.visible ? "text" : "password"}
                 value={s?.loaded ? s.value : ""}
@@ -116,7 +158,7 @@ export function SecretsEditor({ secrets, onSecretsChange }: SecretsEditorProps) 
                     [envKey]: { ...prev[envKey], value: e.target.value },
                   }))
                 }
-                className="flex-1 bg-black/30 border border-[var(--border)] rounded px-2 py-1 text-xs font-mono focus:outline-none focus:border-[var(--primary)]"
+                className="flex-1 min-w-0 bg-black/30 border border-[var(--border)] rounded px-2 py-1 text-xs font-mono focus:outline-none focus:border-[var(--primary)]"
               />
               <button
                 onClick={() =>
@@ -125,14 +167,22 @@ export function SecretsEditor({ secrets, onSecretsChange }: SecretsEditorProps) 
                     [envKey]: { ...prev[envKey], visible: !prev[envKey]?.visible },
                   }))
                 }
-                className="p-1 text-[var(--muted)] hover:text-[var(--foreground)]"
+                className="p-1 shrink-0 text-[var(--muted)] hover:text-[var(--foreground)]"
               >
                 {s?.visible ? <EyeOff size={12} /> : <Eye size={12} />}
               </button>
               <button
+                onClick={() => handleCopy(envKey)}
+                disabled={!s?.loaded}
+                title="Copy secret value"
+                className="p-1 shrink-0 text-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-30"
+              >
+                {s?.copied ? <Check size={12} className="text-green-400" /> : <Copy size={12} />}
+              </button>
+              <button
                 onClick={() => handleSave(envKey)}
                 disabled={!dirty || s?.saving}
-                className="p-1 text-blue-400 hover:text-blue-300 disabled:opacity-30"
+                className="p-1 shrink-0 text-blue-400 hover:text-blue-300 disabled:opacity-30"
               >
                 {s?.saving ? (
                   <Loader2 size={12} className="animate-spin" />
@@ -144,7 +194,7 @@ export function SecretsEditor({ secrets, onSecretsChange }: SecretsEditorProps) 
               </button>
               <button
                 onClick={() => handleRemove(envKey)}
-                className="p-1 text-red-400 hover:text-red-300"
+                className="p-1 shrink-0 text-red-400 hover:text-red-300"
               >
                 <Trash2 size={12} />
               </button>

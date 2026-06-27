@@ -16,8 +16,8 @@ export function Field({
 }) {
   return (
     <div className="flex items-start gap-4">
-      <label className="w-32 shrink-0 text-sm font-medium pt-1.5">{label}</label>
-      <div className="flex-1">
+      <label className="w-24 sm:w-32 shrink-0 text-sm font-medium pt-1.5">{label}</label>
+      <div className="flex-1 min-w-0">
         {children}
         {hint && <p className="text-xs text-[var(--muted)] mt-1 leading-snug">{hint}</p>}
       </div>
@@ -54,20 +54,34 @@ export function TextField({
   )
 }
 
+// A value that is *exactly* a secret ref → fully editable via SecretsEditor.
 const SECRET_RE = /^\$\{secret:([^}]+)\}$/
+// A secret ref embedded anywhere in a value (e.g. `neo4j/${secret:PW}`). These
+// are composite literals, so we surface them read-only rather than letting
+// merged() rewrite the value and clobber the surrounding text.
+const EMBEDDED_SECRET_RE = /\$\{secret:([^}]+)\}/g
 
 /** Hook for editing a run env that mixes plain vars and `${secret:NAME}` refs.
  * Returns the editor element plus a `merged()` that reconstitutes the env. */
 export function useEnvSecrets(initial: Record<string, string>) {
-  const { plain, secretRefs } = useMemo(() => {
+  const { plain, secretRefs, embeddedRefs } = useMemo(() => {
     const p: Record<string, string> = {}
     const s: Record<string, string> = {}
+    const e: { envKey: string; secretName: string }[] = []
     for (const [k, v] of Object.entries(initial)) {
       const m = SECRET_RE.exec(v)
-      if (m) s[k] = m[1]
-      else p[k] = v
+      if (m) {
+        s[k] = m[1]
+      } else {
+        // Composite values stay in `plain` so their literal text round-trips
+        // untouched; any embedded secret names are surfaced read-only below.
+        p[k] = v
+        for (const em of v.matchAll(EMBEDDED_SECRET_RE)) {
+          e.push({ envKey: k, secretName: em[1] })
+        }
+      }
     }
-    return { plain: p, secretRefs: s }
+    return { plain: p, secretRefs: s, embeddedRefs: e }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -92,12 +106,16 @@ export function useEnvSecrets(initial: Record<string, string>) {
           </p>
           {Object.entries(env).map(([key, val]) => (
             <div key={key} className="flex items-center gap-2">
-              <input value={key} readOnly className={`w-56 ${INPUT} text-xs text-[var(--muted)]`} />
-              <span className="text-[var(--muted)]">=</span>
+              <input
+                value={key}
+                readOnly
+                className={`w-24 sm:w-56 min-w-0 ${INPUT} text-xs text-[var(--muted)]`}
+              />
+              <span className="text-[var(--muted)] shrink-0">=</span>
               <input
                 value={val}
                 onChange={(e) => setEnv((p) => ({ ...p, [key]: e.target.value }))}
-                className={`flex-1 ${INPUT} text-xs font-mono`}
+                className={`flex-1 min-w-0 ${INPUT} text-xs font-mono`}
               />
               <button
                 onClick={() =>
@@ -107,7 +125,7 @@ export function useEnvSecrets(initial: Record<string, string>) {
                     return n
                   })
                 }
-                className="text-red-400 hover:text-red-300 p-0.5"
+                className="text-red-400 hover:text-red-300 p-0.5 shrink-0"
                 title="Remove"
               >
                 <Trash2 size={12} />
@@ -127,6 +145,19 @@ export function useEnvSecrets(initial: Record<string, string>) {
       </Field>
       <Field label="Secrets">
         <SecretsEditor secrets={secrets} onSecretsChange={setSecrets} />
+        {embeddedRefs.length > 0 && (
+          <div className="mt-2 space-y-1">
+            {embeddedRefs.map(({ envKey, secretName }) => (
+              <p
+                key={`${envKey}:${secretName}`}
+                className="text-xs font-mono text-[var(--muted)]"
+              >
+                <span className="text-[var(--foreground)]">{secretName}</span> — embedded in{" "}
+                {envKey} (read-only)
+              </p>
+            ))}
+          </div>
+        )}
       </Field>
     </div>
   )

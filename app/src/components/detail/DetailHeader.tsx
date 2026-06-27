@@ -20,16 +20,16 @@ export function DetailHeader({ backTo, backLabel, name, behavior, stack, source,
         <ArrowLeft size={16} /> {backLabel}
       </Link>
 
-      <div className="flex items-start justify-between mb-4">
-        <h1 className="text-2xl font-bold">{name}</h1>
+      <div className="flex items-start justify-between gap-3 flex-wrap mb-4">
+        <h1 className="text-2xl font-bold break-all min-w-0">{name}</h1>
         {children}
       </div>
 
-      <div className="flex items-center gap-3 mb-6">
+      <div className="flex items-center gap-3 flex-wrap mb-6">
         <BehaviorBadge behavior={behavior ?? null} />
         <StackBadge stack={stack ?? null} />
         {source && (
-          <span className="text-sm text-[var(--muted)] font-mono">{source}</span>
+          <span className="text-sm text-[var(--muted)] font-mono break-all min-w-0">{source}</span>
         )}
       </div>
     </>

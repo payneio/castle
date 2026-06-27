@@ -114,7 +114,7 @@ export function ProgramDetailPage() {
           {servedAt && (
             <>
               <span className="text-[var(--muted)]">Reachable at</span>
-              <a href={servedAt} className="font-mono text-[var(--primary)] hover:underline">
+              <a href={servedAt} className="font-mono break-all text-[var(--primary)] hover:underline">
                 {servedAt} <span className="text-[var(--muted)]">· served (static)</span>
               </a>
             </>

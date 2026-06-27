@@ -48,14 +48,14 @@ export function ScheduledDetailPage() {
           </h2>
           <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
             <span className="text-[var(--muted)]">Cron</span>
-            <span className="flex items-center gap-2 font-mono">
-              <Clock size={14} className="text-[var(--muted)]" />
+            <span className="flex items-center gap-2 min-w-0 break-all font-mono">
+              <Clock size={14} className="shrink-0 text-[var(--muted)]" />
               {deployment.schedule}
             </span>
             {deployment.systemd && (
               <>
                 <span className="text-[var(--muted)]">Timer unit</span>
-                <span className="font-mono">
+                <span className="font-mono break-all">
                   {deployment.systemd.unit_name.replace(".service", ".timer")}
                 </span>
               </>

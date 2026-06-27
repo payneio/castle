@@ -96,7 +96,7 @@ export function ServiceFields({ service, onSave, onDelete }: Props) {
         <input
           value={runProgram}
           onChange={(e) => setRunProgram(e.target.value)}
-          className="w-56 bg-black/30 border border-[var(--border)] rounded px-2 py-1 text-xs font-mono focus:outline-none focus:border-[var(--primary)]"
+          className="w-full sm:w-56 bg-black/30 border border-[var(--border)] rounded px-2 py-1 text-xs font-mono focus:outline-none focus:border-[var(--primary)]"
         />
       </Field>
       <TextField
