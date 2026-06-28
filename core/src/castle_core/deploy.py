@@ -465,7 +465,16 @@ def _build_run_cmd(
                 cmd.extend(run.args)  # type: ignore[union-attr]
             return cmd
         case "node":
-            cmd = [run.package_manager, "run", run.script]  # type: ignore[union-attr]
+            # Like the python runner bakes `--project <source>` into `uv run`, the
+            # node runner bakes `--dir <source>` so the package manager runs the
+            # script in the program's source dir — the systemd unit carries no
+            # WorkingDirectory, so a bare `pnpm run` would otherwise execute in the
+            # service's (wrong) cwd. Resolve the package manager to an absolute path.
+            pm = shutil.which(run.package_manager) or run.package_manager  # type: ignore[union-attr]
+            cmd = [pm]
+            if source_dir and source_dir.is_dir():
+                cmd.extend(["--dir", str(source_dir)])
+            cmd.extend(["run", run.script])  # type: ignore[union-attr]
             if run.args:  # type: ignore[union-attr]
                 cmd.extend(run.args)  # type: ignore[union-attr]
             return cmd

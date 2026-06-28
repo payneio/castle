@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from castle_core.deploy import _build_run_cmd
-from castle_core.manifest import RunContainer, RunPython
+from castle_core.manifest import RunContainer, RunNode, RunPython
 
 
 def test_python_runner_uses_uv_run_from_source(tmp_path: Path) -> None:
@@ -50,6 +50,39 @@ def test_python_runner_warns_when_unresolvable() -> None:
         cmd = _build_run_cmd("my-svc", run, {}, messages, source_dir=None)
     assert cmd == ["my-svc"]
     assert any("my-svc" in m for m in messages)
+
+
+def test_node_runner_bakes_source_dir(tmp_path: Path) -> None:
+    """A node service runs the script in its source dir via `--dir` (no unit cwd)."""
+    run = RunNode(runner="node", script="gateway:watch:raw", package_manager="pnpm")
+    with patch("castle_core.deploy.shutil.which", return_value="/usr/bin/pnpm"):
+        cmd = _build_run_cmd("oc", run, {}, [], source_dir=tmp_path)
+    assert cmd == ["/usr/bin/pnpm", "--dir", str(tmp_path), "run", "gateway:watch:raw"]
+
+
+def test_node_runner_appends_args(tmp_path: Path) -> None:
+    run = RunNode(
+        runner="node", script="start", package_manager="pnpm", args=["--port", "18789"]
+    )
+    with patch("castle_core.deploy.shutil.which", return_value="/usr/bin/pnpm"):
+        cmd = _build_run_cmd("oc", run, {}, [], source_dir=tmp_path)
+    assert cmd == [
+        "/usr/bin/pnpm",
+        "--dir",
+        str(tmp_path),
+        "run",
+        "start",
+        "--port",
+        "18789",
+    ]
+
+
+def test_node_runner_without_source_omits_dir() -> None:
+    """No resolvable source → bare `pnpm run` (package manager still PATH-resolved)."""
+    run = RunNode(runner="node", script="start", package_manager="pnpm")
+    with patch("castle_core.deploy.shutil.which", return_value="/usr/bin/pnpm"):
+        cmd = _build_run_cmd("oc", run, {}, [], source_dir=None)
+    assert cmd == ["/usr/bin/pnpm", "run", "start"]
 
 
 def test_container_secrets_use_env_file_not_argv() -> None:
