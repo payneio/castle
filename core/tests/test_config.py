@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+import yaml
 from castle_core.config import (
     CastleConfig,
     load_config,
@@ -111,6 +112,30 @@ class TestSaveConfig:
         svc = config2.services["test-svc"]
         assert svc.manage is not None
         assert svc.manage.systemd is not None
+
+    def test_writes_directory_layout(self, castle_root: Path) -> None:
+        """Save writes one file per resource under programs/services/jobs dirs."""
+        config = load_config(castle_root)
+        save_config(config)
+        assert (castle_root / "programs" / "test-tool.yaml").exists()
+        assert (castle_root / "services" / "test-svc.yaml").exists()
+        assert (castle_root / "jobs" / "test-job.yaml").exists()
+        # Global file holds gateway only, no resource sections
+        global_data = yaml.safe_load((castle_root / "castle.yaml").read_text())
+        assert global_data["gateway"]["port"] == 18000
+        assert "programs" not in global_data
+        assert "services" not in global_data
+        assert "jobs" not in global_data
+
+    def test_delete_prunes_file(self, castle_root: Path) -> None:
+        """Removing a resource and saving deletes its on-disk file."""
+        config = load_config(castle_root)
+        del config.services["test-svc"]
+        save_config(config)
+        assert not (castle_root / "services" / "test-svc.yaml").exists()
+        config2 = load_config(castle_root)
+        assert "test-svc" not in config2.services
+        assert "test-tool" in config2.programs
 
 
 class TestResolveEnvVars:

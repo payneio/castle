@@ -9,7 +9,14 @@ import yaml
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 
-from castle_core.config import save_config
+from castle_core.config import (
+    CastleConfig,
+    GatewayConfig,
+    _program_to_yaml_dict,
+    _spec_to_yaml_dict,
+    load_config,
+    save_config,
+)
 from castle_core.manifest import ProgramSpec, JobSpec, ServiceSpec
 
 from castle_api.config import get_castle_root, get_config, get_registry
@@ -61,13 +68,31 @@ def _require_repo() -> None:
         )
 
 
+def _aggregate_yaml(config: CastleConfig) -> str:
+    """Build a unified virtual castle.yaml from the directory-per-resource config."""
+    data: dict = {"gateway": {"port": config.gateway.port}}
+    if config.repo:
+        data["repo"] = str(config.repo)
+    if config.programs:
+        data["programs"] = {
+            n: _program_to_yaml_dict(s, config) for n, s in config.programs.items()
+        }
+    if config.services:
+        data["services"] = {
+            n: _spec_to_yaml_dict(s) for n, s in config.services.items()
+        }
+    if config.jobs:
+        data["jobs"] = {n: _spec_to_yaml_dict(s) for n, s in config.jobs.items()}
+    return yaml.dump(data, default_flow_style=False, sort_keys=False)
+
+
 @router.get("", response_model=ConfigResponse)
 def get_config_yaml() -> ConfigResponse:
-    """Get the raw castle.yaml content."""
+    """Get a unified virtual castle.yaml aggregated from all resource files."""
     _require_repo()
     root = get_castle_root()
-    config_path = root / "castle.yaml"
-    return ConfigResponse(yaml_content=config_path.read_text())
+    config = load_config(root)
+    return ConfigResponse(yaml_content=_aggregate_yaml(config))
 
 
 @router.put("", response_model=ConfigSaveResponse)
@@ -92,37 +117,58 @@ def save_yaml(request: ConfigSaveRequest) -> ConfigSaveResponse:
             detail="YAML must be a mapping",
         )
 
+    # repo: drives repo-relative source resolution (fall back to existing config)
+    repo_path = None
+    if data.get("repo"):
+        from pathlib import Path
+
+        repo_path = Path(data["repo"]).expanduser()
+    else:
+        try:
+            repo_path = load_config(root).repo
+        except Exception:
+            repo_path = None
+
+    def _resolve_source(spec: ProgramSpec) -> None:
+        from pathlib import Path
+
+        if not spec.source:
+            return
+        if spec.source.startswith("repo:") and repo_path:
+            spec.source = str(repo_path / spec.source[5:])
+        elif not Path(spec.source).is_absolute():
+            spec.source = str(root / spec.source)
+
     # Validate programs
-    prog_count = 0
-    programs_data = data.get("programs") or data.get("components") or {}
+    programs: dict[str, ProgramSpec] = {}
+    programs_data = data.get("programs") or {}
     for name, comp_data in programs_data.items():
         try:
             comp_data_copy = dict(comp_data) if comp_data else {}
             comp_data_copy["id"] = name
-            ProgramSpec.model_validate(comp_data_copy)
-            prog_count += 1
+            spec = ProgramSpec.model_validate(comp_data_copy)
+            _resolve_source(spec)
+            programs[name] = spec
         except Exception as e:
             errors.append(f"programs.{name}: {e}")
 
     # Validate services
-    svc_count = 0
+    services: dict[str, ServiceSpec] = {}
     for name, svc_data in data.get("services", {}).items():
         try:
             svc_data_copy = dict(svc_data) if svc_data else {}
             svc_data_copy["id"] = name
-            ServiceSpec.model_validate(svc_data_copy)
-            svc_count += 1
+            services[name] = ServiceSpec.model_validate(svc_data_copy)
         except Exception as e:
             errors.append(f"services.{name}: {e}")
 
     # Validate jobs
-    job_count = 0
+    jobs: dict[str, JobSpec] = {}
     for name, job_data in data.get("jobs", {}).items():
         try:
             job_data_copy = dict(job_data) if job_data else {}
             job_data_copy["id"] = name
-            JobSpec.model_validate(job_data_copy)
-            job_count += 1
+            jobs[name] = JobSpec.model_validate(job_data_copy)
         except Exception as e:
             errors.append(f"jobs.{name}: {e}")
 
@@ -132,15 +178,27 @@ def save_yaml(request: ConfigSaveRequest) -> ConfigSaveResponse:
             detail={"errors": errors},
         )
 
-    # Backup and save
-    config_path = root / "castle.yaml"
-    backup_path = config_path.with_suffix(".yaml.bak")
-    shutil.copy2(config_path, backup_path)
-    config_path.write_text(request.yaml_content)
+    prog_count = len(programs)
+    svc_count = len(services)
+    job_count = len(jobs)
+
+    gateway_data = data.get("gateway", {})
+    config = CastleConfig(
+        root=root,
+        repo=repo_path,
+        gateway=GatewayConfig(port=gateway_data.get("port", 9000)),
+        programs=programs,
+        services=services,
+        jobs=jobs,
+    )
+    save_config(config)
 
     return ConfigSaveResponse(
-        ok=True, program_count=prog_count, service_count=svc_count,
-        job_count=job_count, errors=[],
+        ok=True,
+        program_count=prog_count,
+        service_count=svc_count,
+        job_count=job_count,
+        errors=[],
     )
 
 
@@ -160,9 +218,7 @@ def save_program(name: str, request: ProgramConfigRequest) -> dict:
         )
 
     config = get_config()
-    config.programs[name] = ProgramSpec.model_validate(
-        {**request.config, "id": name}
-    )
+    config.programs[name] = ProgramSpec.model_validate({**request.config, "id": name})
     save_config(config)
     return {"ok": True, "program": name}
 
@@ -211,9 +267,7 @@ def save_service(name: str, request: ServiceConfigRequest) -> dict:
         )
 
     config = get_config()
-    config.services[name] = ServiceSpec.model_validate(
-        {**request.config, "id": name}
-    )
+    config.services[name] = ServiceSpec.model_validate({**request.config, "id": name})
     save_config(config)
     return {"ok": True, "service": name}
 
@@ -248,9 +302,7 @@ def save_job(name: str, request: JobConfigRequest) -> dict:
         )
 
     config = get_config()
-    config.jobs[name] = JobSpec.model_validate(
-        {**request.config, "id": name}
-    )
+    config.jobs[name] = JobSpec.model_validate({**request.config, "id": name})
     save_config(config)
     return {"ok": True, "job": name}
 

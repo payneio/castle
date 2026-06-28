@@ -17,10 +17,25 @@ from castle_core.registry import (
 )
 
 
+def _write_castle_config(root: Path, config: dict) -> None:
+    """Scatter a nested castle config dict into the directory-per-resource layout."""
+    globals_data = {k: v for k, v in config.items() if k in ("gateway", "repo")}
+    (root / "castle.yaml").write_text(yaml.dump(globals_data, default_flow_style=False))
+    for section in ("programs", "services", "jobs"):
+        entries = config.get(section) or {}
+        if not entries:
+            continue
+        section_dir = root / section
+        section_dir.mkdir(parents=True, exist_ok=True)
+        for name, spec in entries.items():
+            (section_dir / f"{name}.yaml").write_text(
+                yaml.dump(spec, default_flow_style=False)
+            )
+
+
 @pytest.fixture
 def castle_root(tmp_path: Path) -> Generator[Path, None, None]:
-    """Create a temporary castle root with castle.yaml."""
-    castle_yaml = tmp_path / "castle.yaml"
+    """Create a temporary castle root with directory-per-resource config."""
     config = {
         "gateway": {"port": 9000},
         "programs": {
@@ -77,7 +92,7 @@ def castle_root(tmp_path: Path) -> Generator[Path, None, None]:
             },
         },
     }
-    castle_yaml.write_text(yaml.dump(config, default_flow_style=False))
+    _write_castle_config(tmp_path, config)
     yield tmp_path
 
 
@@ -143,7 +158,14 @@ def registry_path(tmp_path: Path, castle_root: Path) -> Generator[Path, None, No
         "config_editor.get_castle_root": config_editor_mod.get_castle_root,
     }
 
-    for mod in [api_config, routes_mod, services_mod, nodes_mod, stream_mod, config_editor_mod]:
+    for mod in [
+        api_config,
+        routes_mod,
+        services_mod,
+        nodes_mod,
+        stream_mod,
+        config_editor_mod,
+    ]:
         if hasattr(mod, "get_registry"):
             mod.get_registry = _get_registry
         if hasattr(mod, "get_castle_root"):

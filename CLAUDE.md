@@ -6,12 +6,11 @@ with code in this repository.
 ## Overview
 
 Castle is a personal software platform — a monorepo of independent projects
-(services, tools, libraries) managed by the `castle` CLI. The registry
-(`castle.yaml`) has three top-level sections:
+(services, tools, libraries) managed by the `castle` CLI. The registry config is split into three directories under your config root:
 
-- **`programs:`** — Software catalog (source, behavior, stack, system_dependencies, build)
-- **`services:`** — Long-running daemons (run, expose, proxy, systemd)
-- **`jobs:`** — Scheduled tasks (run, cron schedule, systemd timer)
+- **`programs/`** — Software catalog (source, behavior, stack, system_dependencies, build)
+- **`services/`** — Long-running daemons (run, expose, proxy, systemd)
+- **`jobs/`** — Scheduled tasks (run, cron schedule, systemd timer)
 
 Each program has a **stack** (development toolchain: python-fastapi,
 python-cli, react-vite) and a **behavior** (runtime role: daemon, tool,

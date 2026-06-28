@@ -268,3 +268,36 @@ class TestGateway:
         assert data["routes"]
         for r in data["routes"]:
             assert r["kind"] in ("static", "proxy", "remote")
+
+
+class TestConfigEditor:
+    """Virtual castle.yaml aggregation/scatter endpoints."""
+
+    def test_get_aggregates_resources(self, client: TestClient) -> None:
+        """GET /config returns a unified YAML aggregating all resource files."""
+        import yaml
+
+        response = client.get("/config")
+        assert response.status_code == 200
+        data = yaml.safe_load(response.json()["yaml_content"])
+        assert "test-tool" in data["programs"]
+        assert "test-svc" in data["services"]
+        assert "test-job" in data["jobs"]
+
+    def test_put_scatters_and_prunes(self, client: TestClient, castle_root) -> None:
+        """PUT /config writes resource files and prunes removed ones."""
+        import yaml
+
+        current = yaml.safe_load(client.get("/config").json()["yaml_content"])
+        current["services"].pop("test-svc")
+        current["programs"]["new-tool"] = {
+            "description": "Brand new",
+            "behavior": "tool",
+        }
+        resp = client.put("/config", json={"yaml_content": yaml.dump(current)})
+        assert resp.status_code == 200, resp.text
+        assert not (castle_root / "services" / "test-svc.yaml").exists()
+        assert (castle_root / "programs" / "new-tool.yaml").exists()
+        after = yaml.safe_load(client.get("/config").json()["yaml_content"])
+        assert "new-tool" in after["programs"]
+        assert "test-svc" not in (after.get("services") or {})

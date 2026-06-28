@@ -31,56 +31,78 @@ may have neither (a tool you just install), a **service** (always-on), or a
 service; a `tool`-behavior program may back a job or just be installed for
 manual use.
 
-## castle.yaml
+## Configuration Directory Layout
 
-The single source of truth. Lives at `~/.castle/castle.yaml`. Three top-level
-sections:
+Castle splits its configuration across a root directory (`~/.castle/` or your config root) instead of a single file:
+
+```
+~/.castle/
+├── castle.yaml        # Global settings (gateway, repo, etc.)
+├── programs/          # Program configuration files (one file per program)
+│   └── my-tool.yaml
+├── services/          # Service configuration files (one file per service)
+│   └── my-service.yaml
+└── jobs/              # Job configuration files (one file per job)
+    └── my-job.yaml
+```
+
+### castle.yaml (Globals)
+
+The core `castle.yaml` contains configuration settings that apply globally to your Castle platform instance:
 
 ```yaml
 gateway:
   port: 9000
-
-programs:
-  my-tool:
-    description: Does something useful
-    source: /data/repos/my-tool
-    stack: python-cli
-    behavior: tool
-    system_dependencies: [pandoc]
-
-services:
-  my-service:
-    program: my-service
-    run:
-      runner: python
-      program: my-service
-    expose:
-      http:
-        internal: { port: 9001 }
-        health_path: /health
-    proxy:
-      caddy: { path_prefix: /my-service }
-    manage:
-      systemd: {}
-
-jobs:
-  my-job:
-    program: my-tool
-    run:
-      runner: command
-      argv: [my-tool, sync]
-    schedule: "0 2 * * *"
-    manage:
-      systemd: {}
+repo: /data/repos/castle
 ```
 
-### Section semantics
+### Resource Configuration Files (`programs/`, `services/`, `jobs/`)
 
-| Section | Purpose | Category |
-|---------|---------|----------|
-| `programs:` | Software catalog — what exists | tool, frontend, daemon |
-| `services:` | Long-running daemons — how they run | service |
-| `jobs:` | Scheduled tasks — when they run | job |
+Each resource (program, service, or job) is configured in its own YAML file named after the resource's unique ID (e.g., `services/my-service.yaml` defines the service `my-service`).
+
+**programs/my-tool.yaml:**
+```yaml
+description: Does something useful
+source: /data/repos/my-tool
+stack: python-cli
+behavior: tool
+system_dependencies: [pandoc]
+```
+
+**services/my-service.yaml:**
+```yaml
+program: my-service
+run:
+  runner: python
+  program: my-service
+expose:
+  http:
+    internal: { port: 9001 }
+    health_path: /health
+proxy:
+  caddy: { path_prefix: /my-service }
+manage:
+  systemd: {}
+```
+
+**jobs/my-job.yaml:**
+```yaml
+program: my-tool
+run:
+  runner: command
+  argv: [my-tool, sync]
+schedule: "0 2 * * *"
+manage:
+  systemd: {}
+```
+
+### Resource Categories
+
+| Category | Location | Purpose | Role / Types |
+|----------|----------|---------|--------------|
+| **programs** | `programs/*.yaml` | Software catalog — what software exists | tool, frontend, daemon |
+| **services** | `services/*.yaml` | Long-running daemons — how they run | service |
+| **jobs** | `jobs/*.yaml` | Scheduled tasks — when they run | job |
 
 Services and jobs can reference a program via `program:` for description
 fallthrough and source code linking. They can also exist independently

@@ -19,14 +19,11 @@ cd cli && uv tool install --editable . && cd ..
 # Run the installer (sets up Docker, Caddy, MQTT, Postgres, Neo4j, directory tree)
 ./install.sh
 
-# Initialize castle.yaml (the registry that tracks everything)
+# Initialize the global castle.yaml (the registry that tracks everything)
+mkdir -p ~/.castle/programs ~/.castle/services ~/.castle/jobs
 cat > ~/.castle/castle.yaml << 'EOF'
 gateway:
   port: 9000
-
-programs: {}
-services: {}
-jobs: {}
 EOF
 
 # See what's here
@@ -82,51 +79,57 @@ Tools are programs with `behavior: tool` — list them with
 
 ## Registry
 
-`castle.yaml` lives at `~/.castle/castle.yaml` and is the single source of truth. It has four top-level sections:
+The registry lives under `~/.castle/` and is the single source of truth, split
+into a global `castle.yaml` plus one file per resource under `programs/`,
+`services/`, and `jobs/`:
 
-- **`programs:`** — Software catalog (source, stack, behavior, build config)
-- **`services:`** — Long-running daemons (run, expose, proxy, systemd)
-- **`jobs:`** — Scheduled tasks (run, cron schedule, systemd timer)
-- **`units:`** — Compact shorthand that expands into programs + services/jobs
+- **`castle.yaml`** — Global settings (`gateway`, `repo`)
+- **`programs/<name>.yaml`** — Software catalog (source, stack, behavior, build config)
+- **`services/<name>.yaml`** — Long-running daemons (run, expose, proxy, systemd)
+- **`jobs/<name>.yaml`** — Scheduled tasks (run, cron schedule, systemd timer)
 
-Services and jobs can reference a program via `component:` for description fallthrough.
+Services and jobs can reference a program via `program:` for description fallthrough.
 
 ```yaml
+# ~/.castle/castle.yaml
 gateway:
   port: 9000
 repo: /path/to/castle
+```
 
-programs:
-  central-context:
-    description: Content storage API
-    behavior: daemon
-    source: code/central-context
-    stack: python-fastapi
+```yaml
+# ~/.castle/programs/central-context.yaml
+description: Content storage API
+behavior: daemon
+source: code/central-context
+stack: python-fastapi
+```
 
-services:
-  central-context:
-    component: central-context
-    run:
-      runner: python
-      program: central-context
-    expose:
-      http:
-        internal: { port: 9001 }
-        health_path: /health
-    proxy:
-      caddy: { path_prefix: /central-context }
-    manage:
-      systemd: {}
+```yaml
+# ~/.castle/services/central-context.yaml
+program: central-context
+run:
+  runner: python
+  program: central-context
+expose:
+  http:
+    internal: { port: 9001 }
+    health_path: /health
+proxy:
+  caddy: { path_prefix: /central-context }
+manage:
+  systemd: {}
+```
 
-jobs:
-  backup-collect:
-    component: backup-collect
-    run:
-      runner: command
-      argv: [backup-collect]
-    schedule: "0 2 * * *"
-    manage:
-      systemd: {}
+```yaml
+# ~/.castle/jobs/backup-collect.yaml
+program: backup-collect
+run:
+  runner: command
+  argv: [backup-collect]
+schedule: "0 2 * * *"
+manage:
+  systemd: {}
 ```
 
 Convention-based env vars (`<PREFIX>_DATA_DIR`, `<PREFIX>_PORT`) are generated
