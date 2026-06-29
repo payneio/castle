@@ -108,6 +108,9 @@ class GatewayConfig:
     """Gateway configuration."""
 
     port: int = 9000
+    # None/"off" → HTTP-only gateway. "internal" → Caddy serves host routes over
+    # HTTPS with its local CA (browsers get a secure context; trust the root CA).
+    tls: str | None = None
 
 
 @dataclass
@@ -247,7 +250,10 @@ def load_config(root: Path | None = None) -> CastleConfig:
         data = yaml.safe_load(f) or {}
 
     gateway_data = data.get("gateway", {})
-    gateway = GatewayConfig(port=gateway_data.get("port", 9000))
+    gateway = GatewayConfig(
+        port=gateway_data.get("port", 9000),
+        tls=gateway_data.get("tls"),
+    )
 
     # repo: field points to the git repo for repo-relative sources
     repo_path: Path | None = None
@@ -388,7 +394,10 @@ def _write_resource_dir(directory: Path, specs: dict[str, dict]) -> None:
 
 def save_config(config: CastleConfig) -> None:
     """Save castle config: global castle.yaml + programs/, services/, jobs/ dirs."""
-    data: dict = {"gateway": {"port": config.gateway.port}}
+    gateway_data: dict = {"port": config.gateway.port}
+    if config.gateway.tls:
+        gateway_data["tls"] = config.gateway.tls
+    data: dict = {"gateway": gateway_data}
     if config.repo:
         data["repo"] = str(config.repo)
 

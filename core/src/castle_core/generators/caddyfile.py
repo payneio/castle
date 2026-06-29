@@ -160,13 +160,44 @@ def generate_caddyfile_from_registry(
     registry: NodeRegistry,
     remote_registries: dict[str, NodeRegistry] | None = None,
 ) -> str:
-    """Render the route list to a Caddyfile."""
+    """Render the route list to a Caddyfile.
+
+    Two modes, set by `gateway.tls`:
+
+    - **off (default)** — HTTP-only. Everything (host matchers + path prefixes +
+      static) lives in one `:<port>` site with `auto_https off`, so a named host
+      can't pull the listener into TLS or try to bind :80/:443.
+    - **internal** — each host route becomes its own `<host> { tls internal … }`
+      site, served over HTTPS by Caddy's local CA (Caddy listens :443 and
+      redirects :80). This makes those hosts a browser "secure context". Path
+      prefixes, static frontends, and the dashboard stay on the HTTP `:<port>`
+      site — give a service a `proxy.caddy.host` to put it on HTTPS.
+    """
     routes = compute_routes(registry, None, remote_registries)
     gw_port = registry.node.gateway_port
+    tls_internal = (registry.node.gateway_tls or "").lower() == "internal"
 
-    # HTTP-only internal gateway on a non-standard port → disable auto-HTTPS so a
-    # named host doesn't pull the listener into TLS or try to bind :80/:443.
-    lines = ["{", "    auto_https off", "}", "", f":{gw_port} {{"]
+    host_routes = [r for r in routes if r.is_host]
+    lines: list[str] = []
+
+    if tls_internal:
+        # Per-host HTTPS sites via Caddy's internal CA. `tls internal` overrides
+        # ACME for that host, so no public cert is attempted; clients must trust
+        # the Caddy root CA (`caddy trust`, then distribute root.crt).
+        for r in host_routes:
+            lines += [
+                f"{r.address} {{",
+                "    tls internal",
+                f"    reverse_proxy {r.target}",
+                "}",
+                "",
+            ]
+    else:
+        # HTTP-only: keep auto-HTTPS off so the bare-port site stays plain HTTP
+        # and named hosts don't trigger cert provisioning.
+        lines += ["{", "    auto_https off", "}", ""]
+
+    lines.append(f":{gw_port} {{")
 
     # Trailing-slash redirect: `handle_path /foo/*` doesn't match the bare `/foo`,
     # so without this the no-slash form falls through to the root catch-all
@@ -193,6 +224,8 @@ def generate_caddyfile_from_registry(
                 "",
             ]
         elif r.is_host:  # host-based proxy
+            if tls_internal:
+                continue  # emitted as its own HTTPS site block above
             matcher = f"@host_{(r.name or r.address).replace('-', '_').replace('.', '_')}"
             lines += [
                 f"    {matcher} host {r.address}",

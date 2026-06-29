@@ -37,10 +37,11 @@ def _isolate_config(monkeypatch: pytest.MonkeyPatch) -> None:
 def _make_registry(
     deployed: dict[str, Deployment] | None = None,
     gateway_port: int = 9000,
+    gateway_tls: str | None = None,
 ) -> NodeRegistry:
     """Create a test registry."""
     return NodeRegistry(
-        node=NodeConfig(hostname="test", gateway_port=gateway_port),
+        node=NodeConfig(hostname="test", gateway_port=gateway_port, gateway_tls=gateway_tls),
         deployed=deployed or {},
     )
 
@@ -221,6 +222,48 @@ class TestLocalRoutesFromConfig:
         )
         caddyfile = generate_caddyfile_from_registry(registry)
         assert "reverse_proxy localhost:8001" in caddyfile
+
+
+class TestCaddyfileTlsInternal:
+    """gateway.tls=internal → host routes become their own HTTPS sites."""
+
+    def _host_registry(self, tls: str | None) -> NodeRegistry:
+        return _make_registry(
+            gateway_tls=tls,
+            deployed={
+                "claw": Deployment(
+                    runner="node", run_cmd=["claw"], port=18789, proxy_host="claw.civil.lan"
+                ),
+                "api": Deployment(
+                    runner="python", run_cmd=["api"], port=9020, proxy_path="/api"
+                ),
+            },
+        )
+
+    def test_host_route_becomes_tls_site(self) -> None:
+        caddyfile = generate_caddyfile_from_registry(self._host_registry("internal"))
+        assert "claw.civil.lan {" in caddyfile
+        assert "tls internal" in caddyfile
+        assert "reverse_proxy localhost:18789" in caddyfile
+
+    def test_no_auto_https_off_in_tls_mode(self) -> None:
+        # auto_https off would suppress the internal-CA certs we now want.
+        caddyfile = generate_caddyfile_from_registry(self._host_registry("internal"))
+        assert "auto_https off" not in caddyfile
+        # Host matcher form must NOT be used when the host is its own TLS site.
+        assert "@host_claw" not in caddyfile
+
+    def test_path_routes_stay_on_http_port(self) -> None:
+        caddyfile = generate_caddyfile_from_registry(self._host_registry("internal"))
+        assert ":9000 {" in caddyfile
+        assert "handle_path /api/*" in caddyfile
+
+    def test_off_mode_keeps_host_matcher_and_auto_https_off(self) -> None:
+        caddyfile = generate_caddyfile_from_registry(self._host_registry(None))
+        assert "auto_https off" in caddyfile
+        assert "@host_claw host claw.civil.lan" in caddyfile
+        assert "tls internal" not in caddyfile
+        assert "claw.civil.lan {" not in caddyfile
 
 
 class TestCaddyfileRemoteRegistries:

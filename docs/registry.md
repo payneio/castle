@@ -278,6 +278,93 @@ differing only in whether the target is files on disk or a live process. The
 complete table (all kinds) is shown by `castle gateway status`, the dashboard
 Gateway panel, and `GET /gateway`; the Caddyfile is generated from it.
 
+#### Path prefix vs host route — pick by whether the app is prefix-aware
+
+A `path_prefix: /foo` route is generated as Caddy `handle_path /foo/*`, which
+**strips** the prefix before proxying — the backend sees requests at `/`. That's
+right for a service that doesn't care what path it's mounted under. It **breaks**
+apps that assume they sit at the origin root, because the public path (`/foo/…`)
+and the path the backend sees (`/…`) no longer agree. Tell-tale symptoms:
+
+- absolute asset URLs (`/assets/app.js`) 404 — they resolve at the gateway root,
+  not under `/foo/`, and fall through to the wrong handler;
+- a **WebSocket** fails to connect: a browser app that derives its WS URL from
+  `window.location` will aim at `ws://host/foo` (no trailing slash), which hits
+  the `redir /foo → /foo/` rule — and a WS handshake can't follow a redirect.
+
+For such an app, use a **host route** instead — `host: foo.lan`, no `path_prefix`:
+
+```yaml
+proxy:
+  caddy:
+    host: foo.lan        # whole host → backend root; nothing is stripped
+```
+
+This proxies the whole hostname to the backend's root, so the public path and the
+backend path match and root-relative assets/WS URLs just work. (Caddy proxies
+WebSocket upgrades transparently in both modes — stripping, not the upgrade, is
+what bites prefix-unaware apps.)
+
+#### Host routes need DNS, and the gateway is HTTP-only
+
+A host route only does something once `<host>` resolves **to this node**. For a
+LAN `.lan` zone that's the LAN's DNS authority (typically the router that hands
+out `.lan` DHCP names) — not necessarily any central/mesh resolver. A single
+dnsmasq wildcard routes every subdomain to the gateway, so each new host-routed
+service works with no further DNS edits:
+
+```
+address=/<node>.lan/<node-ip>      # e.g. address=/civil.lan/192.168.8.222
+```
+
+Pin `<node-ip>` with a DHCP reservation — the wildcard hardcodes it.
+
+By default the gateway is **HTTP-only**: it generates `auto_https off` and listens
+on a bare `:<gateway-port>` (default `:9000`), so reach it at `http://<host>:9000/`,
+**not** `https://` (a TLS hello to the plain-HTTP listener fails with "wrong
+version number").
+
+#### HTTPS for host routes — `gateway.tls: internal`
+
+Set `tls: internal` under `gateway:` in `castle.yaml` and each **host route**
+becomes its own HTTPS site served by Caddy's local CA:
+
+```yaml
+gateway:
+  port: 9000
+  tls: internal     # host routes (proxy.caddy.host) → HTTPS via Caddy's local CA
+```
+
+```caddyfile
+foo.lan {
+    tls internal
+    reverse_proxy localhost:9001
+}
+```
+
+This is what makes a remote browser treat the page as a **secure context** — the
+prerequisite for WebCrypto/`crypto.subtle`, which apps doing device-identity or
+end-to-end crypto require and which browsers disable on plain HTTP (except
+`localhost`). Path-prefix and static routes stay on the HTTP `:<gateway-port>`
+site, so the way to put a service on HTTPS is to give it a `proxy.caddy.host`.
+
+Two operational requirements:
+
+- **Bind 443/80.** Caddy serves these host sites on `:443` (and redirects `:80`).
+  A user-level gateway can't bind privileged ports under `NoNewPrivileges`, so
+  lower the floor once: `net.ipv4.ip_unprivileged_port_start=80` (persist in
+  `/etc/sysctl.d/`). This beats `setcap`, which `NoNewPrivileges=true` would void.
+- **Trust the local CA.** Run `caddy trust` on the gateway host, then distribute
+  `~/.local/share/caddy/pki/authorities/local/root.crt` to every other box's
+  system/browser trust store — `.lan` can't get a public cert, so clients trust
+  Caddy's root instead. (Firefox uses its own store; import it there too.)
+
+Routing only moves bytes — it does **not** supply the proxied app's own auth.
+If a backend requires a token/credential (e.g. in the URL or a header), that
+stays the client's responsibility through the gateway exactly as it would direct.
+A host served over HTTPS also has its own **origin** (`https://foo.lan`, no port);
+an app that allowlists origins must include it.
+
 ### `manage` — How to manage it
 
 ```yaml

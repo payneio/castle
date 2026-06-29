@@ -21,6 +21,7 @@ class NodeConfig:
     hostname: str = ""
     castle_root: str | None = None  # repo path, for dev commands
     gateway_port: int = 9000
+    gateway_tls: str | None = None  # None/"off" → HTTP-only; "internal" → Caddy local-CA HTTPS
 
     def __post_init__(self) -> None:
         if not self.hostname:
@@ -80,6 +81,7 @@ def load_registry(path: Path | None = None) -> NodeRegistry:
         hostname=node_data.get("hostname", ""),
         castle_root=node_data.get("castle_root"),
         gateway_port=node_data.get("gateway_port", 9000),
+        gateway_tls=node_data.get("gateway_tls"),
     )
 
     deployed: dict[str, Deployment] = {}
@@ -134,6 +136,9 @@ def save_registry(registry: NodeRegistry, path: Path | None = None) -> None:
 
     if registry.node.castle_root:
         data["node"]["castle_root"] = registry.node.castle_root
+
+    if registry.node.gateway_tls:
+        data["node"]["gateway_tls"] = registry.node.gateway_tls
 
     for name, comp in registry.deployed.items():
         entry: dict = {

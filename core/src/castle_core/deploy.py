@@ -73,7 +73,11 @@ def deploy(target_name: str | None = None, root: Path | None = None) -> DeployRe
     ensure_dirs()
 
     # Build node config
-    node = NodeConfig(castle_root=str(config.root), gateway_port=config.gateway.port)
+    node = NodeConfig(
+        castle_root=str(config.root),
+        gateway_port=config.gateway.port,
+        gateway_tls=config.gateway.tls,
+    )
 
     # Load existing registry to preserve entries not being redeployed,
     # or start fresh if deploying all
