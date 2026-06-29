@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 
 import yaml
 from fastapi import APIRouter, HTTPException, status
@@ -58,13 +59,15 @@ class JobConfigRequest(BaseModel):
     config: dict
 
 
-def _require_repo() -> None:
-    """Raise 503 if repo is not available."""
-    if get_castle_root() is None:
+def _require_repo() -> Path:
+    """Return the castle repo root, or raise 503 if it's not available."""
+    root = get_castle_root()
+    if root is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Castle repo not available on this node.",
         )
+    return root
 
 
 def _aggregate_yaml(config: CastleConfig) -> str:
@@ -88,8 +91,7 @@ def _aggregate_yaml(config: CastleConfig) -> str:
 @router.get("", response_model=ConfigResponse)
 def get_config_yaml() -> ConfigResponse:
     """Get a unified virtual castle.yaml aggregated from all resource files."""
-    _require_repo()
-    root = get_castle_root()
+    root = _require_repo()
     config = load_config(root)
     return ConfigResponse(yaml_content=_aggregate_yaml(config))
 
@@ -97,8 +99,7 @@ def get_config_yaml() -> ConfigResponse:
 @router.put("", response_model=ConfigSaveResponse)
 def save_yaml(request: ConfigSaveRequest) -> ConfigSaveResponse:
     """Validate and save castle.yaml. Does NOT apply changes."""
-    _require_repo()
-    root = get_castle_root()
+    root = _require_repo()
     errors: list[str] = []
 
     # Parse YAML
@@ -119,8 +120,6 @@ def save_yaml(request: ConfigSaveRequest) -> ConfigSaveResponse:
     # repo: drives repo-relative source resolution (fall back to existing config)
     repo_path = None
     if data.get("repo"):
-        from pathlib import Path
-
         repo_path = Path(data["repo"]).expanduser()
     else:
         try:
@@ -129,8 +128,6 @@ def save_yaml(request: ConfigSaveRequest) -> ConfigSaveResponse:
             repo_path = None
 
     def _resolve_source(spec: ProgramSpec) -> None:
-        from pathlib import Path
-
         if not spec.source:
             return
         if spec.source.startswith("repo:") and repo_path:
