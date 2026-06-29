@@ -269,6 +269,17 @@ class TestGateway:
         for r in data["routes"]:
             assert r["kind"] in ("static", "proxy", "remote")
 
+    def test_gateway_tls_off_by_default(self, client: TestClient) -> None:
+        """No TLS configured → tls/ca_fingerprint are null (HTTP-only gateway)."""
+        data = client.get("/gateway").json()
+        assert data["tls"] is None
+        assert data["ca_fingerprint"] is None
+
+    def test_gateway_ca_404_without_internal_tls(self, client: TestClient) -> None:
+        """The CA download is unavailable unless gateway.tls is 'internal'."""
+        response = client.get("/gateway/ca.crt")
+        assert response.status_code == 404
+
 
 class TestConfigEditor:
     """Virtual castle.yaml aggregation/scatter endpoints."""

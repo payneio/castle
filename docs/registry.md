@@ -355,9 +355,13 @@ Two operational requirements:
   lower the floor once: `net.ipv4.ip_unprivileged_port_start=80` (persist in
   `/etc/sysctl.d/`). This beats `setcap`, which `NoNewPrivileges=true` would void.
 - **Trust the local CA.** Run `caddy trust` on the gateway host, then distribute
-  `~/.local/share/caddy/pki/authorities/local/root.crt` to every other box's
-  system/browser trust store — `.lan` can't get a public cert, so clients trust
-  Caddy's root instead. (Firefox uses its own store; import it there too.)
+  the root CA to every other box's system/browser trust store — `.lan` can't get
+  a public cert, so clients trust Caddy's root instead. (Firefox uses its own
+  store; import it there too.) The dashboard's Gateway panel has a **CA cert**
+  download button (only shown when `tls: internal`), backed by
+  `GET /gateway/ca.crt` — the public root cert, sourced from Caddy's admin API,
+  with its SHA-256 shown for out-of-band verification. The on-disk copy is at
+  `~/.local/share/caddy/pki/authorities/local/root.crt`.
 
 Routing only moves bytes — it does **not** supply the proxied app's own auth.
 If a backend requires a token/credential (e.g. in the URL or a header), that

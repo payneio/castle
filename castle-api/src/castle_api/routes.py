@@ -3,10 +3,15 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
+import os
 import shutil
+import ssl
+import urllib.request
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Response, status
 
 from castle_core.config import SPECS_DIR
 from castle_core.generators.caddyfile import generate_caddyfile_from_registry
@@ -894,6 +899,13 @@ def get_gateway() -> GatewayInfo:
     # Caddyfile order is precedence-sensitive; the displayed table is alphabetical.
     routes.sort(key=lambda r: r.address)
 
+    tls = registry.node.gateway_tls
+    ca_fingerprint = None
+    if (tls or "").lower() == "internal":
+        pem = _gateway_ca_pem(registry.node.gateway_tls)
+        if pem:
+            ca_fingerprint = _ca_fingerprint(pem)
+
     return GatewayInfo(
         port=registry.node.gateway_port,
         hostname=registry.node.hostname,
@@ -901,6 +913,8 @@ def get_gateway() -> GatewayInfo:
         service_count=service_count,
         managed_count=managed_count,
         routes=routes,
+        tls=tls,
+        ca_fingerprint=ca_fingerprint,
     )
 
 
@@ -909,6 +923,66 @@ def get_caddyfile() -> dict[str, str]:
     """Return the generated Caddyfile content."""
     registry = get_registry()
     return {"content": generate_caddyfile_from_registry(registry)}
+
+
+# Caddy's admin API exposes the local CA's root cert — the authoritative source,
+# matching the running gateway (same endpoint `caddy trust` uses).
+_CADDY_ADMIN = "http://localhost:2019"
+
+
+def _gateway_ca_pem(gateway_tls: str | None) -> str | None:
+    """The gateway's local-CA root certificate (PEM), or None.
+
+    Only the public root cert — never the CA private key. Returns None unless
+    `gateway.tls` is "internal" and a CA exists. Prefers Caddy's admin API (the
+    running gateway's actual CA); falls back to the on-disk root.crt.
+    """
+    if (gateway_tls or "").lower() != "internal":
+        return None
+    try:
+        with urllib.request.urlopen(f"{_CADDY_ADMIN}/pki/ca/local", timeout=2) as resp:
+            data = json.loads(resp.read())
+        pem = data.get("root_certificate")
+        if pem:
+            return pem
+    except Exception:
+        pass  # admin API down → try the file
+    base = os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
+    root = Path(base) / "caddy" / "pki" / "authorities" / "local" / "root.crt"
+    if root.is_file():
+        return root.read_text()
+    return None
+
+
+def _ca_fingerprint(pem: str) -> str | None:
+    """Colon-separated uppercase SHA-256 of the cert DER, for out-of-band verify."""
+    try:
+        der = ssl.PEM_cert_to_DER_cert(pem)
+    except Exception:
+        return None
+    hexd = hashlib.sha256(der).hexdigest().upper()
+    return ":".join(hexd[i : i + 2] for i in range(0, len(hexd), 2))
+
+
+@router.get("/gateway/ca.crt")
+def get_gateway_ca() -> Response:
+    """Download the gateway's local-CA root cert so clients can trust *.lan HTTPS.
+
+    Public certificate only (the CA private key never leaves the host). 404 when
+    the gateway isn't serving internal-CA TLS or no cert has been issued yet.
+    """
+    registry = get_registry()
+    pem = _gateway_ca_pem(registry.node.gateway_tls)
+    if not pem:
+        raise HTTPException(
+            status_code=404,
+            detail="No gateway CA (gateway.tls is not 'internal', or no cert yet).",
+        )
+    return Response(
+        content=pem,
+        media_type="application/x-x509-ca-cert",
+        headers={"Content-Disposition": 'attachment; filename="castle-root.crt"'},
+    )
 
 
 @router.post("/gateway/reload")

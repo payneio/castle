@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react"
 import { Link } from "react-router-dom"
-import { Globe, RefreshCw, FileText } from "lucide-react"
+import { Globe, RefreshCw, FileText, ShieldCheck } from "lucide-react"
 import type { GatewayInfo, HealthStatus } from "@/types"
 import { useGatewayReload, useCaddyfile } from "@/services/api/hooks"
+import { apiClient } from "@/services/api/client"
 import { HealthBadge } from "./HealthBadge"
 
 interface GatewayPanelProps {
@@ -33,6 +34,20 @@ export function GatewayPanel({ gateway, statuses }: GatewayPanelProps) {
           </span>
         </div>
         <div className="flex items-center gap-1">
+          {gateway.tls === "internal" && (
+            <a
+              href={apiClient.streamUrl("/gateway/ca.crt")}
+              download="castle-root.crt"
+              className="flex items-center gap-1 text-xs px-2.5 py-1 rounded bg-[var(--border)] hover:bg-[var(--border)]/80 text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
+              title={
+                "Download the gateway's root CA — install on other devices to trust *.lan HTTPS" +
+                (gateway.ca_fingerprint ? `\nSHA-256: ${gateway.ca_fingerprint}` : "")
+              }
+            >
+              <ShieldCheck size={12} />
+              CA cert
+            </a>
+          )}
           <button
             onClick={() => reload()}
             disabled={reloading}

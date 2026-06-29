@@ -124,6 +124,8 @@ export interface GatewayInfo {
   service_count: number
   managed_count: number
   routes: GatewayRoute[]
+  tls?: string | null // "internal" → host routes served over HTTPS by Caddy's local CA
+  ca_fingerprint?: string | null // SHA-256 of the downloadable root CA
 }
 
 export interface ServiceActionResponse {
