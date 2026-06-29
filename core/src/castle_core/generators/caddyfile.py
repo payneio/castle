@@ -17,7 +17,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from castle_core.config import SPECS_DIR
+from castle_core.config import SPECS_DIR, CastleConfig
+from castle_core.manifest import ServiceSpec
 from castle_core.registry import NodeRegistry
 
 
@@ -36,9 +37,60 @@ class GatewayRoute:
         return not self.address.startswith("/")
 
 
+# (proxy_path, proxy_host, port, base_url) for a service's gateway route(s).
+ProxyTargets = tuple[str | None, str | None, int | None, str | None]
+
+
+def service_proxy_targets(name: str, svc: ServiceSpec) -> ProxyTargets:
+    """Derive a service's gateway routing fields from its spec.
+
+    The single source of truth shared by the registry build (``deploy``) and
+    route computation (``compute_routes``), so the deployed registry and a
+    freshly regenerated Caddyfile can never disagree about ports/paths/hosts.
+    """
+    port = None
+    if svc.expose and svc.expose.http:
+        port = svc.expose.http.internal.port
+
+    proxy_path = None
+    proxy_host = None
+    if svc.proxy and svc.proxy.caddy and svc.proxy.caddy.enable:
+        caddy = svc.proxy.caddy
+        proxy_host = caddy.host
+        if caddy.path_prefix:
+            proxy_path = caddy.path_prefix
+        elif not caddy.host:
+            # No explicit path and no host → default to /<name>.
+            proxy_path = f"/{name}"
+
+    base_url = getattr(svc.run, "base_url", None)
+    return proxy_path, proxy_host, port, base_url
+
+
+def _local_proxy_targets(
+    config: CastleConfig | None, registry: NodeRegistry
+) -> list[tuple[str, ProxyTargets]]:
+    """Local services' routing fields, name-sorted for deterministic output.
+
+    Prefers ``castle.yaml`` (``config.services``) as the source of truth so a
+    regenerated Caddyfile always reflects the current spec — this is what closes
+    the registry-staleness drift. Falls back to the deployed registry snapshot
+    only when config isn't available (load failed, or a pure-registry context).
+    """
+    services = getattr(config, "services", None)
+    if services is not None:
+        return sorted(
+            (name, service_proxy_targets(name, svc)) for name, svc in services.items()
+        )
+    return sorted(
+        (name, (d.proxy_path, d.proxy_host, d.port, d.base_url))
+        for name, d in registry.deployed.items()
+    )
+
+
 def compute_routes(
     registry: NodeRegistry,
-    config: object | None = None,
+    config: CastleConfig | None = None,
     remote_registries: dict[str, NodeRegistry] | None = None,
 ) -> list[GatewayRoute]:
     """Build the full ordered list of gateway routes (host, proxy, remote, static).
@@ -57,18 +109,22 @@ def compute_routes(
     routes: list[GatewayRoute] = []
     local_paths: set[str] = set()
 
+    # Local proxy routes, derived from castle.yaml when available (else the
+    # deployed registry) so a regenerated Caddyfile tracks the current spec.
+    local = _local_proxy_targets(config, registry)
+
     # Host-based proxy routes (whole host → backend root).
-    for name, d in registry.deployed.items():
-        if d.proxy_host and (d.port or d.base_url):
-            target = d.base_url or f"localhost:{d.port}"
-            routes.append(GatewayRoute(d.proxy_host, "proxy", target, name, node))
+    for name, (proxy_path, proxy_host, port, base_url) in local:
+        if proxy_host and (port or base_url):
+            target = base_url or f"localhost:{port}"
+            routes.append(GatewayRoute(proxy_host, "proxy", target, name, node))
 
     # Path-prefix proxy routes.
-    for name, d in registry.deployed.items():
-        if d.proxy_path and (d.port or d.base_url):
-            local_paths.add(d.proxy_path)
-            target = d.base_url or f"localhost:{d.port}"
-            routes.append(GatewayRoute(d.proxy_path, "proxy", target, name, node))
+    for name, (proxy_path, proxy_host, port, base_url) in local:
+        if proxy_path and (port or base_url):
+            local_paths.add(proxy_path)
+            target = base_url or f"localhost:{port}"
+            routes.append(GatewayRoute(proxy_path, "proxy", target, name, node))
 
     # Cross-node routes — local paths take precedence.
     if remote_registries:

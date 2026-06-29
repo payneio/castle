@@ -5,7 +5,20 @@ from __future__ import annotations
 
 import pytest
 
-from castle_core.generators.caddyfile import generate_caddyfile_from_registry
+from castle_core.config import CastleConfig, GatewayConfig
+from castle_core.generators.caddyfile import (
+    compute_routes,
+    generate_caddyfile_from_registry,
+)
+from castle_core.manifest import (
+    CaddySpec,
+    ExposeSpec,
+    HttpExposeSpec,
+    HttpInternal,
+    ProxySpec,
+    RunPython,
+    ServiceSpec,
+)
 from castle_core.registry import Deployment, NodeConfig, NodeRegistry
 
 
@@ -143,6 +156,71 @@ class TestCaddyfileFromRegistry:
         assert "reverse_proxy localhost:9001" in caddyfile
         assert "handle_path /svc-b/*" in caddyfile
         assert "reverse_proxy localhost:9002" in caddyfile
+
+
+def _service(port: int, path: str | None = None, host: str | None = None) -> ServiceSpec:
+    """A minimal python ServiceSpec with an HTTP port and a caddy proxy route."""
+    caddy = CaddySpec(path_prefix=path, host=host)
+    return ServiceSpec(
+        run=RunPython(runner="python", program="svc"),
+        expose=ExposeSpec(http=HttpExposeSpec(internal=HttpInternal(port=port))),
+        proxy=ProxySpec(caddy=caddy),
+    )
+
+
+def _config(services: dict[str, ServiceSpec]) -> CastleConfig:
+    return CastleConfig(
+        root=None,  # type: ignore[arg-type]
+        gateway=GatewayConfig(port=9000),
+        repo=None,
+        programs={},
+        services=services,
+        jobs={},
+    )
+
+
+class TestLocalRoutesFromConfig:
+    """castle.yaml is the source of truth for local routes — a regenerated
+    Caddyfile must track the spec even when the deployed registry is stale.
+    This is the regression guard for the service-edit drift."""
+
+    def test_config_port_overrides_stale_registry(self) -> None:
+        # Registry was deployed with the OLD port; castle.yaml now says 8002.
+        registry = _make_registry(
+            deployed={
+                "app": Deployment(
+                    runner="python", run_cmd=["app"], port=8001, proxy_path="/app"
+                ),
+            }
+        )
+        config = _config({"app": _service(port=8002, path="/app")})
+        routes = compute_routes(registry, config)
+        targets = {r.target for r in routes if r.address == "/app"}
+        assert targets == {"localhost:8002"}  # config wins, not the stale 8001
+
+    def test_config_path_overrides_stale_registry(self) -> None:
+        registry = _make_registry(
+            deployed={
+                "app": Deployment(
+                    runner="python", run_cmd=["app"], port=8001, proxy_path="/old"
+                ),
+            }
+        )
+        config = _config({"app": _service(port=8001, path="/new")})
+        addrs = {r.address for r in compute_routes(registry, config) if r.kind == "proxy"}
+        assert addrs == {"/new"}
+
+    def test_falls_back_to_registry_without_config(self) -> None:
+        # No config available (load_config is isolated to raise) → use registry.
+        registry = _make_registry(
+            deployed={
+                "app": Deployment(
+                    runner="python", run_cmd=["app"], port=8001, proxy_path="/app"
+                ),
+            }
+        )
+        caddyfile = generate_caddyfile_from_registry(registry)
+        assert "reverse_proxy localhost:8001" in caddyfile
 
 
 class TestCaddyfileRemoteRegistries:

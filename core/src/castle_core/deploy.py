@@ -22,7 +22,10 @@ from castle_core.config import (
     load_config,
     resolve_env_split,
 )
-from castle_core.generators.caddyfile import generate_caddyfile_from_registry
+from castle_core.generators.caddyfile import (
+    generate_caddyfile_from_registry,
+    service_proxy_targets,
+)
 from castle_core.generators.systemd import (
     SECRET_ENV_DIR,
     generate_timer,
@@ -221,10 +224,12 @@ def _build_deployed_service(
     if svc.manage and svc.manage.systemd and not svc.manage.systemd.enable:
         managed = False
 
-    port = None
+    # Routing fields (port/proxy_path/proxy_host/base_url) come from the shared
+    # deriver, so the registry written here and the Caddyfile computed from
+    # castle.yaml stay in lockstep.
+    proxy_path, proxy_host, port, base_url = service_proxy_targets(name, svc)
     health_path = None
     if svc.expose and svc.expose.http:
-        port = svc.expose.http.internal.port
         health_path = svc.expose.http.health_path
 
     # Env is exactly what's declared in defaults.env — no hidden convention

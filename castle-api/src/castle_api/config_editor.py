@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import shutil
 
 import yaml
 from fastapi import APIRouter, HTTPException, status
@@ -323,14 +322,32 @@ def delete_job(name: str) -> dict:
 
 @router.post("/apply", response_model=ApplyResponse)
 async def apply_config() -> ApplyResponse:
-    """Apply config: restart managed services + regenerate and reload gateway."""
-    registry = get_registry()
+    """Apply config: rebuild runtime from castle.yaml, then restart services.
+
+    Runs a full ``deploy`` so the registry, systemd units, and Caddyfile are all
+    regenerated from the current castle.yaml (and the gateway reloaded) — this is
+    what keeps the running config from drifting behind an edit. Then restarts the
+    managed services so the freshly written units take effect (``deploy`` only
+    daemon-reloads; a running unit keeps its old ExecStart until restarted).
+    Scheduled jobs are left alone — applying config shouldn't fire every job.
+    """
+    from castle_core.deploy import deploy
+
     actions: list[str] = []
     errors: list[str] = []
 
-    # Restart managed services
+    # Rebuild registry + units + Caddyfile from castle.yaml off the event loop
+    # (deploy is blocking: it shells out to systemctl and the gateway).
+    try:
+        result = await asyncio.to_thread(deploy)
+    except Exception as e:
+        return ApplyResponse(ok=False, actions=actions, errors=[f"Deploy failed: {e}"])
+    actions.extend(result.messages)
+
+    # Restart managed services so the new units take effect (skip scheduled jobs).
+    registry = result.registry or get_registry()
     for name, deployed in registry.deployed.items():
-        if not deployed.managed:
+        if not deployed.managed or deployed.schedule:
             continue
         unit = f"castle-{name}.service"
         ok, output = await _systemctl("restart", unit)
@@ -338,24 +355,6 @@ async def apply_config() -> ApplyResponse:
             actions.append(f"Restarted {name}")
         else:
             errors.append(f"Failed to restart {name}: {output}")
-
-    # Reload gateway
-    from castle_core.config import SPECS_DIR, ensure_dirs
-    from castle_core.generators.caddyfile import generate_caddyfile_from_registry
-
-    ensure_dirs()
-    caddyfile_path = SPECS_DIR / "Caddyfile"
-    caddyfile_path.write_text(generate_caddyfile_from_registry(registry))
-    actions.append("Generated Caddyfile")
-
-    if shutil.which("caddy"):
-        ok, output = await _run(
-            "caddy", "reload", "--config", str(caddyfile_path), "--adapter", "caddyfile"
-        )
-        if ok:
-            actions.append("Reloaded gateway")
-        else:
-            errors.append(f"Gateway reload failed: {output}")
 
     await broadcast("config-changed", {"actions": actions})
     return ApplyResponse(ok=len(errors) == 0, actions=actions, errors=errors)
@@ -367,16 +366,6 @@ async def _systemctl(action: str, unit: str) -> tuple[bool, str]:
         "--user",
         action,
         unit,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    stdout, stderr = await proc.communicate()
-    return proc.returncode == 0, (stdout or stderr or b"").decode().strip()
-
-
-async def _run(*args: str) -> tuple[bool, str]:
-    proc = await asyncio.create_subprocess_exec(
-        *args,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
