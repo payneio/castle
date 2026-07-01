@@ -10,6 +10,7 @@ import {
   Package,
   Server,
   Share2,
+  Wrench,
   X,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -20,6 +21,7 @@ const NAV = [
   { to: "/gateway", label: "Gateway", icon: Globe, end: false },
   { to: "/services", label: "Services", icon: Server, end: false },
   { to: "/scheduled", label: "Scheduled", icon: Clock, end: false },
+  { to: "/tools", label: "Tools", icon: Wrench, end: false },
   { to: "/programs", label: "Programs", icon: Package, end: false },
   { to: "/mesh", label: "Mesh", icon: Share2, end: false },
 ]

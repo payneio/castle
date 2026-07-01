@@ -11,8 +11,7 @@ import { CreateDeploymentForm, type CreatePrefill } from "./CreateDeploymentForm
  * lifecycle is shown inline here; service/job deployments link to their own pages
  * where start/stop lives. This is the single home for "how this program runs". */
 export function DeploymentsSection({ program }: { program: ProgramDetail }) {
-  const { services, jobs, kind } = program
-  const none = services.length === 0 && jobs.length === 0
+  const { deployments } = program
   const [creating, setCreating] = useState(false)
 
   const { data: allServices } = useServices()
@@ -28,6 +27,11 @@ export function DeploymentsSection({ program }: { program: ProgramDetail }) {
     runTarget: program.id,
     launcher: program.stack?.startsWith("python") || !program.stack ? "python" : "command",
   }
+
+  // Tool/static deployments are 1:1 with the program (same name) — their
+  // lifecycle is shown inline; service/job deployments link to their own pages.
+  const inline = deployments.filter((d) => d.kind === "tool" || d.kind === "static")
+  const linked = deployments.filter((d) => d.kind === "service" || d.kind === "job")
 
   return (
     <div className="bg-[var(--card)] border border-[var(--border)] rounded-lg p-5 mb-6">
@@ -47,8 +51,13 @@ export function DeploymentsSection({ program }: { program: ProgramDetail }) {
       </p>
 
       {/* The program's own path/caddy deployment — its lifecycle, inline. */}
-      {kind === "tool" && <PathLifecycle name={program.id} active={program.active} />}
-      {kind === "static" && <StaticStatus name={program.id} active={program.active} />}
+      {inline.map((d) =>
+        d.kind === "tool" ? (
+          <PathLifecycle key={d.name} name={program.id} active={program.active} />
+        ) : (
+          <StaticStatus key={d.name} name={program.id} active={program.active} />
+        ),
+      )}
 
       {creating && (
         <CreateDeploymentForm
@@ -59,40 +68,27 @@ export function DeploymentsSection({ program }: { program: ProgramDetail }) {
       )}
 
       {/* Service/job deployments — managed on their own detail pages. */}
-      {none ? (
-        (kind === "tool" || kind === "static") ? null : (
-          <p className="text-sm text-[var(--muted)]">
-            {kind === "service"
-              ? "No service yet — this program isn't deployed."
-              : "No deployment yet."}
-          </p>
-        )
-      ) : (
+      {deployments.length === 0 && !creating ? (
+        <p className="text-sm text-[var(--muted)]">No deployment yet.</p>
+      ) : linked.length > 0 ? (
         <div className="space-y-1.5 mt-1">
-          {services.map((s) => (
+          {linked.map((d) => (
             <Link
-              key={s}
-              to={`/services/${s}`}
+              key={d.name}
+              to={d.kind === "job" ? `/jobs/${d.name}` : `/services/${d.name}`}
               className="flex items-center gap-2 text-sm hover:text-[var(--primary)] transition-colors"
             >
-              <Server size={14} className="text-[var(--muted)]" />
-              <span className="font-medium">{s}</span>
-              <span className="text-xs text-[var(--muted)]">service</span>
-            </Link>
-          ))}
-          {jobs.map((j) => (
-            <Link
-              key={j}
-              to={`/jobs/${j}`}
-              className="flex items-center gap-2 text-sm hover:text-[var(--primary)] transition-colors"
-            >
-              <Clock size={14} className="text-[var(--muted)]" />
-              <span className="font-medium">{j}</span>
-              <span className="text-xs text-[var(--muted)]">job</span>
+              {d.kind === "job" ? (
+                <Clock size={14} className="text-[var(--muted)]" />
+              ) : (
+                <Server size={14} className="text-[var(--muted)]" />
+              )}
+              <span className="font-medium">{d.name}</span>
+              <span className="text-xs text-[var(--muted)]">{d.kind}</span>
             </Link>
           ))}
         </div>
-      )}
+      ) : null}
     </div>
   )
 }

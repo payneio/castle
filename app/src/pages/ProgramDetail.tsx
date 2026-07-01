@@ -30,8 +30,9 @@ export function ProgramDetailPage() {
   // A static (caddy) deployment with build outputs is served by the gateway in
   // place at its own subdomain — show where.
   const buildOutputs = (deployment.manifest.build as { outputs?: string[] } | undefined)?.outputs
+  const isStatic = deployment.deployments.some((d) => d.kind === "static")
   const servedAt =
-    deployment.kind === "static" && buildOutputs?.length
+    isStatic && buildOutputs?.length
       ? (subdomainUrl(deployment.id) ?? `${deployment.id}.<gateway.domain>`)
       : null
 
@@ -41,7 +42,6 @@ export function ProgramDetailPage() {
         backTo="/programs"
         backLabel="Back to Programs"
         name={deployment.id}
-        kind={deployment.kind}
         stack={deployment.stack}
         source={deployment.source}
       >

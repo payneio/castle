@@ -17,7 +17,7 @@ export function Services() {
     <div className="max-w-6xl mx-auto px-6 py-8">
       <PageHeader
         title="Services"
-        subtitle="Long-running processes"
+        subtitle="Long-running & served — systemd daemons and caddy statics"
         actions={
           <button
             onClick={() => setCreating((c) => !c)}

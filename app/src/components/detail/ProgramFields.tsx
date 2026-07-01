@@ -172,12 +172,13 @@ export function ProgramFields({ program, onSave, onDelete }: Props) {
  * confirm enumerates exactly what will happen. Source on disk is always kept. */
 function deleteConfirm(program: ProgramDetail): string {
   const actions: string[] = []
-  // The program's own 1:1 deployment (tool/static) isn't listed in services/jobs.
-  if (program.kind === "tool") actions.push(`uninstall ${program.id} from your PATH`)
-  else if (program.kind === "static")
-    actions.push(`stop serving ${program.id} (drop its gateway route)`)
-  // Named service/job deployments that reference this program.
-  const named = [...program.services, ...program.jobs]
+  // Enumerate the cascade — one line per deployment, keyed on its kind.
+  const named: string[] = []
+  for (const d of program.deployments) {
+    if (d.kind === "tool") actions.push(`uninstall ${d.name} from your PATH`)
+    else if (d.kind === "static") actions.push(`stop serving ${d.name}`)
+    else named.push(d.name)
+  }
   if (named.length) actions.push(`stop, disable, and remove: ${named.join(", ")}`)
   // Always: the catalog entry itself.
   actions.push(`remove "${program.id}" from the catalog`)

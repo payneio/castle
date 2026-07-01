@@ -31,12 +31,22 @@ export function ProgramCard({ program }: ProgramCardProps) {
         >
           {program.id}
         </Link>
-      </div>
-
-      <div className="flex flex-wrap gap-1.5 mb-2">
-        <KindBadge kind={program.kind} />
         <StackBadge stack={program.stack} />
       </div>
+
+      {/* A program has no kind of its own — show its deployments (name · kind). */}
+      {program.deployments.length > 0 ? (
+        <div className="flex flex-col gap-1 mb-2">
+          {program.deployments.map((d) => (
+            <div key={d.name} className="flex items-center gap-1.5 text-xs">
+              <span className="font-mono text-[var(--muted)]">{d.name}</span>
+              <KindBadge kind={d.kind} />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs text-[var(--muted)] italic mb-2">no deployment</p>
+      )}
 
       {program.description && (
         <p className="text-sm text-[var(--muted)]">{program.description}</p>

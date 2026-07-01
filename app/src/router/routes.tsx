@@ -3,6 +3,7 @@ import { Layout } from "@/components/Layout"
 import { Overview } from "@/pages/Overview"
 import { Services } from "@/pages/Services"
 import { Scheduled } from "@/pages/Scheduled"
+import { Tools } from "@/pages/Tools"
 import { Programs } from "@/pages/Programs"
 import { GatewayPage } from "@/pages/GatewayPage"
 import { MeshPage } from "@/pages/MeshPage"
@@ -20,6 +21,7 @@ export const router = createBrowserRouter([
       { index: true, element: <Overview /> },
       { path: "services", element: <Services /> },
       { path: "scheduled", element: <Scheduled /> },
+      { path: "tools", element: <Tools /> },
       { path: "programs", element: <Programs /> },
       { path: "gateway", element: <GatewayPage /> },
       { path: "mesh", element: <MeshPage /> },

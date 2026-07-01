@@ -8,8 +8,9 @@ export interface ServiceSummary {
   id: string
   description: string | null
   stack: string | null
-  manager?: string | null // systemd for a service
-  launcher: string | null // python | command | container | compose | node
+  kind: string | null // service | static
+  manager: string | null // systemd | caddy
+  launcher: string | null // python | command | container | compose | node (systemd only)
   run_target: string | null
   port: number | null
   health_path: string | null
@@ -43,10 +44,16 @@ export interface JobDetail extends JobSummary {
   manifest: Record<string, unknown>
 }
 
+// A program's deployment (name + its derived kind). A program has no kind of its
+// own — it has deployments, each with a kind (a program can be a tool AND a job).
+export interface DeploymentRef {
+  name: string
+  kind: string // service | job | tool | static | reference
+}
+
 export interface ProgramSummary {
   id: string
   description: string | null
-  kind: string | null // derived: service | job | tool | static | reference
   stack: string | null
   version: string | null
   source: string | null
@@ -57,8 +64,7 @@ export interface ProgramSummary {
   installed: boolean | null
   active: boolean | null
   actions: string[]
-  services: string[]
-  jobs: string[]
+  deployments: DeploymentRef[]
   node: string | null
 }
 

@@ -5,6 +5,7 @@ import { useServiceAction } from "@/services/api/hooks"
 import { launcherLabel, subdomainUrl } from "@/lib/labels"
 import { HealthBadge } from "./HealthBadge"
 import { StackBadge } from "./StackBadge"
+import { KindBadge } from "./KindBadge"
 
 interface ServiceCardProps {
   service: ServiceSummary
@@ -37,7 +38,9 @@ export function ServiceCard({ service, health }: ServiceCardProps) {
         ) : null}
       </div>
 
-      <div className="flex gap-1.5 mb-2">
+      <div className="flex items-center gap-1.5 mb-2">
+        {/* A static (caddy-served) "service" is distinguished from a systemd one. */}
+        {service.kind === "static" && <KindBadge kind="static" />}
         <StackBadge stack={service.stack} />
       </div>
 
