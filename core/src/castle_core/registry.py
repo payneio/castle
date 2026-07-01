@@ -40,10 +40,14 @@ class NodeConfig:
 class Deployment:
     """A component deployed on this node with resolved runtime config."""
 
-    runner: str
+    # Who supervises/realizes this deployment: systemd | caddy | path | none.
+    manager: str
     run_cmd: list[str]
+    # The systemd launch mechanism (python|command|container|compose|node), or
+    # None for the non-process managers (caddy/path/none).
+    launcher: str | None = None
     # Optional teardown command emitted as systemd ``ExecStop=`` (e.g. compose
-    # ``down``). Empty for runners whose stop is just SIGTERM to the ExecStart pid.
+    # ``down``). Empty for launchers whose stop is just SIGTERM to the ExecStart pid.
     stop_cmd: list[str] = field(default_factory=list)
     env: dict[str, str] = field(default_factory=dict)
     # Names (never values) of secret-bearing env vars. Their resolved values live
@@ -51,7 +55,8 @@ class Deployment:
     # visibility (which secrets a deployment expects).
     secret_env_keys: list[str] = field(default_factory=list)
     description: str | None = None
-    behavior: str = "daemon"
+    # Derived kind: service | job | tool | static | reference.
+    kind: str = "service"
     stack: str | None = None
     port: int | None = None
     health_path: str | None = None
@@ -109,27 +114,38 @@ def load_registry(path: Path | None = None) -> NodeRegistry:
 
     deployed: dict[str, Deployment] = {}
     for name, comp_data in data.get("deployed", {}).items():
-        # Support both old "category" and new "behavior" keys for migration
-        behavior = comp_data.get("behavior")
-        if behavior is None:
-            category = comp_data.get("category", "service")
-            behavior = (
-                "daemon"
-                if category == "service"
-                else "tool"
-                if category in ("job", "tool")
-                else "frontend"
-                if category == "frontend"
-                else category
+        # New shape carries manager/launcher/kind; legacy carries runner/behavior.
+        manager = comp_data.get("manager")
+        launcher = comp_data.get("launcher")
+        if manager is None:
+            runner = comp_data.get("runner", "command")
+            manager = {"static": "caddy", "path": "path", "remote": "none"}.get(
+                runner, "systemd"
             )
+            if manager == "systemd":
+                launcher = runner
+        kind = comp_data.get("kind")
+        if kind is None:
+            behavior = comp_data.get("behavior")
+            if comp_data.get("schedule"):
+                kind = "job"
+            elif manager == "caddy" or behavior == "frontend":
+                kind = "static"
+            elif manager == "path" or behavior == "tool":
+                kind = "tool"
+            elif manager == "none":
+                kind = "reference"
+            else:
+                kind = "service"
         deployed[name] = Deployment(
-            runner=comp_data.get("runner", "command"),
+            manager=manager,
+            launcher=launcher,
             run_cmd=comp_data.get("run_cmd", []),
             stop_cmd=comp_data.get("stop_cmd", []),
             env=comp_data.get("env", {}),
             secret_env_keys=comp_data.get("secret_env_keys", []),
             description=comp_data.get("description"),
-            behavior=behavior,
+            kind=kind,
             stack=comp_data.get("stack"),
             port=comp_data.get("port"),
             health_path=comp_data.get("health_path"),
@@ -177,9 +193,11 @@ def save_registry(registry: NodeRegistry, path: Path | None = None) -> None:
 
     for name, comp in registry.deployed.items():
         entry: dict = {
-            "runner": comp.runner,
+            "manager": comp.manager,
             "run_cmd": comp.run_cmd,
         }
+        if comp.launcher:
+            entry["launcher"] = comp.launcher
         if comp.stop_cmd:
             entry["stop_cmd"] = comp.stop_cmd
         if comp.env:
@@ -188,7 +206,7 @@ def save_registry(registry: NodeRegistry, path: Path | None = None) -> None:
             entry["secret_env_keys"] = comp.secret_env_keys
         if comp.description:
             entry["description"] = comp.description
-        entry["behavior"] = comp.behavior
+        entry["kind"] = comp.kind
         if comp.stack:
             entry["stack"] = comp.stack
         if comp.port is not None:

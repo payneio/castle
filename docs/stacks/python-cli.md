@@ -318,30 +318,33 @@ uv run ruff check .         # Lint
 uv run ruff format .        # Format
 ```
 
-## Registering in castle.yaml
+## Registering in the registry
 
 ```yaml
-programs:
-  my-tool:
-    description: Does something useful
-    source: /data/repos/my-tool
-    stack: python-cli
-    behavior: tool
+# programs/my-tool.yaml
+description: Does something useful
+source: /data/repos/my-tool
+stack: python-cli
+```
+```yaml
+# deployments/my-tool.yaml (manager: path → kind: tool)
+program: my-tool
+manager: path
 ```
 
 Tools with system dependencies declare them directly on the program:
 
 ```yaml
-programs:
-  pdf2md:
-    description: Convert PDF files to Markdown
-    source: /data/repos/pdf2md
-    stack: python-cli
-    behavior: tool
-    system_dependencies: [pandoc, poppler-utils]
+# programs/pdf2md.yaml
+description: Convert PDF files to Markdown
+source: /data/repos/pdf2md
+stack: python-cli
+system_dependencies: [pandoc, poppler-utils]
 ```
 
-Tools live in the `programs:` section. If a tool also runs on a schedule,
-add a separate entry in the `jobs:` section referencing the program.
+A tool is a `programs/<name>.yaml` entry plus a `deployments/<name>.yaml` with
+`manager: path` (derived **kind: tool**). If a tool also runs on a schedule, add
+a *second* deployment with `manager: systemd` + `schedule` (derived **kind:
+job**) referencing the same program.
 
 See @docs/registry.md for the full registry reference.

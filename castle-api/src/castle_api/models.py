@@ -17,9 +17,10 @@ class DeploymentSummary(BaseModel):
     id: str
     category: str | None = None  # "program", "service", or "job"
     description: str | None = None
-    behavior: str | None = None
+    kind: str | None = None  # derived: service|job|tool|static|reference
     stack: str | None = None
-    runner: str | None = None
+    manager: str | None = None  # systemd|caddy|path|none
+    launcher: str | None = None  # python|command|container|compose|node (systemd only)
     port: int | None = None
     health_path: str | None = None
     subdomain: str | None = None  # exposed at <subdomain>.<gateway.domain>, else None
@@ -49,7 +50,7 @@ class ServiceSummary(BaseModel):
     id: str
     description: str | None = None
     stack: str | None = None
-    runner: str | None = None
+    launcher: str | None = None  # python|command|container|compose|node
     run_target: str | None = None  # what it runs: program name, argv, image, …
     port: int | None = None
     health_path: str | None = None
@@ -73,7 +74,7 @@ class JobSummary(BaseModel):
     id: str
     description: str | None = None
     stack: str | None = None
-    runner: str | None = None
+    launcher: str | None = None  # python|command|container|compose|node
     run_target: str | None = None  # what it runs: program name, argv, …
     schedule: str | None = None
     managed: bool = False
@@ -94,9 +95,8 @@ class ProgramSummary(BaseModel):
 
     id: str
     description: str | None = None
-    behavior: str | None = None
+    kind: str | None = None  # derived: service|job|tool|static|reference
     stack: str | None = None
-    runner: str | None = None
     version: str | None = None
     source: str | None = None
     repo: str | None = None

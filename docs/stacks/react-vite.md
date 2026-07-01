@@ -123,41 +123,47 @@ The `build` output is a static SPA in `dist/` — just HTML, JS, and CSS files.
 
 ## Registering as a program
 
-A frontend program has a `build` spec (produces static output). Register it
-in the `programs:` section of `castle.yaml`. No `run` block needed if Caddy
-handles serving directly from the build output.
+A frontend program has a `build` spec (produces static output). Register it in
+`programs/<name>.yaml`, plus a `deployments/<name>.yaml` with `manager: caddy`
+(derived **kind: static**) that names the built directory in `root:` — no `run`
+block, since Caddy serves the build output directly.
 
 ```yaml
-# castle.yaml
-programs:
-  my-frontend:
-    description: Web dashboard
-    source: /data/repos/my-frontend
-    build:
-      commands:
-        - ["pnpm", "build"]
-      outputs:
-        - dist/
+# programs/my-frontend.yaml
+description: Web dashboard
+source: /data/repos/my-frontend
+build:
+  commands:
+    - ["pnpm", "build"]
+  outputs:
+    - dist/
+```
+```yaml
+# deployments/my-frontend.yaml (manager: caddy → kind: static)
+program: my-frontend
+manager: caddy
+root: dist    # served at my-frontend.<gateway.domain>
 ```
 
 For production, Caddy serves the build output **in place** from the program's
-repo (`<source>/<build.outputs[0]>`) — no Node process and no copy into a
-central directory. See [Serving with Caddy](#serving-with-caddy) below.
+repo (`<source>/<root>`) — no Node process and no copy into a central directory.
+See [Serving with Caddy](#serving-with-caddy) below.
 
-For development with Vite's dev server, add a service entry:
+For development with Vite's dev server, use a `manager: systemd` deployment with
+the `node` launcher instead:
 
 ```yaml
-services:
-  my-frontend:
-    program: my-frontend
-    run:
-      runner: node
-      script: dev
-      package_manager: pnpm
-    expose:
-      http:
-        internal: { port: 5173 }
-    proxy: true   # expose the dev server at my-frontend.<gateway.domain>
+# deployments/my-frontend.yaml (dev — manager: systemd, node launcher → kind: service)
+program: my-frontend
+manager: systemd
+run:
+  launcher: node
+  script: dev
+  package_manager: pnpm
+expose:
+  http:
+    internal: { port: 5173 }
+proxy: true   # expose the dev server at my-frontend.<gateway.domain>
 ```
 
 See @docs/registry.md for the full registry reference.
@@ -170,10 +176,10 @@ The flow:
 
 1. You build the frontend with `castle program build <name>` (deploy does **not**
    build — it only points Caddy at `dist/`).
-2. The Caddyfile generator emits a route per `behavior: frontend` program that
-   has `build.outputs`, rooted **in place** at `<source>/<build.outputs[0]>` —
-   no copy. Each frontend is served at its own subdomain `<name>.<gateway.domain>`
-   (the dashboard, `castle`, is also the target of the `:9000` redirect).
+2. The Caddyfile generator emits a route per `manager: caddy` deployment (kind
+   **static**), rooted **in place** at `<source>/<root>` — no copy. Each static
+   frontend is served at its own subdomain `<name>.<gateway.domain>` (the
+   dashboard, `castle`, is also the target of the `:9000` redirect).
 
 The build is run with `VITE_BASE=/`, so a `vite.config` that reads it (see
 [Vite config](#vite-config)) emits root-relative asset URLs. The generated block

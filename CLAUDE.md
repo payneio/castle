@@ -6,17 +6,18 @@ with code in this repository.
 ## Overview
 
 Castle is a personal software platform — a monorepo of independent projects
-(services, tools, libraries) managed by the `castle` CLI. The registry config is split into three directories under your config root:
+(services, tools, libraries) managed by the `castle` CLI. The registry config is split into two directories under your config root:
 
-- **`programs/`** — Software catalog (source, behavior, stack, system_dependencies, build)
-- **`services/`** — Long-running daemons (run, expose, proxy, systemd)
-- **`jobs/`** — Scheduled tasks (run, cron schedule, systemd timer)
+- **`programs/`** — Software catalog (source, stack, system_dependencies, build)
+- **`deployments/`** — How a program is realized on this node (manager, run, expose, proxy, schedule, systemd)
 
 Each program has a **stack** (development toolchain: python-fastapi,
-python-cli, react-vite) and a **behavior** (runtime role: daemon, tool,
-frontend). Scheduling, systemd management, and proxying are orthogonal
-operations. Services and jobs reference a program via `program:` for
-description fallthrough.
+python-cli, react-vite). Each deployment is discriminated on its **`manager`**
+(`systemd` | `caddy` | `path` | `none`) — who supervises or realizes it. The
+human-facing **kind** (service, job, tool, static, reference) is *derived* from
+the manager (+ `schedule`), never stored. Scheduling, systemd management, and
+proxying are orthogonal operations. A deployment references a program via
+`program:` for description fallthrough.
 
 **Key principle:** Regular projects must never depend on castle. They accept standard
 configuration (data dir, port, URLs) via env vars. Only castle programs (CLI, gateway)
@@ -53,7 +54,7 @@ Stack guides (for writing *new* code, AI-facing):
 # New daemon, scaffolded from a stack
 castle program create my-service --stack python-fastapi --description "Does something"
 cd /data/repos/my-service && uv sync
-castle service create my-service --program my-service --port 9001   # declare the service
+castle service create my-service --program my-service --port 9001   # declare the deployment (manager: systemd)
 castle service deploy my-service && castle service enable my-service # unit + start
 castle gateway reload                                                # update reverse proxy routes
 
@@ -68,7 +69,8 @@ castle program add https://github.com/me/widget.git --name widget
 `castle program create` scaffolds under `/data/repos/` (override with
 `CASTLE_REPOS_DIR`) and registers the program under `programs/<name>.yaml` with an absolute
 `source:`. `castle program add` registers an existing repo in place under `programs/<name>.yaml` (or records
-its `repo:` URL for `castle program clone`).
+its `repo:` URL for `castle program clone`). A program's deployment (if any) is
+recorded separately under `deployments/<name>.yaml`.
 
 ## Castle CLI
 
@@ -81,33 +83,33 @@ Platform-wide lifecycle and the cross-resource overview are top-level.
 
 ```bash
 # Programs — the software catalog
-castle program list [--behavior daemon] [--stack python-cli] [--json]
+castle program list [--kind service] [--stack python-cli] [--json]
 castle program info <name> [--json]
 castle program create <name> [--stack ...] [--description ...]   # scaffold new
 castle program add <path|git-url> [--name ...]                   # adopt existing repo
 castle program clone [name]                                      # clone repo: source
 castle program delete <name> [--source] [-y]
 castle program run <name> [args...]                              # declared run command
-castle program install|uninstall [name]                          # activate tools/frontends
+castle program install|uninstall [name]                          # activate tools/statics
 castle program build|test|lint|format|type-check|check [name]    # dev verbs
 
-# Services — long-running daemons
+# Services — long-running daemons (deployments with manager: systemd, no schedule)
 castle service list [--json]
 castle service info <name> [--json]
 castle service create <name> [--program P] [--port N] [--health ...] \
-                      [--path ...] [--host ...] [--port-env ...] [--runner ...]
+                      [--path ...] [--host ...] [--port-env ...] [--launcher ...]
 castle service delete <name> [-y]
 castle service deploy <name>                                     # generate unit + route
 castle service enable|disable <name>                             # systemd enable/disable
 castle service start|stop|restart <name>                         # systemd lifecycle (one)
 castle service logs <name> [-f] [-n 50]
 
-# Jobs — scheduled tasks (same verbs; create takes --schedule)
-castle job create <name> [--program P] --schedule "0 2 * * *" [--runner ...]
+# Jobs — scheduled tasks (manager: systemd + schedule; same verbs, create takes --schedule)
+castle job create <name> [--program P] --schedule "0 2 * * *" [--launcher ...]
 castle job <list|info|delete|deploy|enable|disable|start|stop|restart|logs> ...
 
 # Platform-wide (top-level)
-castle list [--behavior ...] [--stack ...] [--json]   # programs + services + jobs
+castle list [--kind ...] [--stack ...] [--json]       # all deployments (services, jobs, tools, statics)
 castle status                                         # unified status
 castle deploy [name]                                  # apply config → units + Caddyfile
 castle start | stop | restart                         # all services (+ gateway)
@@ -117,10 +119,15 @@ castle gateway start|stop|reload|status               # the Caddy gateway
 Bringing everything online is the two honest steps `castle deploy && castle
 start` (apply config, then start) — there is no bundled `up`.
 
+`castle service` and `castle job` are **views** over the single deployment set,
+filtered by derived kind (systemd-no-schedule → service, systemd+schedule → job).
+Tools (`manager: path`) and statics (`manager: caddy`) are deployments too —
+reach them via `castle list --kind tool` / `--kind static`.
+
 **Dev verbs** resolve per-program: a declared `commands:` entry (or `build:`)
 overrides the stack default, falling back to the program's stack handler, else
 the verb is unavailable. So a wired-in repo with **no `stack`** works as long as
-it declares its commands. Tools are reached via `castle program list --behavior tool`.
+it declares its commands. Tools are reached via `castle list --kind tool`.
 
 ## Infrastructure
 
@@ -138,9 +145,9 @@ data I/O on a dedicated volume; default `/data/castle`). Paths below use
 - **Systemd**: User units generated under `~/.config/systemd/user/castle-*.service`.
   Use drop-in overrides (`*.service.d/*.conf`) for extra env vars that `castle deploy`
   shouldn't overwrite (e.g., `CASTLE_API_MQTT_ENABLED`).
-- **Containers**: `runner: container` services use Docker (preferred on this system
-  due to rootless podman UID mapping issues). Deploy resolves the runtime via
-  `shutil.which("docker")`.
+- **Containers**: `manager: systemd` deployments with `run: { launcher: container }`
+  use Docker (preferred on this system due to rootless podman UID mapping issues).
+  Deploy resolves the runtime via `shutil.which("docker")`.
 - **MQTT**: Mosquitto broker runs as `castle-mqtt` (Docker container on port 1883).
   Data in `$CASTLE_DATA_DIR/castle-mqtt/`, config in `$CASTLE_DATA_DIR/castle-mqtt/config/`.
 - **Data**: Service data lives in `$CASTLE_DATA_DIR/<service-name>/` (default
@@ -159,7 +166,7 @@ Deployments (the unified view of services + jobs + programs):
 - `GET /status` — Live health for all services
 
 Programs / Services / Jobs (typed views + editing):
-- `GET /programs`, `GET /programs/{name}` — Program catalog (`?behavior=tool` to filter)
+- `GET /programs`, `GET /programs/{name}` — Program catalog (`?kind=tool` to filter)
 - `POST /programs/{name}/{action}` — Run a program verb (install/uninstall/build/…)
 - `PUT|DELETE /programs/{name}` — Edit or remove a program entry
 - `GET /services`, `GET /services/{name}`, `PUT|DELETE /services/{name}`
@@ -219,8 +226,8 @@ Services also support: `uv run <service-name>` to start.
 
 ## Key Files
 
-- `castle.yaml` — Registry (three sections: programs, services, jobs)
-- `core/src/castle_core/manifest.py` — Pydantic models (ProgramSpec, ServiceSpec, JobSpec, RunSpec)
+- `castle.yaml` — Global settings (gateway, repo); resources live under `programs/` and `deployments/`
+- `core/src/castle_core/manifest.py` — Pydantic models (ProgramSpec, DeploymentSpec, LaunchSpec)
 - `core/src/castle_core/config.py` — Config loader (castle.yaml → CastleConfig)
 - `core/src/castle_core/generators/` — Systemd unit and Caddyfile generation
 - `cli/src/castle_cli/templates/scaffold.py` — Project scaffolding templates

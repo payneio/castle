@@ -1,19 +1,19 @@
 import { Link } from "react-router-dom"
 import { ArrowLeft } from "lucide-react"
-import { BehaviorBadge } from "@/components/BehaviorBadge"
+import { KindBadge } from "@/components/KindBadge"
 import { StackBadge } from "@/components/StackBadge"
 
 interface DetailHeaderProps {
   backTo: string
   backLabel: string
   name: string
-  behavior?: string | null
+  kind?: string | null
   stack?: string | null
   source?: string | null
   children?: React.ReactNode
 }
 
-export function DetailHeader({ backTo, backLabel, name, behavior, stack, source, children }: DetailHeaderProps) {
+export function DetailHeader({ backTo, backLabel, name, kind, stack, source, children }: DetailHeaderProps) {
   return (
     <>
       <Link to={backTo} className="text-[var(--primary)] hover:underline flex items-center gap-1 mb-6">
@@ -26,7 +26,7 @@ export function DetailHeader({ backTo, backLabel, name, behavior, stack, source,
       </div>
 
       <div className="flex items-center gap-3 flex-wrap mb-6">
-        <BehaviorBadge behavior={behavior ?? null} />
+        <KindBadge kind={kind ?? null} />
         <StackBadge stack={stack ?? null} />
         {source && (
           <span className="text-sm text-[var(--muted)] font-mono break-all min-w-0">{source}</span>

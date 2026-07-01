@@ -12,12 +12,14 @@ from pydantic import BaseModel
 from castle_core.config import (
     CastleConfig,
     GatewayConfig,
+    _DEPLOYMENT_ADAPTER,
+    _normalize_deployment_dict,
     _program_to_yaml_dict,
     _spec_to_yaml_dict,
     load_config,
     save_config,
 )
-from castle_core.manifest import ProgramSpec, JobSpec, ServiceSpec
+from castle_core.manifest import ProgramSpec, kind_for
 
 from castle_api.config import get_castle_root, get_config, get_registry
 from castle_api.stream import broadcast
@@ -79,12 +81,10 @@ def _aggregate_yaml(config: CastleConfig) -> str:
         data["programs"] = {
             n: _program_to_yaml_dict(s, config) for n, s in config.programs.items()
         }
-    if config.services:
-        data["services"] = {
-            n: _spec_to_yaml_dict(s) for n, s in config.services.items()
+    if config.deployments:
+        data["deployments"] = {
+            n: _spec_to_yaml_dict(s) for n, s in config.deployments.items()
         }
-    if config.jobs:
-        data["jobs"] = {n: _spec_to_yaml_dict(s) for n, s in config.jobs.items()}
     return yaml.dump(data, default_flow_style=False, sort_keys=False)
 
 
@@ -148,25 +148,20 @@ def save_yaml(request: ConfigSaveRequest) -> ConfigSaveResponse:
         except Exception as e:
             errors.append(f"programs.{name}: {e}")
 
-    # Validate services
-    services: dict[str, ServiceSpec] = {}
-    for name, svc_data in data.get("services", {}).items():
+    # Validate deployments (accepting a legacy services:/jobs: split too, which
+    # the normalizer folds into the single manager-discriminated collection).
+    deployments = {}
+    raw_deps: dict = dict(data.get("deployments") or {})
+    for legacy in ("services", "jobs"):
+        raw_deps.update(data.get(legacy) or {})
+    for name, dep_data in raw_deps.items():
         try:
-            svc_data_copy = dict(svc_data) if svc_data else {}
-            svc_data_copy["id"] = name
-            services[name] = ServiceSpec.model_validate(svc_data_copy)
+            dep_copy = _normalize_deployment_dict(dict(dep_data) if dep_data else {})
+            dep_copy = dict(dep_copy)
+            dep_copy["id"] = name
+            deployments[name] = _DEPLOYMENT_ADAPTER.validate_python(dep_copy)
         except Exception as e:
-            errors.append(f"services.{name}: {e}")
-
-    # Validate jobs
-    jobs: dict[str, JobSpec] = {}
-    for name, job_data in data.get("jobs", {}).items():
-        try:
-            job_data_copy = dict(job_data) if job_data else {}
-            job_data_copy["id"] = name
-            jobs[name] = JobSpec.model_validate(job_data_copy)
-        except Exception as e:
-            errors.append(f"jobs.{name}: {e}")
+            errors.append(f"deployments.{name}: {e}")
 
     if errors:
         raise HTTPException(
@@ -175,8 +170,8 @@ def save_yaml(request: ConfigSaveRequest) -> ConfigSaveResponse:
         )
 
     prog_count = len(programs)
-    svc_count = len(services)
-    job_count = len(jobs)
+    svc_count = sum(1 for d in deployments.values() if kind_for(d) == "service")
+    job_count = sum(1 for d in deployments.values() if kind_for(d) == "job")
 
     gateway_data = data.get("gateway", {})
     config = CastleConfig(
@@ -184,8 +179,7 @@ def save_yaml(request: ConfigSaveRequest) -> ConfigSaveResponse:
         repo=repo_path,
         gateway=GatewayConfig(port=gateway_data.get("port", 9000)),
         programs=programs,
-        services=services,
-        jobs=jobs,
+        deployments=deployments,
     )
     save_config(config)
 
@@ -232,8 +226,7 @@ def delete_program(name: str) -> dict:
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Program '{name}' not found",
         )
-    refs = [s for s, spec in config.services.items() if spec.program == name]
-    refs += [j for j, spec in config.jobs.items() if spec.program == name]
+    refs = [d for d, spec in config.deployments.items() if spec.program == name]
     if refs:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -247,74 +240,70 @@ def delete_program(name: str) -> dict:
     return {"ok": True, "program": name, "action": "deleted"}
 
 
-@router.put("/services/{name}")
-def save_service(name: str, request: ServiceConfigRequest) -> dict:
-    """Update a single service's config in castle.yaml."""
+def _save_deployment(name: str, config_dict: dict) -> dict:
+    """Validate a deployment (any manager) and persist it to config.deployments."""
     _require_repo()
-
     try:
-        svc_data = dict(request.config)
-        svc_data["id"] = name
-        ServiceSpec.model_validate(svc_data)
+        dep_data = _normalize_deployment_dict({**config_dict, "id": name})
+        _DEPLOYMENT_ADAPTER.validate_python(dep_data)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Invalid service config: {e}",
+            detail=f"Invalid deployment config: {e}",
         )
-
     config = get_config()
-    config.services[name] = ServiceSpec.model_validate({**request.config, "id": name})
+    config.deployments[name] = _DEPLOYMENT_ADAPTER.validate_python(
+        _normalize_deployment_dict({**config_dict, "id": name})
+    )
     save_config(config)
-    return {"ok": True, "service": name}
+    return {"ok": True, "deployment": name}
+
+
+def _delete_deployment(name: str) -> dict:
+    config = get_config()
+    if name not in config.deployments:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Deployment '{name}' not found",
+        )
+    del config.deployments[name]
+    save_config(config)
+    return {"ok": True, "deployment": name, "action": "deleted"}
+
+
+# The deployment endpoints — `deployments` is canonical; `services`/`jobs` remain
+# as aliases (the kind is derived, so all three target the one collection).
+@router.put("/deployments/{name}")
+def save_deployment(name: str, request: ServiceConfigRequest) -> dict:
+    """Create/update a deployment of any kind (service/job/tool/static)."""
+    return _save_deployment(name, request.config)
+
+
+@router.delete("/deployments/{name}")
+def delete_deployment(name: str) -> dict:
+    return _delete_deployment(name)
+
+
+@router.put("/services/{name}")
+def save_service(name: str, request: ServiceConfigRequest) -> dict:
+    """Alias of PUT /deployments/{name} (kept for the existing dashboard)."""
+    return _save_deployment(name, request.config)
 
 
 @router.delete("/services/{name}")
 def delete_service(name: str) -> dict:
-    """Remove a service from castle.yaml."""
-    config = get_config()
-    if name not in config.services:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Service '{name}' not found",
-        )
-    del config.services[name]
-    save_config(config)
-    return {"ok": True, "service": name, "action": "deleted"}
+    return _delete_deployment(name)
 
 
 @router.put("/jobs/{name}")
 def save_job(name: str, request: JobConfigRequest) -> dict:
-    """Update a single job's config in castle.yaml."""
-    _require_repo()
-
-    try:
-        job_data = dict(request.config)
-        job_data["id"] = name
-        JobSpec.model_validate(job_data)
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Invalid job config: {e}",
-        )
-
-    config = get_config()
-    config.jobs[name] = JobSpec.model_validate({**request.config, "id": name})
-    save_config(config)
-    return {"ok": True, "job": name}
+    """Alias of PUT /deployments/{name} (kept for the existing dashboard)."""
+    return _save_deployment(name, request.config)
 
 
 @router.delete("/jobs/{name}")
 def delete_job(name: str) -> dict:
-    """Remove a job from castle.yaml."""
-    config = get_config()
-    if name not in config.jobs:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Job '{name}' not found",
-        )
-    del config.jobs[name]
-    save_config(config)
-    return {"ok": True, "job": name, "action": "deleted"}
+    return _delete_deployment(name)
 
 
 @router.post("/apply", response_model=ApplyResponse)

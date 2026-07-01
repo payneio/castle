@@ -53,16 +53,16 @@ def run_info(args: argparse.Namespace) -> int:
     print(f"\n{BOLD}{name}{RESET}")
     print(f"{'─' * 40}")
 
-    # Determine behavior
-    behavior = None
-    if program and program.behavior:
-        behavior = program.behavior
+    # Determine kind (derived)
+    kind = None
+    if program and program.kind:
+        kind = program.kind
     elif service:
-        behavior = "daemon"
+        kind = "service"
     elif job:
-        behavior = "tool"
-    if behavior:
-        print(f"  {BOLD}behavior{RESET}:    {behavior}")
+        kind = "job"
+    if kind:
+        print(f"  {BOLD}kind{RESET}:        {kind}")
 
     # Show stack
     stack = None
@@ -97,8 +97,8 @@ def run_info(args: argparse.Namespace) -> int:
         if spec.program:
             print(f"  {BOLD}program{RESET}:     {spec.program}")
 
-        # Run spec
-        print(f"  {BOLD}runner{RESET}:      {spec.run.runner}")
+        # Launch spec
+        print(f"  {BOLD}launcher{RESET}:    {spec.run.launcher}")
         if hasattr(spec.run, "program"):
             print(f"  {BOLD}program{RESET}:     {spec.run.program}")
         elif hasattr(spec.run, "argv"):
@@ -182,12 +182,12 @@ def _info_json(
         data["service"] = service.model_dump(exclude_none=True, exclude={"id"})
     if job:
         data["job"] = job.model_dump(exclude_none=True, exclude={"id"})
-    if program and program.behavior:
-        data["behavior"] = program.behavior
+    if program and program.kind:
+        data["kind"] = program.kind
     elif service:
-        data["behavior"] = "daemon"
+        data["kind"] = "service"
     elif job:
-        data["behavior"] = "tool"
+        data["kind"] = "job"
 
     # Resolve stack
     stack = None
@@ -202,7 +202,8 @@ def _info_json(
 
     if deployed:
         data["deployed"] = {
-            "runner": deployed.runner,
+            "manager": deployed.manager,
+            "launcher": deployed.launcher,
             "run_cmd": deployed.run_cmd,
             "env": deployed.env,
             "secret_env_keys": deployed.secret_env_keys,

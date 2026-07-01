@@ -34,7 +34,7 @@ class TestComponents:
         assert svc["health_path"] == "/health"
         assert svc["subdomain"] == "test-svc"
         assert svc["managed"] is True
-        assert svc["behavior"] == "daemon"
+        assert svc["kind"] == "service"
 
     def test_tool_has_no_port(self, client: TestClient) -> None:
         """Tool component has no port."""
@@ -42,14 +42,14 @@ class TestComponents:
         data = response.json()
         tool = next(c for c in data if c["id"] == "test-tool")
         assert tool["port"] is None
-        assert tool["behavior"] == "tool"
+        assert tool["kind"] == "tool"
 
     def test_job_has_schedule(self, client: TestClient) -> None:
         """Job component has schedule."""
         response = client.get("/deployments")
         data = response.json()
         job = next(c for c in data if c["id"] == "test-job")
-        assert job["behavior"] == "tool"
+        assert job["kind"] == "job"
         assert job["schedule"] == "0 2 * * *"
 
 
@@ -63,7 +63,7 @@ class TestDeploymentDetail:
         data = response.json()
         assert data["id"] == "test-svc"
         assert "manifest" in data
-        assert data["manifest"]["runner"] == "python"
+        assert data["manifest"]["launcher"] == "python"
 
     def test_not_found(self, client: TestClient) -> None:
         """Returns 404 for unknown component."""
@@ -125,7 +125,7 @@ class TestServiceDetail:
         assert data["id"] == "test-svc"
         assert "manifest" in data
         # manifest is the editable castle.yaml ServiceSpec (nested run spec)
-        assert data["manifest"]["run"]["runner"] == "python"
+        assert data["manifest"]["run"]["launcher"] == "python"
         assert data["run_target"] == "test-svc"
 
     def test_not_found(self, client: TestClient) -> None:
@@ -196,12 +196,12 @@ class TestProgramsList:
         names = [p["id"] for p in data]
         assert "test-tool" in names
 
-    def test_program_has_behavior(self, client: TestClient) -> None:
-        """Program summary includes behavior."""
+    def test_program_has_kind(self, client: TestClient) -> None:
+        """Program summary includes the derived kind."""
         response = client.get("/programs")
         data = response.json()
         tool = next(p for p in data if p["id"] == "test-tool")
-        assert tool["behavior"] == "tool"
+        assert tool["kind"] == "tool"
 
     def test_no_port_field(self, client: TestClient) -> None:
         """ProgramSummary does not have port field."""
@@ -228,7 +228,7 @@ class TestProgramDetail:
         data = response.json()
         assert data["id"] == "test-tool"
         assert "manifest" in data
-        assert data["behavior"] == "tool"
+        assert data["kind"] == "tool"
 
     def test_not_found(self, client: TestClient) -> None:
         """Returns 404 for unknown program."""
@@ -287,23 +287,23 @@ class TestConfigEditor:
         assert response.status_code == 200
         data = yaml.safe_load(response.json()["yaml_content"])
         assert "test-tool" in data["programs"]
-        assert "test-svc" in data["services"]
-        assert "test-job" in data["jobs"]
+        # service, job, and tool all live under the single deployments section now.
+        assert "test-svc" in data["deployments"]
+        assert "test-job" in data["deployments"]
 
     def test_put_scatters_and_prunes(self, client: TestClient, castle_root) -> None:
         """PUT /config writes resource files and prunes removed ones."""
         import yaml
 
         current = yaml.safe_load(client.get("/config").json()["yaml_content"])
-        current["services"].pop("test-svc")
+        current["deployments"].pop("test-svc")
         current["programs"]["new-tool"] = {
             "description": "Brand new",
-            "behavior": "tool",
         }
         resp = client.put("/config", json={"yaml_content": yaml.dump(current)})
         assert resp.status_code == 200, resp.text
-        assert not (castle_root / "services" / "test-svc.yaml").exists()
+        assert not (castle_root / "deployments" / "test-svc.yaml").exists()
         assert (castle_root / "programs" / "new-tool.yaml").exists()
         after = yaml.safe_load(client.get("/config").json()["yaml_content"])
         assert "new-tool" in after["programs"]
-        assert "test-svc" not in (after.get("services") or {})
+        assert "test-svc" not in (after.get("deployments") or {})

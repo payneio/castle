@@ -12,7 +12,8 @@ from castle_core.registry import Deployment, NodeConfig, NodeRegistry
 
 def _svc(managed: bool = True, schedule: str | None = None) -> Deployment:
     return Deployment(
-        runner="python",
+        manager="systemd",
+        launcher="python",
         run_cmd=["x"],
         env={},
         managed=managed,

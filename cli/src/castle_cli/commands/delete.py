@@ -18,29 +18,27 @@ def run_delete(args: argparse.Namespace) -> int:
     name = args.name
     resource = getattr(args, "resource", None)  # "program" | "service" | "job"
 
-    # Resolve which sections this delete touches (scoped to one resource).
+    # Resolve which sections this delete touches (scoped to one resource). Any
+    # deployment resource name (service/job/tool/static/deployment) targets the
+    # single deployments/ collection — the kind is derived, not a separate section.
+    _DEPLOY_RESOURCES = (None, "service", "job", "tool", "static", "deployment")
     in_programs = name in config.programs and resource in (None, "program")
-    in_services = name in config.services and resource in (None, "service")
-    in_jobs = name in config.jobs and resource in (None, "job")
-    if not (in_programs or in_services or in_jobs):
+    in_deployment = name in config.deployments and resource in _DEPLOY_RESOURCES
+    if not (in_programs or in_deployment):
         where = f" {resource}" if resource else ""
         print(f"Error: no{where} '{name}' in castle.yaml")
         return 1
 
     where = [s for s, present in
-             (("program", in_programs), ("service", in_services), ("job", in_jobs)) if present]
+             (("program", in_programs), ("deployment", in_deployment)) if present]
 
-    # A program can't be removed while a deployment still references it. Refs
-    # named the same are removed in this call; any other referencing deployment
+    # A program can't be removed while a deployment still references it. A ref
+    # named the same is removed in this call; any other referencing deployment
     # would be left dangling, so refuse.
     if in_programs:
         dangling = [
-            s for s, spec in config.services.items()
-            if spec.program == name and not (s == name and in_services)
-        ]
-        dangling += [
-            j for j, spec in config.jobs.items()
-            if spec.program == name and not (j == name and in_jobs)
+            d for d, spec in config.deployments.items()
+            if spec.program == name and not (d == name and in_deployment)
         ]
         if dangling:
             print(
@@ -72,10 +70,8 @@ def run_delete(args: argparse.Namespace) -> int:
     # Remove registry entries.
     if in_programs:
         del config.programs[name]
-    if in_services:
-        del config.services[name]
-    if in_jobs:
-        del config.jobs[name]
+    if in_deployment:
+        del config.deployments[name]
     save_config(config)
     print(f"Removed '{name}' from castle.yaml ({', '.join(where)}).")
 
@@ -88,7 +84,7 @@ def run_delete(args: argparse.Namespace) -> int:
             print(f"Source directory not found (already gone): {source_dir}")
 
     # Warn about runtime artifacts we did NOT touch.
-    if in_services or in_jobs:
+    if in_deployment:
         print(
             f"\nNote: the systemd unit for '{name}' (if deployed) was NOT removed.\n"
             f"  Run: castle service disable {name}"

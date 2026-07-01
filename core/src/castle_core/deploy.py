@@ -26,7 +26,6 @@ from castle_core.config import (
 from castle_core.generators.caddyfile import (
     _DNS_TOKEN_ENV,
     generate_caddyfile_from_registry,
-    service_proxy_targets,
 )
 from castle_core.generators.tunnel import (
     generate_tunnel_config,
@@ -41,7 +40,14 @@ from castle_core.generators.systemd import (
     unit_env_file,
     unit_name,
 )
-from castle_core.manifest import JobSpec, ServiceSpec, behavior_for_runner, manager_for
+from castle_core.manifest import (
+    CaddyDeployment,
+    DeploymentBase,
+    DeploymentSpec,
+    PathDeployment,
+    RemoteDeployment,
+    kind_for,
+)
 from castle_core.registry import (
     REGISTRY_PATH,
     Deployment,
@@ -101,20 +107,11 @@ def deploy(target_name: str | None = None, root: Path | None = None) -> DeployRe
     else:
         registry = NodeRegistry(node=node)
 
-    # Deploy services
-    for name, svc in config.services.items():
+    # Deploy every deployment, dispatched by its manager (systemd/caddy/path/none).
+    for name, dep in config.deployments.items():
         if target_name and name != target_name:
             continue
-        deployed = _build_deployed_service(config, name, svc, result.messages)
-        registry.deployed[name] = deployed
-        result.deployed_count += 1
-        result.messages.append(_format_deployed(name, deployed))
-
-    # Deploy jobs
-    for name, job in config.jobs.items():
-        if target_name and name != target_name:
-            continue
-        deployed = _build_deployed_job(config, name, job, result.messages)
+        deployed = _build_deployed(config, name, dep, result.messages)
         registry.deployed[name] = deployed
         result.deployed_count += 1
         result.messages.append(_format_deployed(name, deployed))
@@ -316,7 +313,7 @@ def _write_secret_env_file(name: str, secret_env: dict[str, str]) -> Path | None
 
 
 def _resolve_description(
-    config: CastleConfig, spec: ServiceSpec | JobSpec
+    config: CastleConfig, spec: DeploymentBase
 ) -> str | None:
     """Get description, falling through to program if referenced."""
     if spec.description:
@@ -326,129 +323,109 @@ def _resolve_description(
     return None
 
 
-def _build_deployed_service(
-    config: CastleConfig, name: str, svc: ServiceSpec, messages: list[str]
+def _build_deployed(
+    config: CastleConfig, name: str, dep: DeploymentSpec, messages: list[str]
 ) -> Deployment:
-    """Build a Deployment from a ServiceSpec."""
-    run = svc.run
-    # The data-dir placeholder is keyed by the program the service runs, not the
-    # service name (e.g. job `protonmail-sync` runs program `protonmail` →
-    # /data/castle/protonmail). Falls back to the service name.
-    config_key = svc.program or name
+    """Build a runtime Deployment from a DeploymentSpec, dispatched by its manager."""
+    description = _resolve_description(config, dep)
+    kind = kind_for(dep)
+    stack = None
+    if dep.program and dep.program in config.programs:
+        stack = config.programs[dep.program].stack
+    source_dir = _program_source_dir(config, dep.program)
 
-    # Only systemd-managed runners get a unit. caddy (static), path (tools), and
-    # none (remote) have no local process — the manager mapping is the single
-    # source of truth, so there's no runner special-casing here.
-    managed = manager_for(run.runner) == "systemd"
-    if svc.manage and svc.manage.systemd and not svc.manage.systemd.enable:
+    # Non-process managers (caddy/path/none) have no unit and no run_cmd — the
+    # gateway, PATH, or another node is their runtime.
+    if isinstance(dep, CaddyDeployment):
+        # Serves <program-source>/<root> via the gateway; inherently exposed.
+        static_root = str(source_dir / dep.root) if source_dir is not None else None
+        return Deployment(
+            manager="caddy",
+            run_cmd=[],
+            description=description,
+            kind=kind,
+            stack=stack,
+            subdomain=name,
+            public=bool(dep.public),
+            static_root=static_root,
+            managed=False,
+        )
+    if isinstance(dep, PathDeployment):
+        return Deployment(
+            manager="path",
+            run_cmd=[],
+            description=description,
+            kind=kind,
+            stack=stack,
+            managed=False,
+        )
+    if isinstance(dep, RemoteDeployment):
+        return Deployment(
+            manager="none",
+            run_cmd=[],
+            description=description,
+            kind=kind,
+            stack=stack,
+            base_url=dep.base_url,
+            managed=False,
+        )
+
+    # systemd: a supervised process (a service, or a job when scheduled).
+    run = dep.run
+    # ${data_dir} is keyed by the program the deployment runs, not the deployment
+    # name (e.g. job `protonmail-sync` runs program `protonmail` →
+    # /data/castle/protonmail). Falls back to the deployment name.
+    config_key = dep.program or name
+
+    managed = True
+    if dep.manage and dep.manage.systemd and not dep.manage.systemd.enable:
         managed = False
 
-    # Routing comes from the shared deriver, so the registry written here and the
-    # Caddyfile computed from castle.yaml stay in lockstep. `expose` is the
-    # checkbox; the subdomain is the service name. A `static` service is inherently
-    # served (that's its whole purpose), so it's always exposed.
-    expose, port, base_url = service_proxy_targets(name, svc)
-    if run.runner == "static":
-        expose = True
+    # `proxy` is the exposure checkbox; the subdomain is the deployment name.
+    expose = bool(dep.proxy)
+    port = None
     health_path = None
-    if svc.expose and svc.expose.http:
-        health_path = svc.expose.http.health_path
+    if dep.expose and dep.expose.http:
+        port = dep.expose.http.internal.port
+        health_path = dep.expose.http.health_path
 
-    # Env is exactly what's declared in defaults.env — no hidden convention
-    # injection. ${port}/${data_dir}/${name}/${public_url} let the program's own
-    # env var names map to castle's computed values without hardcoding them.
-    # Secret-bearing vars
-    # are split out so they never land in the unit file or process argv — they're
-    # written to a mode-0600 env file referenced via EnvironmentFile=/--env-file.
-    raw_env = dict(svc.defaults.env) if (svc.defaults and svc.defaults.env) else {}
+    # Env is exactly what's in defaults.env — no hidden convention injection.
+    # ${port}/${data_dir}/${name}/${public_url} map the program's own env var
+    # names to castle's computed values. Secret-bearing vars split out to a
+    # mode-0600 file (never in the unit or argv).
+    raw_env = dict(dep.defaults.env) if (dep.defaults and dep.defaults.env) else {}
     public_url = _public_url(config, name, expose, port)
     env, secret_env = resolve_env_split(
         raw_env, _env_context(name, config_key, port, public_url)
     )
     secret_env_file = _write_secret_env_file(name, secret_env)
 
-    # `command`-runner services resolve a tool on PATH → ensure it's installed.
-    # `python`-runner services run in place via `uv run` (below) — no tool venv.
-    if run.runner == "command":
-        _ensure_python_tool(config, svc.program, messages)
+    # `command` launchers resolve a tool on PATH → ensure it's installed.
+    # `python` launchers run in place via `uv run` (below) — no tool venv.
+    if run.launcher == "command":
+        _ensure_python_tool(config, dep.program, messages)
 
-    # Build run_cmd (container runners get --env-file for the secrets).
-    source_dir = _program_source_dir(config, svc.program)
     run_cmd = _build_run_cmd(
-        name,
-        run,
-        env,
-        messages,
-        source_dir,
-        secret_env_file=secret_env_file,
+        name, run, env, messages, source_dir, secret_env_file=secret_env_file
     )
     stop_cmd = _build_stop_cmd(name, run, source_dir)
 
-    # A static service serves <program-source>/<run.root> via the gateway.
-    static_root = None
-    if run.runner == "static" and source_dir is not None:
-        static_root = str(source_dir / run.root)  # type: ignore[union-attr]
-
-    # Resolve stack from referenced program
-    stack = None
-    if svc.program and svc.program in config.programs:
-        stack = config.programs[svc.program].stack
-
     return Deployment(
-        runner=run.runner,
+        manager="systemd",
+        launcher=run.launcher,
         run_cmd=run_cmd,
         stop_cmd=stop_cmd,
         env=env,
         secret_env_keys=sorted(secret_env),
-        description=_resolve_description(config, svc),
-        behavior=behavior_for_runner(run.runner),
+        description=description,
+        kind=kind,
         stack=stack,
         port=port,
         health_path=health_path,
         subdomain=(name if expose else None),
-        public=bool(getattr(svc, "public", False) and expose),
-        static_root=static_root,
-        base_url=base_url,
+        public=bool(dep.public and expose),
+        schedule=getattr(dep, "schedule", None),
         managed=managed,
-    )
-
-
-def _build_deployed_job(
-    config: CastleConfig, name: str, job: JobSpec, messages: list[str]
-) -> Deployment:
-    """Build a Deployment from a JobSpec."""
-    run = job.run
-    # ${data_dir} is keyed by the program the job runs, not the job name — see
-    # _build_deployed_service. Falls back to the job name.
-    config_key = job.program or name
-    raw_env = dict(job.defaults.env) if (job.defaults and job.defaults.env) else {}
-    env, secret_env = resolve_env_split(raw_env, _env_context(name, config_key, None))
-    secret_env_file = _write_secret_env_file(name, secret_env)
-    if run.runner == "command":
-        _ensure_python_tool(config, job.program, messages)
-    run_cmd = _build_run_cmd(
-        name,
-        run,
-        env,
-        messages,
-        _program_source_dir(config, job.program),
-        secret_env_file=secret_env_file,
-    )
-
-    stack = None
-    if job.program and job.program in config.programs:
-        stack = config.programs[job.program].stack
-
-    return Deployment(
-        runner=run.runner,
-        run_cmd=run_cmd,
-        env=env,
-        secret_env_keys=sorted(secret_env),
-        description=_resolve_description(config, job),
-        behavior="tool",
-        stack=stack,
-        schedule=job.schedule,
-        managed=True,
     )
 
 
@@ -528,7 +505,7 @@ def _build_run_cmd(
     source_dir: Path | None = None,
     secret_env_file: Path | None = None,
 ) -> list[str]:
-    """Build a run command list from a RunSpec.
+    """Build a run command list from a LaunchSpec (a systemd deployment's `run`).
 
     ``env`` holds plain (non-secret) vars only; ``secret_env_file`` is the
     mode-0600 file holding the deployment's secrets. For container runners the
@@ -536,7 +513,7 @@ def _build_run_cmd(
     systemd-launched runners get them via ``EnvironmentFile=`` on the unit, so
     ``secret_env_file`` is unused here for those.
     """
-    match run.runner:  # type: ignore[union-attr]
+    match run.launcher:  # type: ignore[union-attr]
         case "python":
             # Run the program in place from its own project venv via `uv run`,
             # which syncs the env to the lockfile before launching. One venv per
@@ -609,16 +586,8 @@ def _build_run_cmd(
             if run.args:  # type: ignore[union-attr]
                 cmd.extend(run.args)  # type: ignore[union-attr]
             return cmd
-        case "remote":
-            return []
-        case "static":
-            # No process — the gateway file_servers this service's root.
-            return []
-        case "path":
-            # No process — installed on PATH via `uv tool install` at enable time.
-            return []
         case _:
-            raise ValueError(f"Unsupported runner: {run.runner}")  # type: ignore[union-attr]
+            raise ValueError(f"Unsupported launcher: {run.launcher}")  # type: ignore[union-attr]
 
 
 def _compose_base(name: str, run: object, source_dir: Path | None) -> list[str]:
@@ -643,7 +612,7 @@ def _build_stop_cmd(name: str, run: object, source_dir: Path | None) -> list[str
     Compose stacks need an explicit ``down`` so networks/anonymous volumes are
     reclaimed rather than left dangling when the unit stops.
     """
-    if run.runner == "compose":  # type: ignore[union-attr]
+    if run.launcher == "compose":  # type: ignore[union-attr]
         return [*_compose_base(name, run, source_dir), "down"]
     return []
 
@@ -712,14 +681,10 @@ def _generate_systemd_units(config: CastleConfig, registry: NodeRegistry) -> Non
             continue
 
         systemd_spec = None
-        if name in config.services:
-            svc = config.services[name]
-            if svc.manage and svc.manage.systemd:
-                systemd_spec = svc.manage.systemd
-        elif name in config.jobs:
-            job = config.jobs[name]
-            if job.manage and job.manage.systemd:
-                systemd_spec = job.manage.systemd
+        dep = config.deployments.get(name)
+        manage = getattr(dep, "manage", None)
+        if manage and manage.systemd:
+            systemd_spec = manage.systemd
 
         svc_name = unit_name(name)
         svc_content = generate_unit_from_deployed(

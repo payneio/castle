@@ -19,7 +19,7 @@ class TestListCommand:
             from castle_cli.config import load_config
 
             mock_load.return_value = load_config(castle_root)
-            args = Namespace(behavior=None, stack=None, json=False)
+            args = Namespace(kind=None, stack=None, json=False)
             result = run_list(args)
 
         assert result == 0
@@ -33,7 +33,7 @@ class TestListCommand:
             from castle_cli.config import load_config
 
             mock_load.return_value = load_config(castle_root)
-            args = Namespace(behavior="daemon", stack=None, json=False)
+            args = Namespace(kind="service", stack=None, json=False)
             result = run_list(args)
 
         assert result == 0
@@ -49,7 +49,7 @@ class TestListCommand:
             from castle_cli.config import load_config
 
             mock_load.return_value = load_config(castle_root)
-            args = Namespace(behavior="tool", stack=None, json=False)
+            args = Namespace(kind="tool", stack=None, json=False)
             result = run_list(args)
 
         assert result == 0
@@ -64,22 +64,22 @@ class TestListCommand:
 
             mock_load.return_value = load_config(castle_root)
             # Unfiltered: the job appears.
-            run_list(Namespace(behavior=None, stack=None, json=False))
+            run_list(Namespace(kind=None, stack=None, json=False))
             assert "test-job" in capsys.readouterr().out  # type: ignore[attr-defined]
             # Behavior filter targets the catalog, so jobs drop out.
-            run_list(Namespace(behavior="tool", stack=None, json=False))
+            run_list(Namespace(kind="tool", stack=None, json=False))
             out = capsys.readouterr().out  # type: ignore[attr-defined]
             assert "test-job" not in out
             assert "test-svc" not in out
             assert "test-tool" in out
 
     def test_list_json(self, castle_root: Path, capsys: object) -> None:
-        """JSON output tags each entry with its kind; behavior lives on programs."""
+        """JSON output tags each entry with its derived kind."""
         with patch("castle_cli.commands.list_cmd.load_config") as mock_load:
             from castle_cli.config import load_config
 
             mock_load.return_value = load_config(castle_root)
-            args = Namespace(behavior=None, stack=None, json=True)
+            args = Namespace(kind=None, stack=None, json=True)
             result = run_list(args)
 
         assert result == 0
@@ -90,6 +90,6 @@ class TestListCommand:
         assert "test-tool" in names
         svc = next(p for p in data if p["name"] == "test-svc")
         assert svc["kind"] == "service"
+        # test-tool is a program deployed on PATH → its derived kind is `tool`.
         tool = next(p for p in data if p["name"] == "test-tool")
-        assert tool["kind"] == "program"
-        assert tool["behavior"] == "tool"
+        assert tool["kind"] == "tool"

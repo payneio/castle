@@ -17,27 +17,33 @@ class RestartPolicy(str, Enum):
 
 
 # ---------------------
-# Run specs (discriminated union)
+# Launch specs — how systemd starts a process (discriminated union on `launcher`)
 # ---------------------
+#
+# A *launcher* is the process-launch mechanism for a systemd-managed deployment.
+# It is orthogonal to the deployment's `manager`: only systemd deployments have a
+# launcher, and it says only how the process starts — not how it's supervised.
+# The non-process managers (caddy/path/none) have no launcher; their fields live
+# on the deployment variant itself.
 
 
-class RunBase(BaseModel):
-    runner: str
+class LaunchBase(BaseModel):
+    launcher: str
 
 
-class RunCommand(RunBase):
-    runner: Literal["command"]
+class RunCommand(LaunchBase):
+    launcher: Literal["command"]
     argv: list[str] = Field(min_length=1)
 
 
-class RunPython(RunBase):
-    runner: Literal["python"]
+class RunPython(LaunchBase):
+    launcher: Literal["python"]
     program: str
     args: list[str] = Field(default_factory=list)
 
 
-class RunContainer(RunBase):
-    runner: Literal["container"]
+class RunContainer(LaunchBase):
+    launcher: Literal["container"]
     image: str
     command: list[str] | None = None
     args: list[str] = Field(default_factory=list)
@@ -47,14 +53,14 @@ class RunContainer(RunBase):
     workdir: str | None = None
 
 
-class RunNode(RunBase):
-    runner: Literal["node"]
+class RunNode(LaunchBase):
+    launcher: Literal["node"]
     script: str
     package_manager: Literal["npm", "pnpm", "yarn"] = "pnpm"
     args: list[str] = Field(default_factory=list)
 
 
-class RunCompose(RunBase):
+class RunCompose(LaunchBase):
     """A multi-container stack supervised as one unit via ``docker compose``.
 
     Unlike ``container`` (a single ``docker run``), compose owns the stack's own
@@ -65,89 +71,21 @@ class RunCompose(RunBase):
     ``defaults.env``); compose interpolates them from the process environment.
     """
 
-    runner: Literal["compose"]
+    launcher: Literal["compose"]
     file: str = "docker-compose.yml"  # resolved relative to the program source
     project_name: str | None = None  # ``-p``; defaults to ``castle-<name>``
 
 
-class RunRemote(RunBase):
-    runner: Literal["remote"]
-    base_url: str
-    health_url: str | None = None
-
-
-class RunStatic(RunBase):
-    """A static site served by the gateway (Caddy ``file_server``), no process.
-
-    Like ``remote``, this is a service with no local process and no systemd unit —
-    the gateway *is* its runtime. ``root`` is the built directory to serve, resolved
-    relative to the referenced program's source (e.g. ``dist`` or ``public``).
-    Building that directory is the program's concern; this only serves it.
-    """
-
-    runner: Literal["static"]
-    root: str = "dist"  # served dir, relative to the program source
-
-
-class RunPath(RunBase):
-    """A CLI installed on the user's PATH via ``uv tool install`` — no process.
-
-    Like ``remote``/``static`` it has no systemd unit; its manager is **PATH**.
-    The referenced program is what gets installed; its lifecycle is
-    install/uninstall (which is what start/stop/enable/disable map to).
-    """
-
-    runner: Literal["path"]
-
-
-RunSpec = Annotated[
+LaunchSpec = Annotated[
     Union[
         RunCommand,
         RunPython,
         RunContainer,
         RunNode,
         RunCompose,
-        RunRemote,
-        RunStatic,
-        RunPath,
     ],
-    Field(discriminator="runner"),
+    Field(discriminator="launcher"),
 ]
-
-
-# A deployment's *manager* — who makes the program available and supervises it —
-# is determined by its runner. This is the single source of truth; lifecycle,
-# deploy, and status all dispatch on it rather than special-casing runners.
-#   systemd — a long-running process (or a timer, for jobs)
-#   caddy   — a gateway route (file_server for static; reverse_proxy for a port)
-#   path    — an installed CLI on PATH (via `uv tool install`)
-#   none    — external; we only reference/route it (remote)
-_RUNNER_MANAGER: dict[str, str] = {
-    "python": "systemd",
-    "command": "systemd",
-    "container": "systemd",
-    "compose": "systemd",
-    "node": "systemd",
-    "static": "caddy",
-    "path": "path",
-    "remote": "none",
-}
-
-
-def manager_for(runner: str) -> str:
-    """The manager (`systemd`|`caddy`|`path`|`none`) that supervises a runner."""
-    return _RUNNER_MANAGER.get(runner, "systemd")
-
-
-# `behavior` (tool/daemon/frontend) is a *derived* descriptive label, computed
-# from how a program is deployed — never stored/edited. A static service → a
-# frontend; a path install → a tool; anything else running a process → a daemon.
-_RUNNER_BEHAVIOR: dict[str, str] = {"static": "frontend", "path": "tool"}
-
-
-def behavior_for_runner(runner: str) -> str:
-    """The display behavior implied by a service's runner."""
-    return _RUNNER_BEHAVIOR.get(runner, "daemon")
 
 
 # ---------------------
@@ -269,7 +207,9 @@ class ProgramSpec(BaseModel):
 
     id: str = ""
     description: str | None = None
-    behavior: str | None = None
+    # Derived at load time from how the program is deployed (its deployment's
+    # kind: service|job|tool|static|reference) — never stored. See kind_for.
+    kind: str | None = None
 
     source: str | None = None
     stack: str | None = None
@@ -301,68 +241,93 @@ class ProgramSpec(BaseModel):
 
 
 # ---------------------
-# Service spec — long-running daemon
+# Deployment specs — a program materialized into the runtime
 # ---------------------
+#
+# A deployment is discriminated on its `manager` — who supervises/realizes it:
+#   systemd → a process (or, with a `schedule`, a `.timer`)
+#   caddy   → a gateway route serving a static dir (file_server)
+#   path    → a CLI installed on PATH (uv tool install)
+#   none    → an external reference we only point at (remote)
+# The human "kind" (service/job/tool/static/reference) is *derived* from the
+# manager (+ schedule presence), never stored — see `kind_for`.
 
 
-class ServiceSpec(BaseModel):
-    """Long-running daemon deployment config."""
+class DeploymentBase(BaseModel):
+    """Fields common to every deployment, regardless of manager."""
 
     model_config = ConfigDict(populate_by_name=True)
 
     id: str = ""
-    # The program this service deploys. (`component` accepted as a legacy alias.)
+    # The program this deployment materializes. (`component` = legacy alias.)
     program: str | None = Field(
         default=None, validation_alias=AliasChoices("program", "component")
     )
     description: str | None = None
-
-    run: RunSpec
-
-    expose: ExposeSpec | None = None
-    # Expose this service at <service-name>.<gateway.domain> through the gateway
-    # (the subdomain is the service name). False → reachable only at its host:port.
-    proxy: bool = False
-    # Also expose this service to the public internet via the Cloudflare tunnel, at
-    # <service-name>.<gateway.public_domain>. Default False — public is opt-in and
-    # explicit. Requires proxy (the tunnel projects an already-routed subdomain).
-    public: bool = False
-    manage: ManageSpec | None = None
     defaults: DefaultsSpec | None = None
 
+
+class SystemdDeployment(DeploymentBase):
+    """A process supervised by systemd — a *service*, or a *job* when scheduled."""
+
+    manager: Literal["systemd"]
+    run: LaunchSpec
+    # Present → a `.timer` (job); absent → a continuous `.service` (service).
+    schedule: str | None = None
+    timezone: str = "America/Los_Angeles"
+    expose: ExposeSpec | None = None
+    # Route <name>.<gateway.domain> to this process. False → host:port only.
+    proxy: bool = False
+    # Also publish to the public internet via the Cloudflare tunnel, at
+    # <name>.<gateway.public_domain>. Opt-in; requires `proxy`.
+    public: bool = False
+    manage: ManageSpec | None = None
+
     @model_validator(mode="after")
-    def _validate_consistency(self) -> ServiceSpec:
-        if self.manage and self.manage.systemd and self.manage.systemd.enable:
-            if self.run.runner == "remote":
-                raise ValueError("manage.systemd cannot be enabled for runner=remote.")
-        # A static service is inherently exposed (that's its purpose); other
-        # runners need the proxy checkbox to be routed. Public requires exposure.
-        exposed = self.proxy or self.run.runner == "static"
-        if self.public and not exposed:
-            raise ValueError("public requires the service to be exposed (proxy or static).")
+    def _validate(self) -> SystemdDeployment:
+        if self.public and not self.proxy:
+            raise ValueError("public requires proxy (an exposed process).")
         return self
 
 
-# ---------------------
-# Job spec — scheduled task
-# ---------------------
+class CaddyDeployment(DeploymentBase):
+    """A static site served by the gateway (Caddy ``file_server``) — no process.
+
+    The gateway *is* its runtime; it's inherently exposed at its subdomain. ``root``
+    is the built dir to serve, relative to the program source (e.g. ``dist``/``public``).
+    """
+
+    manager: Literal["caddy"]
+    root: str = "dist"
+    # Inherently exposed at its subdomain; `public` = also project via the tunnel.
+    public: bool = False
 
 
-class JobSpec(BaseModel):
-    """Scheduled task that runs periodically and exits."""
+class PathDeployment(DeploymentBase):
+    """A CLI installed on PATH via ``uv tool install`` — no process, no route.
 
-    model_config = ConfigDict(populate_by_name=True)
+    Lifecycle is install/uninstall (what start/stop/enable/disable map to).
+    """
 
-    id: str = ""
-    # The program this job runs. (`component` accepted as a legacy alias.)
-    program: str | None = Field(
-        default=None, validation_alias=AliasChoices("program", "component")
-    )
-    description: str | None = None
+    manager: Literal["path"]
 
-    run: RunSpec
-    schedule: str
-    timezone: str = "America/Los_Angeles"
 
-    manage: ManageSpec | None = None
-    defaults: DefaultsSpec | None = None
+class RemoteDeployment(DeploymentBase):
+    """An external service (another node) — we only reference/route it, never run it."""
+
+    manager: Literal["none"]
+    base_url: str
+    health_url: str | None = None
+
+
+DeploymentSpec = Annotated[
+    Union[SystemdDeployment, CaddyDeployment, PathDeployment, RemoteDeployment],
+    Field(discriminator="manager"),
+]
+
+
+def kind_for(spec: DeploymentSpec) -> str:
+    """The derived kind of a deployment: service|job|tool|static|reference."""
+    if spec.manager == "systemd":
+        return "job" if getattr(spec, "schedule", None) else "service"
+    return {"caddy": "static", "path": "tool", "none": "reference"}[spec.manager]

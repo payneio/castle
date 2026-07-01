@@ -12,7 +12,7 @@ from castle_core.generators.systemd import (
     timer_name,
     unit_name,
 )
-from castle_core.manifest import manager_for
+from castle_core.manifest import kind_for
 from castle_core.registry import REGISTRY_PATH, load_registry
 
 from castle_cli.config import (
@@ -94,14 +94,15 @@ def _unit_action(config: CastleConfig, name: str, action: str, is_job: bool) -> 
     systemd (a process/timer) → `systemctl`; caddy (static) → reload the gateway;
     path (a tool) → install/uninstall; none (remote) → nothing to do.
     """
-    section = config.jobs if is_job else config.services
-    if name not in section:
-        print(f"Error: no {'job' if is_job else 'service'} '{name}'.")
+    dep = config.deployments.get(name)
+    if dep is None:
+        print(f"Error: no deployment '{name}'.")
         return 1
-    manager = "systemd" if is_job else manager_for(section[name].run.runner)
+    manager = dep.manager
     if manager != "systemd":
         return _managed_lifecycle(config, name, action, manager)
-    unit = timer_name(name) if is_job else unit_name(name)
+    # A scheduled systemd deployment (a job) is driven by its .timer.
+    unit = timer_name(name) if kind_for(dep) == "job" else unit_name(name)
     result = subprocess.run(["systemctl", "--user", action, unit], check=False)
     if result.returncode != 0:
         print(f"Error: failed to {action} {unit}")
@@ -143,19 +144,20 @@ def _path_lifecycle(config: CastleConfig, name: str, action: str) -> int:
 
 
 def _services_restart(config: CastleConfig) -> int:
-    """Restart every systemd-managed service and job unit.
+    """Restart every systemd-managed deployment (service or job) unit.
 
-    caddy/path/none runners have no unit — they ride along with the gateway
+    caddy/path/none deployments have no unit — they ride along with the gateway
     restart (static) or are stateless (remote), so we don't systemctl them here.
     """
-    for name in config.jobs:
-        subprocess.run(["systemctl", "--user", "restart", timer_name(name)], check=False)
-        print(f"  {name}: restarted (timer)")
-    for name, svc in config.services.items():
-        if manager_for(svc.run.runner) != "systemd":
+    for name, dep in config.deployments.items():
+        if dep.manager != "systemd":
             continue
-        subprocess.run(["systemctl", "--user", "restart", unit_name(name)], check=False)
-        print(f"  {name}: restarted")
+        if kind_for(dep) == "job":
+            subprocess.run(["systemctl", "--user", "restart", timer_name(name)], check=False)
+            print(f"  {name}: restarted (timer)")
+        else:
+            subprocess.run(["systemctl", "--user", "restart", unit_name(name)], check=False)
+            print(f"  {name}: restarted")
     return 0
 
 
@@ -181,7 +183,7 @@ def run_status(args: argparse.Namespace) -> int:
             on = is_active(name, config)
             color = "\033[92m" if on else "\033[90m"
             label = "active" if on else "inactive"
-            print(f"  {color}{label:10s}\033[0m  {name}  ({comp.behavior or 'program'})")
+            print(f"  {color}{label:10s}\033[0m  {name}  ({comp.kind or 'program'})")
         print()
     return 0
 
@@ -219,7 +221,7 @@ def _service_status(config: CastleConfig) -> int:
 
     for name, svc in config.services.items():
         active = is_active(name, config)  # manager-aware (systemd/caddy/path/none)
-        manager = manager_for(svc.run.runner)
+        manager = svc.manager
         color = "\033[92m" if active else "\033[90m"
         reset = "\033[0m"
         label = "active" if active else "inactive"
@@ -260,14 +262,10 @@ def _service_dry_run(config: CastleConfig, name: str) -> int:
         if name in registry.deployed:
             deployed = registry.deployed[name]
             systemd_spec = None
-            if name in config.services:
-                svc = config.services[name]
-                if svc.manage and svc.manage.systemd:
-                    systemd_spec = svc.manage.systemd
-            elif name in config.jobs:
-                job = config.jobs[name]
-                if job.manage and job.manage.systemd:
-                    systemd_spec = job.manage.systemd
+            dep = config.deployments.get(name)
+            manage = getattr(dep, "manage", None)
+            if manage and manage.systemd:
+                systemd_spec = manage.systemd
 
             svc_unit = unit_name(name)
             svc_content = generate_unit_from_deployed(name, deployed, systemd_spec)
@@ -304,13 +302,9 @@ def _services_start(config: CastleConfig) -> int:
     caddyfile_path.write_text(generate_caddyfile_from_registry(registry))
     print(f"Generated {caddyfile_path}")
 
-    for name in config.services:
-        if name not in registry.deployed:
-            print(f"  {name}: skipped (not in registry, run 'castle deploy')")
-            continue
-        _service_enable(config, name)
-
-    for name in config.jobs:
+    # Activate every deployment in its mode: systemd unit / timer, gateway route
+    # (static), or PATH install (tool). activate() dispatches by manager.
+    for name in config.deployments:
         if name not in registry.deployed:
             print(f"  {name}: skipped (not in registry, run 'castle deploy')")
             continue

@@ -13,7 +13,7 @@ from castle_core.config import (
     resolve_env_vars,
     save_config,
 )
-from castle_core.manifest import ProgramSpec, JobSpec, ServiceSpec
+from castle_core.manifest import ProgramSpec, SystemdDeployment
 
 
 class TestLoadConfig:
@@ -32,8 +32,10 @@ class TestLoadConfig:
         """Each section produces the correct spec type."""
         config = load_config(castle_root)
         assert isinstance(config.programs["test-tool"], ProgramSpec)
-        assert isinstance(config.services["test-svc"], ServiceSpec)
-        assert isinstance(config.jobs["test-job"], JobSpec)
+        # Both a service and a job are systemd deployments; the kind (service/job)
+        # is derived from whether a schedule is present.
+        assert isinstance(config.services["test-svc"], SystemdDeployment)
+        assert isinstance(config.jobs["test-job"], SystemdDeployment)
 
     def test_service_expose(self, castle_root: Path) -> None:
         """Service has correct expose spec."""
@@ -49,10 +51,10 @@ class TestLoadConfig:
         assert svc.proxy is True  # exposed at <name>.<gateway.domain>
 
     def test_service_run_spec(self, castle_root: Path) -> None:
-        """Service has correct RunSpec."""
+        """Service has correct launch spec (legacy runner normalized to launcher)."""
         config = load_config(castle_root)
         svc = config.services["test-svc"]
-        assert svc.run.runner == "python"
+        assert svc.run.launcher == "python"
         assert svc.run.program == "test-svc"
 
     def test_service_component_ref(self, castle_root: Path) -> None:
@@ -114,25 +116,26 @@ class TestSaveConfig:
         assert svc.manage.systemd is not None
 
     def test_writes_directory_layout(self, castle_root: Path) -> None:
-        """Save writes one file per resource under programs/services/jobs dirs."""
+        """Save writes one file per resource under programs/ and one deployments/ dir."""
         config = load_config(castle_root)
         save_config(config)
         assert (castle_root / "programs" / "test-tool.yaml").exists()
-        assert (castle_root / "services" / "test-svc.yaml").exists()
-        assert (castle_root / "jobs" / "test-job.yaml").exists()
+        # service, job, and tool all live under the single deployments/ dir now.
+        assert (castle_root / "deployments" / "test-svc.yaml").exists()
+        assert (castle_root / "deployments" / "test-job.yaml").exists()
+        assert (castle_root / "deployments" / "test-tool.yaml").exists()
         # Global file holds gateway only, no resource sections
         global_data = yaml.safe_load((castle_root / "castle.yaml").read_text())
         assert global_data["gateway"]["port"] == 18000
         assert "programs" not in global_data
-        assert "services" not in global_data
-        assert "jobs" not in global_data
+        assert "deployments" not in global_data
 
     def test_delete_prunes_file(self, castle_root: Path) -> None:
-        """Removing a resource and saving deletes its on-disk file."""
+        """Removing a deployment and saving deletes its on-disk file."""
         config = load_config(castle_root)
-        del config.services["test-svc"]
+        del config.deployments["test-svc"]
         save_config(config)
-        assert not (castle_root / "services" / "test-svc.yaml").exists()
+        assert not (castle_root / "deployments" / "test-svc.yaml").exists()
         config2 = load_config(castle_root)
         assert "test-svc" not in config2.services
         assert "test-tool" in config2.programs

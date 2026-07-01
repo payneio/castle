@@ -15,11 +15,10 @@ from castle_cli.manifest import (
     ExposeSpec,
     HttpExposeSpec,
     HttpInternal,
-    JobSpec,
     ManageSpec,
     RunCommand,
     RunPython,
-    ServiceSpec,
+    SystemdDeployment,
     SystemdSpec,
 )
 
@@ -35,17 +34,16 @@ def _defaults(env_args: list[str] | None) -> DefaultsSpec | None:
     return DefaultsSpec(env=env)
 
 
-def _run_spec(runner: str, target: str, name: str) -> RunPython | RunCommand:
-    if runner == "command":
-        return RunCommand(runner="command", argv=target.split() or [name])
-    return RunPython(runner="python", program=target or name)
+def _run_spec(launcher: str, target: str, name: str) -> RunPython | RunCommand:
+    if launcher == "command":
+        return RunCommand(launcher="command", argv=target.split() or [name])
+    return RunPython(launcher="python", program=target or name)
 
 
-def _check_new(config: object, name: str, section: str) -> str | None:
-    """Return an error message if the name can't be created, else None."""
-    existing = getattr(config, section)
-    if name in existing:
-        return f"Error: {section[:-1]} '{name}' already exists."
+def _check_new(config: object, name: str, label: str) -> str | None:
+    """Return an error message if the deployment name is taken, else None."""
+    if name in config.deployments:  # type: ignore[attr-defined]
+        return f"Error: {label} '{name}' already exists."
     return None
 
 
@@ -53,11 +51,11 @@ def run_service_create(args: argparse.Namespace) -> int:
     """Create a service entry in castle.yaml."""
     config = load_config()
     name = args.name
-    if err := _check_new(config, name, "services"):
+    if err := _check_new(config, name, "service"):
         print(err)
         return 1
 
-    run = _run_spec(args.runner, args.run or args.program or name, name)
+    run = _run_spec(args.launcher, args.run or args.program or name, name)
 
     expose = None
     proxy = False
@@ -71,8 +69,9 @@ def run_service_create(args: argparse.Namespace) -> int:
         # Expose at <name>.<gateway.domain> (the subdomain is the service name).
         proxy = not args.no_proxy
 
-    config.services[name] = ServiceSpec(
+    config.deployments[name] = SystemdDeployment(
         id=name,
+        manager="systemd",
         program=args.program,
         description=args.description or None,
         run=run,
@@ -84,7 +83,7 @@ def run_service_create(args: argparse.Namespace) -> int:
     save_config(config)
 
     print(f"Created service '{name}'.")
-    print(f"  runs:   {args.runner} ({args.run or args.program or name})")
+    print(f"  runs:   {args.launcher} ({args.run or args.program or name})")
     if expose:
         print(f"  port:   {args.port}")
     if proxy:
@@ -97,14 +96,16 @@ def run_job_create(args: argparse.Namespace) -> int:
     """Create a job entry in castle.yaml."""
     config = load_config()
     name = args.name
-    if err := _check_new(config, name, "jobs"):
+    if err := _check_new(config, name, "job"):
         print(err)
         return 1
 
-    run = _run_spec(args.runner, args.run or args.program or name, name)
+    run = _run_spec(args.launcher, args.run or args.program or name, name)
 
-    config.jobs[name] = JobSpec(
+    # A job is a systemd deployment with a schedule (→ a .timer).
+    config.deployments[name] = SystemdDeployment(
         id=name,
+        manager="systemd",
         program=args.program,
         description=args.description or None,
         run=run,
@@ -115,7 +116,7 @@ def run_job_create(args: argparse.Namespace) -> int:
     save_config(config)
 
     print(f"Created job '{name}'.")
-    print(f"  runs:     {args.runner} ({args.run or args.program or name})")
+    print(f"  runs:     {args.launcher} ({args.run or args.program or name})")
     print(f"  schedule: {args.schedule}")
     print(f"\nNext: castle job deploy {name} && castle job enable {name}")
     return 0

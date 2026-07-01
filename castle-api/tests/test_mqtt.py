@@ -12,11 +12,12 @@ def _make_registry() -> NodeRegistry:
         node=NodeConfig(hostname="tower", castle_root="/data/repos/castle", gateway_port=9000),
         deployed={
             "my-svc": Deployment(
-                runner="python",
+                manager="systemd",
+                launcher="python",
                 run_cmd=["uv", "run", "my-svc"],
                 env={"PORT": "9001", "SECRET_KEY": "super-secret"},
                 description="My service",
-                behavior="daemon",
+                kind="service",
                 stack="python-fastapi",
                 port=9001,
                 health_path="/health",
@@ -24,9 +25,10 @@ def _make_registry() -> NodeRegistry:
                 managed=True,
             ),
             "my-job": Deployment(
-                runner="command",
+                manager="systemd",
+                launcher="command",
                 run_cmd=["my-job"],
-                behavior="tool",
+                kind="job",
                 stack="python-cli",
                 schedule="0 2 * * *",
             ),
@@ -51,12 +53,13 @@ class TestRegistrySerialization:
 
         assert "my-svc" in restored.deployed
         svc = restored.deployed["my-svc"]
-        assert svc.runner == "python"
+        assert svc.manager == "systemd"
+        assert svc.launcher == "python"
         assert svc.port == 9001
         assert svc.health_path == "/health"
         assert svc.subdomain == "my-svc"
         assert svc.managed is True
-        assert svc.behavior == "daemon"
+        assert svc.kind == "service"
         assert svc.stack == "python-fastapi"
 
     def test_job_fields_preserved(self) -> None:
@@ -65,9 +68,9 @@ class TestRegistrySerialization:
 
         assert "my-job" in restored.deployed
         job = restored.deployed["my-job"]
-        assert job.runner == "command"
+        assert job.launcher == "command"
         assert job.schedule == "0 2 * * *"
-        assert job.behavior == "tool"
+        assert job.kind == "job"
         assert job.stack == "python-cli"
 
     def test_optional_fields_omitted(self) -> None:
@@ -75,7 +78,7 @@ class TestRegistrySerialization:
         reg = NodeRegistry(
             node=NodeConfig(hostname="minimal"),
             deployed={
-                "bare": Deployment(runner="command", run_cmd=["bare"]),
+                "bare": Deployment(manager="systemd", launcher="command", run_cmd=["bare"]),
             },
         )
         restored = _json_to_registry(_registry_to_json(reg))

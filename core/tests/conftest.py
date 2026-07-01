@@ -38,7 +38,6 @@ def castle_root(tmp_path: Path) -> Generator[Path, None, None]:
         "programs": {
             "test-tool": {
                 "description": "Test tool",
-                "behavior": "tool",
             },
         },
         "services": {

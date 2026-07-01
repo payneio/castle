@@ -8,12 +8,17 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
+from pydantic import BaseModel, TypeAdapter
 
 from castle_core.manifest import (
-    JobSpec,
+    DeploymentSpec,
     ProgramSpec,
-    ServiceSpec,
+    kind_for,
 )
+
+# Validator for the manager-discriminated deployment union (it's an Annotated
+# Union, not a BaseModel, so it needs a TypeAdapter to parse a dict).
+_DEPLOYMENT_ADAPTER: TypeAdapter[DeploymentSpec] = TypeAdapter(DeploymentSpec)
 
 
 def _resolve_castle_home() -> Path:
@@ -134,27 +139,32 @@ class CastleConfig:
     gateway: GatewayConfig
     repo: Path | None
     programs: dict[str, ProgramSpec]
-    services: dict[str, ServiceSpec]
-    jobs: dict[str, JobSpec]
+    # The one deployment concept (manager-discriminated). service/job/tool/static/
+    # reference are *derived views* over this, filtered by kind_for — see below.
+    deployments: dict[str, DeploymentSpec]
 
-    def behavior_of(self, name: str) -> str | None:
-        """A program's *derived* behavior label, from how it's deployed:
-        static service → frontend, path service → tool, process service → daemon,
-        job-only → tool, no deployment → None. Never a stored value."""
-        from castle_core.manifest import behavior_for_runner
-
-        for svc_name, svc in self.services.items():
-            if svc_name == name or svc.program == name:
-                return behavior_for_runner(svc.run.runner)
-        for job_name, job in self.jobs.items():
-            if job_name == name or job.program == name:
-                return "tool"  # a program a timer invokes is a tool
+    def kind_of(self, name: str) -> str | None:
+        """A program's *derived* kind, from its deployment (service|job|tool|
+        static|reference); None if it has no deployment. Never a stored value."""
+        for dname, dep in self.deployments.items():
+            if dname == name or dep.program == name:
+                return kind_for(dep)
         return None
+
+    @property
+    def services(self) -> dict[str, DeploymentSpec]:
+        """Deployments whose derived kind is `service` (a continuous systemd process)."""
+        return {n: d for n, d in self.deployments.items() if kind_for(d) == "service"}
+
+    @property
+    def jobs(self) -> dict[str, DeploymentSpec]:
+        """Deployments whose derived kind is `job` (a scheduled systemd timer)."""
+        return {n: d for n, d in self.deployments.items() if kind_for(d) == "job"}
 
     @property
     def tools(self) -> dict[str, ProgramSpec]:
         """Programs deployed as a PATH tool — derived, not a stored label."""
-        return {k: v for k, v in self.programs.items() if self.behavior_of(k) == "tool"}
+        return {k: v for k, v in self.programs.items() if self.kind_of(k) == "tool"}
 
     @property
     def frontends(self) -> dict[str, ProgramSpec]:
@@ -234,18 +244,44 @@ def _parse_program(name: str, data: dict) -> ProgramSpec:
     return ProgramSpec.model_validate(data_copy)
 
 
-def _parse_service(name: str, data: dict) -> ServiceSpec:
-    """Parse a services: entry into a ServiceSpec."""
-    data_copy = dict(data)
-    data_copy["id"] = name
-    return ServiceSpec.model_validate(data_copy)
+def _normalize_deployment_dict(data: dict) -> dict:
+    """Map a legacy service/job entry to the manager-discriminated shape.
+
+    Legacy entries carry `run.runner` (including static/path/remote); new entries
+    carry `manager` and (for systemd) `run.launcher`. New-shape entries pass through.
+    """
+    if "manager" in data:
+        return data
+    d = dict(data)
+    run = dict(d.pop("run", None) or {})
+    runner = run.get("runner")
+    if runner == "static":
+        d["manager"] = "caddy"
+        if run.get("root"):
+            d["root"] = run["root"]
+    elif runner == "path":
+        d["manager"] = "path"
+    elif runner == "remote":
+        d["manager"] = "none"
+        if run.get("base_url"):
+            d["base_url"] = run["base_url"]
+        if run.get("health_url"):
+            d["health_url"] = run["health_url"]
+    else:
+        # A process launcher (python/command/container/compose/node) → systemd.
+        d["manager"] = "systemd"
+        launch = {k: v for k, v in run.items() if k != "runner"}
+        launch["launcher"] = runner
+        d["run"] = launch
+    return d
 
 
-def _parse_job(name: str, data: dict) -> JobSpec:
-    """Parse a jobs: entry into a JobSpec."""
-    data_copy = dict(data)
+def _parse_deployment(name: str, data: dict) -> DeploymentSpec:
+    """Parse a deployment entry (new or legacy shape) into a DeploymentSpec."""
+    data_copy = _normalize_deployment_dict(data)
+    data_copy = dict(data_copy)
     data_copy["id"] = name
-    return JobSpec.model_validate(data_copy)
+    return _DEPLOYMENT_ADAPTER.validate_python(data_copy)
 
 
 def _load_resource_dir(directory: Path) -> dict[str, dict]:
@@ -267,7 +303,7 @@ def _load_resource_dir(directory: Path) -> dict[str, dict]:
 
 
 def load_config(root: Path | None = None) -> CastleConfig:
-    """Load castle config: global castle.yaml + programs/, services/, jobs/ dirs."""
+    """Load castle config: global castle.yaml + programs/ and deployments/ dirs."""
     if root is None:
         root = find_castle_root()
 
@@ -306,26 +342,29 @@ def load_config(root: Path | None = None) -> CastleConfig:
                 prog.source = str(root / prog.source)
         programs[name] = prog
 
-    services: dict[str, ServiceSpec] = {}
-    for name, svc_data in _load_resource_dir(root / "services").items():
-        services[name] = _parse_service(name, svc_data)
-
-    jobs: dict[str, JobSpec] = {}
-    for name, job_data in _load_resource_dir(root / "jobs").items():
-        jobs[name] = _parse_job(name, job_data)
+    # New layout: one deployments/ dir. Legacy: services/ + jobs/ (normalized on
+    # read) — used only until the one-shot migration rewrites everything.
+    raw = _load_resource_dir(root / "deployments")
+    if not raw:
+        raw = {
+            **_load_resource_dir(root / "services"),
+            **_load_resource_dir(root / "jobs"),
+        }
+    deployments: dict[str, DeploymentSpec] = {
+        name: _parse_deployment(name, dep_data) for name, dep_data in raw.items()
+    }
 
     config = CastleConfig(
         root=root,
         repo=repo_path,
         gateway=gateway,
         programs=programs,
-        services=services,
-        jobs=jobs,
+        deployments=deployments,
     )
-    # `behavior` is derived from deployments, never stored — populate it so every
-    # reader of `program.behavior` gets the live, accurate label.
+    # `kind` is derived from deployments, never stored — populate it so every
+    # reader of `program.kind` gets the live, accurate label.
     for pname, prog in config.programs.items():
-        prog.behavior = config.behavior_of(pname)
+        prog.kind = config.kind_of(pname)
     return config
 
 
@@ -361,10 +400,10 @@ _STRUCTURAL_KEYS = {
 }
 
 
-def _spec_to_yaml_dict(spec: ProgramSpec | ServiceSpec | JobSpec) -> dict:
-    """Serialize a spec to a YAML-friendly dict, preserving structural presence."""
-    # `behavior` is derived at load time from deployments — never persisted.
-    exclude_fields = {"id", "behavior"} if isinstance(spec, ProgramSpec) else {"id"}
+def _spec_to_yaml_dict(spec: BaseModel) -> dict:
+    """Serialize a ProgramSpec or DeploymentSpec to a YAML-friendly dict."""
+    # `kind` is derived at load time from deployments — never persisted.
+    exclude_fields = {"id", "kind"} if isinstance(spec, ProgramSpec) else {"id"}
     full = spec.model_dump(mode="json", exclude_none=True, exclude=exclude_fields)
     minimal = spec.model_dump(
         mode="json", exclude_none=True, exclude=exclude_fields, exclude_defaults=True
@@ -433,7 +472,7 @@ def _write_resource_dir(directory: Path, specs: dict[str, dict]) -> None:
 
 
 def save_config(config: CastleConfig) -> None:
-    """Save castle config: global castle.yaml + programs/, services/, jobs/ dirs."""
+    """Save castle config: global castle.yaml + programs/ and deployments/ dirs."""
     gateway_data: dict = {"port": config.gateway.port}
     if config.gateway.tls:
         gateway_data["tls"] = config.gateway.tls
@@ -461,12 +500,8 @@ def save_config(config: CastleConfig) -> None:
         {n: _program_to_yaml_dict(s, config) for n, s in config.programs.items()},
     )
     _write_resource_dir(
-        config.root / "services",
-        {n: _spec_to_yaml_dict(s) for n, s in config.services.items()},
-    )
-    _write_resource_dir(
-        config.root / "jobs",
-        {n: _spec_to_yaml_dict(s) for n, s in config.jobs.items()},
+        config.root / "deployments",
+        {n: _spec_to_yaml_dict(d) for n, d in config.deployments.items()},
     )
 
 

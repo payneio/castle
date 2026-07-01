@@ -23,11 +23,14 @@ export function ConfigPanel({ deployment, configSection, onRefetch }: ConfigPane
   const [pendingApply, setPendingApply] = useState(false)
   const [applying, setApplying] = useState(false)
   const isDeployment = configSection !== "programs"
+  // Programs are their own catalog; every deployment kind (service/job/tool/
+  // static) lives in the single deployments/ collection.
+  const writeSection = isDeployment ? "deployments" : "programs"
 
   const handleSave = async (compName: string, config: Record<string, unknown>) => {
     setMessage(null)
     try {
-      await apiClient.put(`/config/${configSection}/${compName}`, { config })
+      await apiClient.put(`/config/${writeSection}/${compName}`, { config })
       setMessage({
         type: "ok",
         text: isDeployment
@@ -71,7 +74,7 @@ export function ConfigPanel({ deployment, configSection, onRefetch }: ConfigPane
 
   const handleDelete = async (compName: string) => {
     try {
-      await apiClient.delete(`/config/${configSection}/${compName}`)
+      await apiClient.delete(`/config/${writeSection}/${compName}`)
       qc.invalidateQueries({ queryKey: [configSection] })
       navigate("/")
     } catch (e: unknown) {

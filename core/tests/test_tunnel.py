@@ -28,9 +28,9 @@ def _registry(
         ),
         deployed=deployed
         or {
-            "app": Deployment(runner="python", run_cmd=["x"], port=9001,
+            "app": Deployment(manager="systemd", launcher="python", run_cmd=["x"], port=9001,
                               subdomain="app", public=True),
-            "private": Deployment(runner="python", run_cmd=["y"], port=9002,
+            "private": Deployment(manager="systemd", launcher="python", run_cmd=["y"], port=9002,
                                  subdomain="private", public=False),
         },
     )
@@ -60,7 +60,7 @@ def test_private_service_not_in_public_dns() -> None:
 
 def test_none_when_no_public_services() -> None:
     only_private = {
-        "x": Deployment(runner="python", run_cmd=["x"], subdomain="x", public=False)
+        "x": Deployment(manager="systemd", launcher="python", run_cmd=["x"], subdomain="x", public=False)
     }
     assert generate_tunnel_config(_registry(deployed=only_private)) is None
 
@@ -74,7 +74,7 @@ def test_public_static_frontend_gets_ingress() -> None:
     # A `static` (frontend) service can be public too — the toggle composes for
     # any exposed deployment, process-backed or not.
     reg = _registry(deployed={
-        "guestbook": Deployment(runner="static", run_cmd=[], subdomain="guestbook",
+        "guestbook": Deployment(manager="caddy", run_cmd=[], subdomain="guestbook",
                                static_root="/data/repos/guestbook/public", public=True),
     })
     hosts = {r["hostname"] for r in yaml.safe_load(generate_tunnel_config(reg))["ingress"]

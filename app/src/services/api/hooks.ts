@@ -68,10 +68,10 @@ export function useJob(name: string) {
   })
 }
 
-export function usePrograms(behavior?: string) {
-  const params = behavior ? `?behavior=${behavior}` : ""
+export function usePrograms(kind?: string) {
+  const params = kind ? `?kind=${kind}` : ""
   return useQuery({
-    queryKey: ["programs", behavior ?? "all"],
+    queryKey: ["programs", kind ?? "all"],
     queryFn: () => apiClient.get<ProgramSummary[]>(`/programs${params}`),
   })
 }

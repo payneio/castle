@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom"
 import type { ProgramSummary } from "@/types"
-import { BehaviorBadge } from "./BehaviorBadge"
+import { KindBadge } from "./KindBadge"
 import { StackBadge } from "./StackBadge"
 import { ProgramActions } from "./ProgramActions"
 
@@ -21,7 +21,7 @@ export function ProgramCard({ program }: ProgramCardProps) {
       </div>
 
       <div className="flex flex-wrap gap-1.5 mb-2">
-        <BehaviorBadge behavior={program.behavior} />
+        <KindBadge kind={program.kind} />
         <StackBadge stack={program.stack} />
       </div>
 
@@ -34,8 +34,7 @@ export function ProgramCard({ program }: ProgramCardProps) {
           name={program.id}
           actions={program.actions}
           active={program.active}
-          behavior={program.behavior}
-          deployedAs={[...program.services, ...program.jobs]}
+          kind={program.kind}
           compact
         />
       </div>

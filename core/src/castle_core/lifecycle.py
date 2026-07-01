@@ -25,7 +25,7 @@ from castle_core.generators.systemd import (
     unit_env_file,
     unit_name,
 )
-from castle_core.manifest import manager_for
+from castle_core.manifest import CaddyDeployment
 from castle_core.registry import REGISTRY_PATH, load_registry
 from castle_core.stacks import ActionResult, run_action
 
@@ -49,22 +49,18 @@ def _on_path(name: str) -> bool:
 
 
 def _svc_manager(name: str, config: CastleConfig) -> str | None:
-    """The manager for a deployed name (service/job), or None if not deployed."""
-    if name in config.services:
-        return manager_for(config.services[name].run.runner)
-    if name in config.jobs:
-        return "systemd"
-    return None
+    """The manager for a deployed name, or None if not deployed."""
+    dep = config.deployments.get(name)
+    return dep.manager if dep is not None else None
 
 
 def _static_built(name: str, config: CastleConfig) -> bool:
-    """Whether a static service's served dir exists (assets are built)."""
-    svc = config.services.get(name)
-    if svc is None:
+    """Whether a static (caddy) deployment's served dir exists (assets are built)."""
+    dep = config.deployments.get(name)
+    if not isinstance(dep, CaddyDeployment):
         return False
-    comp = config.programs.get(svc.program or name)
-    root = getattr(svc.run, "root", "dist")
-    return bool(comp and comp.source and (Path(comp.source) / root).is_dir())
+    comp = config.programs.get(dep.program or name)
+    return bool(comp and comp.source and (Path(comp.source) / dep.root).is_dir())
 
 
 # ---------------------------------------------------------------------------
@@ -114,10 +110,10 @@ def enable_service(name: str, config: CastleConfig) -> ActionResult:
         )
 
     systemd_spec = None
-    if name in config.services and config.services[name].manage:
-        systemd_spec = config.services[name].manage.systemd
-    elif name in config.jobs and config.jobs[name].manage:
-        systemd_spec = config.jobs[name].manage.systemd
+    dep = config.deployments.get(name)
+    manage = getattr(dep, "manage", None)
+    if manage:
+        systemd_spec = manage.systemd
 
     SYSTEMD_USER_DIR.mkdir(parents=True, exist_ok=True)
     svc_unit = unit_name(name)
@@ -166,9 +162,8 @@ def disable_service(name: str) -> ActionResult:
 
 def _program_for(name: str, config: CastleConfig):
     """The program a deployment runs (its `program` ref, defaulting to the name)."""
-    prog = name
-    if name in config.services:
-        prog = config.services[name].program or name
+    dep = config.deployments.get(name)
+    prog = (dep.program if dep else None) or name
     return prog, config.programs.get(prog)
 
 

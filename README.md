@@ -20,7 +20,7 @@ cd cli && uv tool install --editable . && cd ..
 ./install.sh
 
 # Initialize the global castle.yaml (the registry that tracks everything)
-mkdir -p ~/.castle/programs ~/.castle/services ~/.castle/jobs
+mkdir -p ~/.castle/programs ~/.castle/deployments
 cat > ~/.castle/castle.yaml << 'EOF'
 gateway:
   port: 9000
@@ -58,7 +58,7 @@ castle deploy my-app
 ## CLI Reference
 
 ```
-castle list [--behavior B] [--stack S] [--json]  List all programs, services, and jobs
+castle list [--kind K] [--stack S] [--json]      List all programs and deployments
 castle info NAME [--json]                        Show program details
 castle create NAME [--stack STACK]               Scaffold a new project (bare if no stack)
 castle add PATH|GIT-URL [--name N]               Adopt an existing repo as a program
@@ -74,21 +74,22 @@ castle service status                 Show all service statuses
 castle services start|stop            Start/stop everything
 ```
 
-Tools are programs with `behavior: tool` — list them with
-`castle list --behavior tool`.
+Tools are deployments with `manager: path` (derived **kind: tool**) — list them
+with `castle list --kind tool`.
 
 ## Registry
 
 The registry lives under `~/.castle/` and is the single source of truth, split
-into a global `castle.yaml` plus one file per resource under `programs/`,
-`services/`, and `jobs/`:
+into a global `castle.yaml` plus one file per resource under `programs/` and
+`deployments/`:
 
 - **`castle.yaml`** — Global settings (`gateway`, `repo`)
-- **`programs/<name>.yaml`** — Software catalog (source, stack, behavior, build config)
-- **`services/<name>.yaml`** — Long-running daemons (run, expose, proxy, systemd)
-- **`jobs/<name>.yaml`** — Scheduled tasks (run, cron schedule, systemd timer)
+- **`programs/<name>.yaml`** — Software catalog (source, stack, build config)
+- **`deployments/<name>.yaml`** — How a program is realized on this node
+  (`manager` + run/expose/proxy/schedule/systemd). The **kind**
+  (service/job/tool/static/reference) is derived from `manager` (+ `schedule`).
 
-Services and jobs can reference a program via `program:` for description fallthrough.
+A deployment can reference a program via `program:` for description fallthrough.
 
 ```yaml
 # ~/.castle/castle.yaml
@@ -100,32 +101,32 @@ repo: /path/to/castle
 ```yaml
 # ~/.castle/programs/central-context.yaml
 description: Content storage API
-behavior: daemon
 source: code/central-context
 stack: python-fastapi
 ```
 
 ```yaml
-# ~/.castle/services/central-context.yaml
+# ~/.castle/deployments/central-context.yaml (manager: systemd → kind: service)
 program: central-context
+manager: systemd
 run:
-  runner: python
+  launcher: python
   program: central-context
 expose:
   http:
     internal: { port: 9001 }
     health_path: /health
-proxy:
-  caddy: { path_prefix: /central-context }
+proxy: true   # expose at central-context.<gateway.domain>
 manage:
   systemd: {}
 ```
 
 ```yaml
-# ~/.castle/jobs/backup-collect.yaml
+# ~/.castle/deployments/backup-collect.yaml (manager: systemd + schedule → kind: job)
 program: backup-collect
+manager: systemd
 run:
-  runner: command
+  launcher: command
   argv: [backup-collect]
 schedule: "0 2 * * *"
 manage:
@@ -189,7 +190,7 @@ When enabled, the API publishes the node's registry to `castle/{hostname}/regist
 | `GET /health` | Health check |
 | `GET /stream` | SSE stream (health, service-action, mesh events) |
 | **Programs** | |
-| `GET /programs` | List all programs (`?behavior=tool\|daemon\|frontend` to filter) |
+| `GET /programs` | List all programs (`?kind=tool\|service\|job\|static` to filter) |
 | `GET /programs/{name}` | Program detail |
 | `POST /programs/{name}/{action}` | Run a lifecycle action (build, test, lint, install, etc.) |
 | `GET /components` | Unified view across nodes (`?include_remote=true` for cross-node) |
@@ -215,8 +216,7 @@ When enabled, the API publishes the node's registry to `castle/{hostname}/regist
 | `GET /config` | Read castle.yaml |
 | `PUT /config` | Write castle.yaml |
 | `PUT /config/programs/{name}` | Update a program entry |
-| `PUT /config/services/{name}` | Update a service entry |
-| `PUT /config/jobs/{name}` | Update a job entry |
+| `PUT /config/deployments/{name}` | Update a deployment entry (service/job/tool/static) |
 | `POST /config/apply` | Apply config changes (deploy + reload) |
 | **Secrets** | |
 | `GET /secrets` | List secrets |

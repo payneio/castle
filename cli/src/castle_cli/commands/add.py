@@ -91,16 +91,17 @@ def run_add(args: argparse.Namespace) -> int:
         source = str(src_path)
         name = args.name or src_path.name
 
-    if name in config.programs or name in config.services or name in config.jobs:
+    if name in config.programs or name in config.deployments:
         print(f"Error: '{name}' already exists in castle.yaml")
         return 1
 
-    # Detect verbs from the working copy if we have one on disk.
+    # Detect verbs from the working copy if we have one on disk. `kind` is derived
+    # from a deployment, not stored on the program — so `castle add` adopts the
+    # source only; declare a deployment separately (castle service/job create).
     stack: str | None = None
     detected_commands: dict[str, list[list[str]]] = {}
-    behavior = "tool"
     if src_path.exists():
-        stack, detected_commands, behavior = _detect(src_path)
+        stack, detected_commands, _ = _detect(src_path)
 
     prog = ProgramSpec(
         id=name,
@@ -108,7 +109,6 @@ def run_add(args: argparse.Namespace) -> int:
         source=source,
         stack=stack,
         repo=repo_url,
-        behavior=behavior,
     )
     # `build` is declared via BuildSpec; every other verb via CommandsSpec.
     if detected_commands:

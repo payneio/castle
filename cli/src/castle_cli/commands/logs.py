@@ -14,20 +14,19 @@ def run_logs(args: argparse.Namespace) -> int:
     config = load_config()
     name = args.name
 
-    # Check services
-    if name in config.services:
-        svc = config.services[name]
-        if svc.run.runner == "container":
+    dep = config.deployments.get(name)
+    if dep is not None and dep.manager == "systemd":
+        if dep.run.launcher == "container":
             return _container_logs(name, args)
-        if svc.run.runner == "compose":
-            return _compose_logs(name, svc, args)
+        if dep.run.launcher == "compose":
+            return _compose_logs(name, dep, args)
         return _systemd_logs(name, args)
 
-    # Check jobs
-    if name in config.jobs:
-        return _systemd_logs(name, args)
+    if dep is not None:
+        print(f"Error: '{name}' has no logs (manager: {dep.manager}).")
+        return 1
 
-    print(f"Error: '{name}' not found in services or jobs")
+    print(f"Error: '{name}' not found in deployments")
     return 1
 
 

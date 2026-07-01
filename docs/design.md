@@ -20,10 +20,12 @@ is self-sufficient. The mesh is optional.
    Castle service is just a well-behaved Unix daemon that happens to
    be registered in a manifest.
 
-3. **Stack and behavior.** Each program has a *stack* (development
-   toolchain: python-fastapi, python-cli, react-vite) and a *behavior*
-   (runtime role: daemon, tool, frontend). Scheduling, systemd management,
-   and proxying are orthogonal operations — not behaviors.
+3. **Stack and kind.** Each program has an optional *stack* (development
+   toolchain: python-fastapi, python-cli, react-vite). How it's realized is a
+   property of its *deployment*, whose **manager** (`systemd`/`caddy`/`path`/
+   `none`) determines the derived **kind** (service, job, tool, static,
+   reference). Scheduling, systemd management, and proxying are orthogonal
+   operations — not kinds.
 
 4. **Language-agnostic above the build line.** Below the build line,
    every language is different (uv, pnpm, cargo, go). Above it,
@@ -84,17 +86,20 @@ and a list of output paths. This works for any language without Castle
 needing to understand the toolchain.
 
 For interpreted languages (Python, Node), Castle also needs to know the
-runtime wrapper — how to invoke the artifact. This is what the `run`
-spec's runner variants handle:
+runtime wrapper — how to invoke the artifact. For a `manager: systemd`
+deployment this is the nested `run:` block's **launcher** variants:
 
 - `python` — Python (sync via uv, deploy resolves installed binary)
 - `node` — Node.js (sync via pnpm/npm)
 - `command` — Direct execution (compiled binaries, shell scripts)
 - `container` — Docker/Podman
-- `remote` — External service (no local process)
+- `compose` — a multi-container stack as one unit
 
-Compiled languages (Rust, Go) use `command` — once built, they're just
-binaries. No Castle-specific runner needed.
+(A non-systemd deployment has no launcher: `manager: caddy` serves files,
+`manager: path` installs a CLI, `manager: none` is an external reference.)
+
+Compiled languages (Rust, Go) use the `command` launcher — once built, they're
+just binaries. No Castle-specific launcher needed.
 
 ### Runtime Layer
 
@@ -150,48 +155,50 @@ answers: "is it working?"
 
 #### Source vs. runtime split
 
-These map to two files:
-
-**`castle.yaml`** (in the repo, version-controlled) — Three sections:
+These map to the config root (`castle.yaml` globals plus per-resource files
+under `programs/` and `deployments/`), version-controlled in the repo:
 
 ```yaml
-programs:
-  central-context:
-    description: Content storage API
-    source: /data/repos/central-context
-
-services:
-  central-context:
-    program: central-context
-    run:
-      runner: python
-      tool: central-context
-    expose:
-      http:
-        internal: { port: 9001 }
-        health_path: /health
-    proxy: true   # expose at central-context.<gateway.domain>
-    manage:
-      systemd: {}
-
-jobs:
-  backup-collect:
-    program: backup-collect
-    run:
-      runner: command
-      argv: [backup-collect]
-    schedule: "0 2 * * *"
-    manage:
-      systemd: {}
+# programs/central-context.yaml — what software exists
+description: Content storage API
+source: /data/repos/central-context
+```
+```yaml
+# deployments/central-context.yaml — manager: systemd → kind: service
+program: central-context
+manager: systemd
+run:
+  launcher: python
+  program: central-context
+expose:
+  http:
+    internal: { port: 9001 }
+    health_path: /health
+proxy: true   # expose at central-context.<gateway.domain>
+manage:
+  systemd: {}
+```
+```yaml
+# deployments/backup-collect.yaml — manager: systemd + schedule → kind: job
+program: backup-collect
+manager: systemd
+run:
+  launcher: command
+  argv: [backup-collect]
+schedule: "0 2 * * *"
+manage:
+  systemd: {}
 ```
 
-Programs define *what software exists* (identity, source, install, tools).
-Services define *how daemons run* (run config, expose, proxy, systemd).
-Jobs define *how scheduled tasks run* (run config, cron schedule, systemd).
+Programs define *what software exists* (identity, source, build).
+Deployments define *how a program is realized on this node* — a single
+`manager`-discriminated entry whose derived kind (service/job/tool/static/
+reference) captures whether it's an always-on daemon, a scheduled task, a CLI on
+PATH, a served frontend, or an external reference.
 
-Services and jobs can reference a program via `program:` for description
-fallthrough and source code linking. They can also exist independently
-(e.g., `castle-gateway` runs Caddy — not our software).
+A deployment can reference a program via `program:` for description fallthrough
+and source code linking. It can also exist independently (e.g., `castle-gateway`
+runs Caddy — not our software).
 
 A service's env is exactly its `defaults.env` — castle injects nothing
 implicitly. Values may use `${port}`/`${data_dir}`/`${name}`/`${secret:…}`
@@ -206,16 +213,17 @@ node:
   gateway_port: 9000
 deployed:
   central-context:
-    runner: python
+    manager: systemd
+    launcher: python
     run_cmd: [/home/user/.local/bin/central-context]
     env:
       CENTRAL_CONTEXT_DATA_DIR: /home/user/.castle/data/central-context
       CENTRAL_CONTEXT_PORT: "9001"
-    behavior: daemon
+    kind: service
     stack: python-fastapi
     port: 9001
     health_path: /health
-    proxy_path: /central-context
+    subdomain: central-context
     managed: true
 ```
 
@@ -339,11 +347,11 @@ Daemons · Long-running processes that expose ports
 └──────────────┘ └──────────────┘ └──────────────┘
 
 Components · Software catalog
-  Name             Stack            Behavior  Schedule     Status
+  Name             Stack            Kind      Schedule     Status
   pdf2md           Python / CLI     tool      —            installed
   protonmail       Python / CLI     tool      */5 * * * *  installed
-  castle       React / Vite     frontend  —            —
-  backup-collect   Python / CLI     tool      0 2 * * *    —
+  castle       React / Vite     static    —            —
+  backup-collect   Python / CLI     job       0 2 * * *    —
 ```
 
 **Key programs:**
@@ -355,8 +363,8 @@ Components · Software catalog
 - **NodeBar** — Horizontal list of discovered nodes. Hidden in single-node
   mode. Each node links to `/node/{hostname}`.
 - **ServiceSection** — Daemon cards in a responsive grid.
-- **ComponentTable** — Unified sortable table for all non-daemon programs
-  (tools, frontends) with Stack, Behavior, Schedule, and Status columns.
+- **ComponentTable** — Unified sortable table for all non-daemon deployments
+  (tools, statics) with Stack, Kind, Schedule, and Status columns.
 
 **Real-time updates:**
 - SSE stream at `/stream` pushes `health`, `service-action`, and `mesh`
@@ -444,7 +452,7 @@ data; default `/data/castle`, kept on a dedicated volume):
 
 ```
 $CASTLE_HOME/                   ← Config & artifacts (default ~/.castle)
-├── castle.yaml                 ← Registry spec (programs, services, jobs)
+├── castle.yaml                 ← Global settings; resources under programs/ + deployments/
 ├── infra.conf                  ← Infrastructure install choices
 ├── code/                       ← Program source (your programs)
 │   └── <name>/
@@ -558,7 +566,7 @@ What exists today:
 What doesn't exist yet:
 
 - **Multi-language support** — Rust and Go programs (the abstractions
-  support them via `command` runner, but no examples exist yet)
+  support them via the `command` launcher, but no examples exist yet)
 - **Build automation** — Castle records build specs but doesn't
   orchestrate builds (each project builds independently)
 - **Multi-machine testing** — Mesh infrastructure is built and running

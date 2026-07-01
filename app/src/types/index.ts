@@ -8,7 +8,8 @@ export interface ServiceSummary {
   id: string
   description: string | null
   stack: string | null
-  runner: string | null
+  manager?: string | null // systemd for a service
+  launcher: string | null // python | command | container | compose | node
   run_target: string | null
   port: number | null
   health_path: string | null
@@ -28,7 +29,7 @@ export interface JobSummary {
   id: string
   description: string | null
   stack: string | null
-  runner: string | null
+  launcher: string | null // python | command | container | compose | node
   run_target: string | null
   schedule: string | null
   managed: boolean
@@ -45,9 +46,9 @@ export interface JobDetail extends JobSummary {
 export interface ProgramSummary {
   id: string
   description: string | null
-  behavior: string | null
+  kind: string | null // derived: service | job | tool | static | reference
   stack: string | null
-  runner: string | null
+  runner: string | null // inferred launch hint (python | command)
   version: string | null
   source: string | null
   repo: string | null
@@ -74,9 +75,10 @@ export interface DeploymentSummary {
   id: string
   category: "program" | "service" | "job" | null
   description: string | null
-  behavior: string | null
+  kind: string | null // derived: service | job | tool | static | reference
   stack: string | null
-  runner: string | null
+  manager: string | null // systemd | caddy | path | none
+  launcher: string | null // python | command | container | compose | node (systemd only)
   port: number | null
   health_path: string | null
   subdomain: string | null // exposed at <subdomain>.<gateway.domain>, else null

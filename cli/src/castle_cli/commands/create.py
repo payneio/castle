@@ -8,31 +8,31 @@ import subprocess
 from castle_cli.config import REPOS_DIR, load_config, save_config
 from castle_cli.manifest import (
     BuildSpec,
+    CaddyDeployment,
     DefaultsSpec,
     ExposeSpec,
     HttpExposeSpec,
     HttpInternal,
     ManageSpec,
+    PathDeployment,
     ProgramSpec,
-    RunPath,
     RunPython,
-    RunStatic,
-    ServiceSpec,
+    SystemdDeployment,
     SystemdSpec,
 )
 from castle_cli.templates.scaffold import scaffold_project
 
-# Stack determines default behavior and scaffold template
+# Stack determines the default deployment kind + scaffold template.
 STACK_DEFAULTS: dict[str, str] = {
-    "python-fastapi": "daemon",
+    "python-fastapi": "service",
     "python-cli": "tool",
-    "react-vite": "frontend",
-    "supabase": "frontend",
+    "react-vite": "static",
+    "supabase": "static",
 }
 
-# Static build output per stack, for `behavior: frontend` programs. The gateway
-# serves this dir in place at /<name>/ (no service, no process). A supabase app
-# ships a raw `public/`; react-vite builds to `dist/`.
+# Static build output per stack, for `static` (caddy) deployments. The gateway
+# serves this dir in place at <name>.<gateway.domain> (no service, no process).
+# A supabase app ships a raw `public/`; react-vite builds to `dist/`.
 STACK_BUILD_OUTPUTS: dict[str, str] = {
     "supabase": "public",
     "react-vite": "dist",
@@ -42,9 +42,10 @@ STACK_BUILD_OUTPUTS: dict[str, str] = {
 def next_available_port(config: object) -> int:
     """Find the next available port starting from 9001 (9000 is reserved for gateway)."""
     used_ports = set()
-    for svc in config.services.values():
-        if svc.expose and svc.expose.http:
-            used_ports.add(svc.expose.http.internal.port)
+    for dep in config.deployments.values():
+        expose = getattr(dep, "expose", None)
+        if expose and expose.http:
+            used_ports.add(expose.http.internal.port)
     # Also reserve gateway port
     used_ports.add(config.gateway.port)
 
@@ -59,9 +60,9 @@ def run_create(args: argparse.Namespace) -> int:
     config = load_config()
     name = args.name
     stack = args.stack
-    behavior = STACK_DEFAULTS.get(stack) if stack else None
+    kind = STACK_DEFAULTS.get(stack) if stack else None
 
-    if name in config.programs or name in config.services or name in config.jobs:
+    if name in config.programs or name in config.deployments:
         print(f"Error: '{name}' already exists in castle.yaml")
         return 1
 
@@ -71,9 +72,9 @@ def run_create(args: argparse.Namespace) -> int:
         print(f"Error: directory already exists: {project_dir}")
         return 1
 
-    # Determine port for daemons
+    # Determine port for service (daemon) deployments
     port = args.port
-    if behavior == "daemon" and port is None:
+    if kind == "service" and port is None:
         port = next_available_port(config)
 
     package_name = name.replace("-", "_")
@@ -102,32 +103,32 @@ def run_create(args: argparse.Namespace) -> int:
     if static_root:
         build = BuildSpec(outputs=[static_root])
 
+    # `kind` (and thus behavior) is derived from the deployment below — never
+    # stored on the program.
     config.programs[name] = ProgramSpec(
         id=name,
         description=description,
         source=str(project_dir),
         stack=stack,
-        behavior=behavior,
         build=build,
     )
-    if behavior == "tool":
+    if kind == "tool":
         # A PATH-managed deployment: installed via `uv tool install`, no unit/route.
-        config.services[name] = ServiceSpec(
-            id=name, program=name, run=RunPath(runner="path")
+        config.deployments[name] = PathDeployment(
+            id=name, manager="path", program=name
         )
-    elif behavior == "frontend":
-        # A caddy-managed static service: no systemd unit, served from the build dir.
-        config.services[name] = ServiceSpec(
-            id=name,
-            program=name,
-            run=RunStatic(runner="static", root=static_root or "dist"),
+    elif kind == "static":
+        # A caddy-managed static deployment: no systemd unit, served from the build dir.
+        config.deployments[name] = CaddyDeployment(
+            id=name, manager="caddy", program=name, root=static_root or "dist"
         )
-    elif behavior == "daemon":
+    elif kind == "service":
         prefix = name.replace("-", "_").upper()
-        config.services[name] = ServiceSpec(
+        config.deployments[name] = SystemdDeployment(
             id=name,
+            manager="systemd",
             program=name,
-            run=RunPython(runner="python", program=name),
+            run=RunPython(launcher="python", program=name),
             expose=ExposeSpec(
                 http=HttpExposeSpec(
                     internal=HttpInternal(port=port),
@@ -142,6 +143,10 @@ def run_create(args: argparse.Namespace) -> int:
                 env={f"{prefix}_PORT": "${port}", f"{prefix}_DATA_DIR": "${data_dir}"}
             ),
         )
+
+    # Populate the derived kind on the in-memory program so readers see the live
+    # value immediately (it's excluded from disk — kind_of recomputes on load).
+    config.programs[name].kind = config.kind_of(name)
 
     save_config(config)
 
@@ -158,7 +163,7 @@ def run_create(args: argparse.Namespace) -> int:
         print(f"  castle deploy && castle gateway reload   # serve at /{name}/")
     elif stack:
         print("  uv sync")
-        if behavior == "daemon":
+        if kind == "service":
             print(f"  uv run {name}  # starts on port {port}")
             print(f"  castle deploy {name}")
         print(f"  castle test {name}")

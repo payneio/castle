@@ -1,6 +1,6 @@
 import { useState } from "react"
 import type { ServiceDetail } from "@/types"
-import { runnerLabel } from "@/lib/labels"
+import { launcherLabel } from "@/lib/labels"
 import { Field, TextField, FormFooter, useEnvSecrets } from "./fields"
 
 interface Props {
@@ -33,7 +33,7 @@ export function ServiceFields({ service, onSave, onDelete }: Props) {
 
   const { element: envEditor, merged } = useEnvSecrets(obj(obj(m.defaults).env) as Record<string, string>)
 
-  const runner = (run.runner as string) ?? "?"
+  const launcher = (run.launcher as string) ?? "?"
 
   const handleSave = async () => {
     setSaving(true)
@@ -43,11 +43,11 @@ export function ServiceFields({ service, onSave, onDelete }: Props) {
       delete config.id
       config.description = description || undefined
 
-      // Only python/command run specs are edited here; other runners
-      // (container/node/remote) keep their original run block untouched.
+      // Only python/command launchers are edited here; other launchers
+      // (container/node/compose) keep their original run block untouched.
       const runOut = obj(config.run)
-      if (runner === "command") runOut.argv = runProgram.split(" ").filter(Boolean)
-      else if (runner === "python") runOut.program = runProgram
+      if (launcher === "command") runOut.argv = runProgram.split(" ").filter(Boolean)
+      else if (launcher === "python") runOut.program = runProgram
       config.run = runOut
 
       if (port) {
@@ -83,7 +83,7 @@ export function ServiceFields({ service, onSave, onDelete }: Props) {
         label="Runs"
         hint="The console script (python runner) or command this service executes."
       >
-        <span className="text-sm font-mono text-[var(--muted)]">{runnerLabel(runner)} &middot; </span>
+        <span className="text-sm font-mono text-[var(--muted)]">{launcherLabel(launcher)} &middot; </span>
         <input
           value={runProgram}
           onChange={(e) => setRunProgram(e.target.value)}

@@ -1,6 +1,6 @@
 # Registry
 
-How castle tracks, configures, and manages programs, services, and jobs.
+How castle tracks, configures, and manages programs and their deployments.
 This is the central reference for `castle.yaml` structure and the registry
 architecture.
 
@@ -9,27 +9,31 @@ architecture.
 Use these terms consistently across code, CLI, API, and docs.
 
 - **program** — any project castle manages, regardless of what it does. The
-  software catalog (`programs:`). Every program has a **behavior** and an
-  optional **stack**. *("component" was the old name for program — don't use it.)*
-- **behavior** — what a program *is*: `tool` (a CLI you invoke), `daemon` (a
-  long-running server), `frontend` (a web UI). A property of the program,
-  independent of whether/how it's deployed.
+  software catalog (`programs/`). Every program has an optional **stack**.
+  *("component" was the old name for program — don't use it.)*
 - **stack** — a creation-time toolchain + scaffold template (`python-cli`,
   `python-fastapi`, `react-vite`). Optional; seeds a program's default dev
   commands but isn't required at runtime.
-- **service** — a program deployed as a long-running systemd `.service`
-  (`services:`).
-- **job** — a program deployed as a scheduled systemd `.timer` (+ oneshot)
-  (`jobs:`).
-- **deployment** — the umbrella for "a service or a job" (a program materialized
-  into the runtime). The registry's deployed entries are deployments.
+- **deployment** — a program materialized into this node's runtime
+  (`deployments/`). Every deployment is discriminated on its **`manager`**.
+- **manager** — who supervises or realizes a deployment: `systemd` (a process,
+  or with a `schedule` a `.timer`), `caddy` (a gateway static file_server
+  route), `path` (a CLI installed on PATH via `uv tool install`), or `none`
+  (an external remote reference). The manager is the deployment's stored
+  discriminant.
+- **launcher** — for `manager: systemd` only, the process-launch mechanism in
+  the nested `run:` block: `python` | `command` | `container` | `compose` |
+  `node`. Non-systemd managers have no `run:`/launcher.
+- **kind** — the human-facing label, **derived** from the manager (+ schedule),
+  never stored: systemd+`schedule` → **job**, systemd → **service**, caddy →
+  **static**, path → **tool**, none → **reference**. *(kind replaces the old
+  `behavior`; the old `frontend` kind is now `static`.)*
 
-**Two orthogonal axes.** *behavior* (tool/daemon/frontend) is **what** a program
-is; *service/job* is **how/when** it's deployed. They're independent: a program
-may have neither (a tool you just install), a **service** (always-on), or a
-**job** (scheduled). A `daemon`-behavior program is usually deployed as a
-service; a `tool`-behavior program may back a job or just be installed for
-manual use.
+**Two orthogonal axes.** *manager* is **who** realizes a deployment; *kind* is
+the **derived** label describing what it is. A program may have no deployment (a
+program you just develop), a **service** (always-on), a **job** (scheduled), a
+**tool** (installed on PATH), or a **static** (a built frontend served by the
+gateway). A single `deployments/<name>.yaml` file carries the whole thing.
 
 ## Configuration Directory Layout
 
@@ -40,10 +44,11 @@ Castle splits its configuration across a root directory (`~/.castle/` or your co
 ├── castle.yaml        # Global settings (gateway, repo, etc.)
 ├── programs/          # Program configuration files (one file per program)
 │   └── my-tool.yaml
-├── services/          # Service configuration files (one file per service)
-│   └── my-service.yaml
-└── jobs/              # Job configuration files (one file per job)
-    └── my-job.yaml
+└── deployments/       # Deployment configuration files (one file per deployment)
+    ├── my-service.yaml   #   manager: systemd            → kind: service
+    ├── nightly.yaml      #   manager: systemd + schedule → kind: job
+    ├── my-tool.yaml      #   manager: path               → kind: tool
+    └── my-app.yaml       #   manager: caddy              → kind: static
 ```
 
 ### castle.yaml (Globals)
@@ -56,25 +61,23 @@ gateway:
 repo: /data/repos/castle
 ```
 
-### Resource Configuration Files (`programs/`, `services/`, `jobs/`)
+### Resource Configuration Files (`programs/`, `deployments/`)
 
-Each resource (program, service, or job) is configured in its own YAML file named after the resource's unique ID (e.g., `services/my-service.yaml` defines the service `my-service`).
+Each resource (a program or a deployment) is configured in its own YAML file named after the resource's unique ID (e.g., `deployments/my-service.yaml` defines the deployment `my-service`).
 
 **programs/my-tool.yaml:**
 ```yaml
 description: Does something useful
 source: /data/repos/my-tool
 stack: python-cli
-behavior: tool
 system_dependencies: [pandoc]
 ```
 
-**services/my-service.yaml:**
+**deployments/my-service.yaml** (a service — `manager: systemd`, no schedule):
 ```yaml
 program: my-service
-run:
-  runner: python
-  program: my-service
+manager: systemd
+run: { launcher: python, program: my-service }
 expose:
   http:
     internal: { port: 9001 }
@@ -84,43 +87,47 @@ manage:
   systemd: {}
 ```
 
-**jobs/my-job.yaml:**
+**deployments/nightly.yaml** (a job — `manager: systemd` + `schedule`):
 ```yaml
 program: my-tool
-run:
-  runner: command
-  argv: [my-tool, sync]
+manager: systemd
+run: { launcher: command, argv: [my-tool, sync] }
 schedule: "0 2 * * *"
 manage:
   systemd: {}
 ```
 
+**deployments/my-tool.yaml** (a tool — `manager: path`, no `run:`):
+```yaml
+program: my-tool
+manager: path
+```
+
+**deployments/my-app.yaml** (a static frontend — `manager: caddy`, no `run:`):
+```yaml
+program: my-app
+manager: caddy
+root: dist
+```
+
 ### Resource Categories
 
-| Category | Location | Purpose | Role / Types |
-|----------|----------|---------|--------------|
-| **programs** | `programs/*.yaml` | Software catalog — what software exists | tool, frontend, daemon |
-| **services** | `services/*.yaml` | Long-running daemons — how they run | service |
-| **jobs** | `jobs/*.yaml` | Scheduled tasks — when they run | job |
+| Category | Location | Purpose | Kinds (derived) |
+|----------|----------|---------|-----------------|
+| **programs** | `programs/*.yaml` | Software catalog — what software exists | — |
+| **deployments** | `deployments/*.yaml` | How a program is realized on this node | service, job, tool, static, reference |
 
-Services and jobs can reference a program via `program:` for description
-fallthrough and source code linking. They can also exist independently
-(e.g., `castle-gateway` runs Caddy — not our software).
+A deployment can reference a program via `program:` for description fallthrough
+and source code linking. It can also exist independently (e.g., `castle-gateway`
+runs Caddy — not our software). The **kind** is derived from `manager` (+
+`schedule`), never stored.
 
 ## Program blocks
 
-Programs define **what software exists** — identity, source, behavior, builds.
-
-### `behavior` — What role this program plays
-
-```yaml
-behavior: daemon    # or: tool, frontend
-```
-
-Explicit declaration of how the program is used:
-- **daemon** — long-running service (python-fastapi stack)
-- **tool** — CLI utility (python-cli stack)
-- **frontend** — web UI (react-vite stack)
+Programs define **what software exists** — identity, source, builds. How a
+program is *used* is not a program property: it's decided by its deployment's
+`manager` and surfaces as the derived **kind** (service/job/tool/static/reference).
+A program with no deployment is just source castle knows how to develop.
 
 ### `source` — Where the source lives
 
@@ -188,7 +195,7 @@ system_dependencies: [pandoc, poppler-utils]
 ```
 
 System packages that must be installed for the program to work. Displayed
-in `castle program list --behavior tool` and the dashboard.
+in `castle list --kind tool` and the dashboard.
 
 ### `version` — Program version
 
@@ -208,63 +215,68 @@ build:
     - dist/
 ```
 
-Programs with build outputs are typically frontends.
+Programs with build outputs are typically served as **static** deployments.
 
-## Service blocks
+## Deployment blocks
 
-Services define **how long-running daemons are deployed**.
+Deployments define **how a program is realized on this node**. Every deployment
+declares a **`manager`** — who makes it available and supervises its lifecycle:
 
-### `run` — How to start it (required)
+### `manager` — Who realizes it (the discriminant)
 
-A deployment (service/job) is a *managed materialization* of a program. Its
-**runner** determines the **manager** — who makes it available and supervises its
-lifecycle:
+A deployment is a *managed materialization* of a program. Its **`manager`** is
+the stored discriminant — the single axis lifecycle, deploy, and status all
+dispatch on:
 
-| Manager | Makes available as | Runners | start/stop |
-|---------|--------------------|---------|------------|
-| **systemd** | a running process (or a `.timer` for jobs) | `python`, `command`, `container`, `compose`, `node` | `systemctl` |
-| **caddy** | a gateway route | `static` (file_server) — and any exposed process (reverse_proxy) | add/remove route + reload |
-| **path** | an installed CLI on `PATH` | `path` | `uv tool install` / `uninstall` |
-| **none** | an external reference | `remote` | *(nothing — not ours)* |
+| Manager | Makes available as | Launch mechanism | start/stop | Kind |
+|---------|--------------------|------------------|------------|------|
+| **systemd** | a running process (or a `.timer` for jobs) | nested `run: { launcher: … }` | `systemctl` | service / job |
+| **caddy** | a gateway static file_server route | *(none — files on disk; `root:`)* | add/remove route + reload | static |
+| **path** | an installed CLI on `PATH` | *(none — `uv tool install`)* | `uv tool install` / `uninstall` | tool |
+| **none** | an external reference | *(none; `base_url:`/`health_url:`)* | *(nothing — not ours)* | reference |
 
-`manager_for(runner)` (in `manifest.py`) is the single source of truth; lifecycle,
-deploy, and status all dispatch on it. `behavior` (`tool`/`daemon`/`frontend`) is a
-**derived display label only** — it never drives logic. A program is a *tool* when
-it has a `path` service, a *frontend* when it has a `static` service, a *daemon*
-when it has a process service.
+The **kind** (service/job/tool/static/reference) is **derived** from `manager` (+
+`schedule`) — it never drives logic and is never stored. `DeploymentSpec` is a
+discriminated union on `manager` (SystemdDeployment/CaddyDeployment/
+PathDeployment/RemoteDeployment); see [Manifest models](#manifest-models).
 
-Discriminated union on `runner`:
+### `run` — How to launch it (systemd only)
 
-| Runner | Manager | Deploy | Key fields |
-|--------|---------|--------|------------|
-| `python` | systemd | `uv run --project <source> --no-dev <program>` | `program`, `args` |
-| `command` | systemd | `which(argv[0])` → resolved path | `argv` |
-| `container` | systemd | `docker`/`podman` `run` | `image`, `command`, `ports`, `volumes` |
-| `compose` | systemd | `docker compose -p <project> -f <file> up` (+ `ExecStop=down`) | `file`, `project_name` |
-| `node` | systemd | `package_manager run script` | `script`, `package_manager` |
-| `static` | caddy | *(no process — `file_server` from `<source>/<root>`)* | `root` |
-| `path` | path | *(no process — `uv tool install` at enable time)* | *(the referenced program)* |
-| `remote` | none | *(none — no local process)* | `base_url`, `health_url` |
+For `manager: systemd` **only**, the nested `run:` block carries a **`launcher`**
+— the process-launch mechanism. Non-systemd managers have no `run:`/launcher;
+their fields live directly on the deployment (caddy has `root:`, none has
+`base_url:`/`health_url:`).
 
-A `python` service runs **in place from its own project venv** via `uv run`, which
+Nested launch spec, discriminated union on `launcher`:
+
+| Launcher | Deploy | Key fields |
+|----------|--------|------------|
+| `python` | `uv run --project <source> --no-dev <program>` | `program`, `args` |
+| `command` | `which(argv[0])` → resolved path | `argv` |
+| `container` | `docker`/`podman` `run` | `image`, `command`, `ports`, `volumes` |
+| `compose` | `docker compose -p <project> -f <file> up` (+ `ExecStop=down`) | `file`, `project_name` |
+| `node` | `package_manager run script` | `script`, `package_manager` |
+
+A `python` launcher runs **in place from its own project venv** via `uv run`, which
 syncs the env to the project's lockfile before launching. There is no separate
 tool venv and no `uv tool install` step: **a restart picks up both code and
 dependency changes** (the deploy-time `ExecStart` is deterministic from `source`,
-so it never goes stale). `uv tool install` is reserved for `tool`-behavior
-programs, where being on a human's PATH is the point. If a `python` service
-declares a `program` with no resolvable `source`, deploy falls back to a PATH
-lookup of the script.
+so it never goes stale). `uv tool install` is reserved for `manager: path`
+deployments (tools), where being on a human's PATH is the point. If a `python`
+launcher declares a `program` with no resolvable `source`, deploy falls back to a
+PATH lookup of the script.
 
 ```yaml
+manager: systemd
 run:
-  runner: python
+  launcher: python
   program: my-service     # name in [project.scripts]
 ```
 
-A `compose` service supervises a **whole multi-container stack as one systemd
+A `compose` launcher supervises a **whole multi-container stack as one systemd
 unit** — `ExecStart` runs `docker compose … up` attached (`Type=simple`) and a
 generated `ExecStop` runs `… down` so networks/anonymous volumes are reclaimed on
-stop. Unlike the single-container `container` runner, compose owns the stack's own
+stop. Unlike the single-container `container` launcher, compose owns the stack's own
 networking, startup ordering, and per-service health — Castle delegates rather
 than reinventing orchestration. Secrets/env reach compose through the unit's
 `Environment=`/`EnvironmentFile=` (from `defaults.env`), which compose interpolates
@@ -272,11 +284,29 @@ from the process environment. This is what runs the shared **Supabase substrate*
 (see @docs/stacks/supabase.md).
 
 ```yaml
+manager: systemd
 run:
-  runner: compose
+  launcher: compose
   file: docker-compose.yml   # resolved under the program source
   # project_name: castle-my-stack   # optional; defaults to castle-<name>
 ```
+
+### `root` — Static frontend (caddy only)
+
+For `manager: caddy`, `root:` names the built-frontend directory (relative to the
+program source) that the gateway serves via `file_server`. There is no process
+and no `run:` block.
+
+```yaml
+manager: caddy
+root: dist    # served at <name>.<gateway.domain>
+```
+
+### `base_url` / `health_url` — Remote reference (none only)
+
+For `manager: none`, the deployment is an external reference — a service on
+another node — with no local process. It carries `base_url:` and `health_url:`
+directly.
 
 ### `expose` — What it exposes
 
@@ -324,8 +354,8 @@ routes is gone). Caddy proxies WebSocket upgrades transparently.
 
 | Kind | Target | Declared by |
 |------|--------|-------------|
-| **proxy** | a local service on a port — Caddy `reverse_proxy localhost:PORT` | a service's `proxy.caddy` |
-| **static** | a built frontend's `dist/` — Caddy `file_server` (no process) | a `frontend` program with `build.outputs` and **no** service (auto-exposed at `<name>.<domain>`) |
+| **proxy** | a local service on a port — Caddy `reverse_proxy localhost:PORT` | a service's `proxy: true` |
+| **static** | a built frontend's `dist/` — Caddy `file_server` (no process) | a `manager: caddy` deployment (kind **static**) with a `root:` (served at `<name>.<domain>`) |
 | **remote** | a service on another node | mesh discovery (out of scope of the single-node gateway) |
 
 "Serving a frontend" and "proxying a service" are the same thing — a subdomain
@@ -431,7 +461,7 @@ Setup (the parts castle can't do for you):
   installs to `/usr/local/bin/caddy`, which the gateway picks up on next deploy).
 - **Provider token.** Store a scoped API token as the `CLOUDFLARE_API_TOKEN`
   secret (Cloudflare scope: **Zone → DNS → Edit**), and map it into the gateway
-  service env — add to `services/castle-gateway.yaml`:
+  service env — add to `deployments/castle-gateway.yaml`:
   ```yaml
   defaults:
     env:
@@ -511,12 +541,14 @@ repeating castle's computed paths/ports. `castle program create` scaffolds the
 `${port}`/`${data_dir}` lines for new services. Never store secrets in
 castle.yaml — use `${secret:…}`.
 
-## Job blocks
+## Job fields
 
-Jobs define **how scheduled tasks run**. Same blocks as services plus
-`schedule` and `timezone`.
+A **job** is just a `manager: systemd` deployment that also carries a
+`schedule` — the derived kind flips from service to job. Same blocks as a
+service (nested `run:` launch, `manage`, `defaults`) plus `schedule` and
+`timezone`.
 
-### `schedule` — Cron expression (required)
+### `schedule` — Cron expression (required for a job)
 
 ```yaml
 schedule: "*/5 * * * *"
@@ -524,11 +556,6 @@ timezone: America/Los_Angeles    # default
 ```
 
 Castle generates a systemd `.timer` file alongside the `.service` unit.
-
-### Other blocks
-
-Jobs also support `run` (required), `manage`, and `defaults` — same
-semantics as services.
 
 ## How programs get into `/data/repos/`
 
@@ -563,39 +590,41 @@ castle program create my-tool --stack python-cli --description "Does something"
 
 ### Manually
 
-Clone or create the project under `/data/repos/`, then add entries to the
-appropriate sections of `castle.yaml`:
+Clone or create the project under `/data/repos/`, then add a `programs/<name>.yaml`
+file (plus a `deployments/<name>.yaml` file if it's deployed):
 
 ```yaml
-# Tool — only needs a program entry
-programs:
-  my-tool:
-    description: Does something useful
-    source: /data/repos/my-tool
-    stack: python-cli
-    behavior: tool
+# Tool — programs/my-tool.yaml (a program)
+description: Does something useful
+source: /data/repos/my-tool
+stack: python-cli
+```
+```yaml
+# Tool — deployments/my-tool.yaml (installed on PATH → kind: tool)
+program: my-tool
+manager: path
+```
 
-# Service — needs both program and service entries
-programs:
-  my-service:
-    description: Does something useful
-    source: /data/repos/my-service
-    stack: python-fastapi
-    behavior: daemon
-
-services:
-  my-service:
-    program: my-service
-    run:
-      runner: python
-      program: my-service
-    expose:
-      http:
-        internal: { port: 9001 }
-        health_path: /health
-    proxy: true   # expose at my-service.<gateway.domain>
-    manage:
-      systemd: {}
+```yaml
+# Service — programs/my-service.yaml (a program)
+description: Does something useful
+source: /data/repos/my-service
+stack: python-fastapi
+```
+```yaml
+# Service — deployments/my-service.yaml (manager: systemd → kind: service)
+program: my-service
+manager: systemd
+run:
+  launcher: python
+  program: my-service
+expose:
+  http:
+    internal: { port: 9001 }
+    health_path: /health
+proxy: true   # expose at my-service.<gateway.domain>
+manage:
+  systemd: {}
 ```
 
 ## Lifecycle
@@ -632,18 +661,19 @@ uv tool install --editable /data/repos/my-tool/   # 4. Install to PATH
 
 ### Job lifecycle
 
-Jobs are defined in the `jobs:` section with a `run` spec and `schedule`:
+Jobs are deployments with `manager: systemd` plus a `schedule` — a
+`deployments/my-job.yaml` file with a nested `run:` launch block:
 
 ```yaml
-jobs:
-  my-job:
-    description: Runs nightly
-    run:
-      runner: command
-      argv: ["my-job"]
-    schedule: "0 2 * * *"
-    manage:
-      systemd: {}
+# deployments/my-job.yaml (manager: systemd + schedule → kind: job)
+program: my-job
+manager: systemd
+run:
+  launcher: command
+  argv: ["my-job"]
+schedule: "0 2 * * *"
+manage:
+  systemd: {}
 ```
 
 `castle job enable my-job` generates both a `.service` (Type=oneshot)
@@ -683,16 +713,18 @@ convention.
 
 The Pydantic models live in `core/src/castle_core/manifest.py`. Key classes:
 
-- `ProgramSpec` — software catalog entry (source, behavior, stack, build, system_dependencies)
-- `ServiceSpec` — long-running daemon (run, expose, proxy, manage, defaults)
-- `JobSpec` — scheduled task (run, schedule, manage, defaults)
-- `RunSpec` — discriminated union (RunPython, RunCommand, RunContainer, RunCompose, RunNode, RunRemote)
+- `ProgramSpec` — software catalog entry (source, stack, build, system_dependencies)
+- `DeploymentSpec` — a deployment, a discriminated union on `manager`:
+  `SystemdDeployment` (service/job — run, expose, proxy, schedule, manage,
+  defaults), `CaddyDeployment` (static — root), `PathDeployment` (tool),
+  `RemoteDeployment` (reference — base_url, health_url)
+- `LaunchSpec` — the nested `run:` block (systemd only), a discriminated union on
+  `launcher` (LaunchPython, LaunchCommand, LaunchContainer, LaunchCompose, LaunchNode)
 - `ExposeSpec`, `ProxySpec`, `ManageSpec`, `BuildSpec`
 - `CaddySpec`, `SystemdSpec`, `HttpExposeSpec`, `HttpInternal`
 
-Config loading: `core/src/castle_core/config.py` — `load_config()` parses
-castle.yaml into `CastleConfig` with typed `programs`, `services`, and
-`jobs` dicts.
+Config loading: `core/src/castle_core/config.py` — `load_config()` parses the
+config root into `CastleConfig` with typed `programs` and `deployments` dicts.
 
 Infrastructure generators: `core/src/castle_core/generators/` — systemd unit/timer
 generation (`systemd.py`) and Caddyfile generation (`caddyfile.py`).

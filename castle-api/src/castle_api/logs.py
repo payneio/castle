@@ -27,10 +27,8 @@ async def get_logs(
         from castle_core.config import load_config
 
         config = load_config(root)
-        is_managed = (
-            (name in config.services and config.services[name].manage is not None)
-            or (name in config.jobs and config.jobs[name].manage is not None)
-        )
+        dep = config.deployments.get(name)
+        is_managed = dep is not None and getattr(dep, "manage", None) is not None
         if not is_managed:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,

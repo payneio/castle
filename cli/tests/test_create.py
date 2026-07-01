@@ -74,9 +74,9 @@ class TestCreateCommand:
         assert (project_dir / "CLAUDE.md").exists()
         assert "my-tool2" in config.programs
         comp = config.programs["my-tool2"]
-        assert comp.behavior == "tool"
-        # A tool is a PATH deployment: a `runner: path` service.
-        assert config.services["my-tool2"].run.runner == "path"
+        assert comp.kind == "tool"
+        # A tool is a PATH deployment: manager=path.
+        assert config.deployments["my-tool2"].manager == "path"
 
     def test_create_supabase_app(self, castle_root: Path, tmp_path: Path) -> None:
         """A supabase app scaffolds a Patch-shaped project registered as a static
@@ -104,14 +104,14 @@ class TestCreateCommand:
         assert (project_dir / "public" / "index.html").exists()
         assert (project_dir / "supabase.app.yaml").exists()
 
-        # Registered as a program + a `static` service serving public/
+        # Registered as a program + a caddy (static) deployment serving public/
         comp = config.programs["guestbook"]
-        assert comp.behavior == "frontend"
+        assert comp.kind == "static"
         assert comp.stack == "supabase"
         assert comp.build is not None and comp.build.outputs == ["public"]
-        svc = config.services["guestbook"]
-        assert svc.run.runner == "static"
-        assert svc.run.root == "public"
+        dep = config.deployments["guestbook"]
+        assert dep.manager == "caddy"
+        assert dep.root == "public"
 
     def test_create_duplicate_fails(self, castle_root: Path, capsys: object) -> None:
         """Creating a project with existing name fails."""

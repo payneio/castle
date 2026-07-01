@@ -65,7 +65,7 @@ class TestRegistrySecretKeys:
             node=NodeConfig(hostname="h"),
             deployed={
                 "svc": Deployment(
-                    runner="container",
+                    manager="systemd", launcher="container",
                     run_cmd=["docker", "run"],
                     env={"PORT": "9001"},
                     secret_env_keys=["ANTHROPIC_API_KEY", "OPENAI_API_KEY"],

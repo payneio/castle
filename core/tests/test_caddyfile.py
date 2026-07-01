@@ -10,13 +10,14 @@ from castle_core.generators.caddyfile import (
     generate_caddyfile_from_registry,
 )
 from castle_core.manifest import (
+    CaddyDeployment,
+    DeploymentSpec,
     ExposeSpec,
     HttpExposeSpec,
     HttpInternal,
     ProgramSpec,
     RunPython,
-    RunStatic,
-    ServiceSpec,
+    SystemdDeployment,
 )
 from castle_core.registry import Deployment, NodeConfig, NodeRegistry
 
@@ -52,10 +53,14 @@ def _make_registry(
     )
 
 
-def _dep(port: int, *, expose: bool, name: str | None = None, runner: str = "python") -> Deployment:
+def _dep(port: int, *, expose: bool, name: str | None = None, launcher: str = "python") -> Deployment:
     """A deployed service; exposed at <name>.<domain> when expose=True."""
     return Deployment(
-        runner=runner, run_cmd=["x"], port=port, subdomain=(name if expose else None)
+        manager="systemd",
+        launcher=launcher,
+        run_cmd=["x"],
+        port=port,
+        subdomain=(name if expose else None),
     )
 
 
@@ -109,9 +114,9 @@ class TestAcmeMode:
         import castle_core.config as config_mod
 
         cfg = _config(
-            services={
-                "castle": ServiceSpec(
-                    program="castle", run=RunStatic(runner="static", root="dist")
+            deployments={
+                "castle": CaddyDeployment(
+                    manager="caddy", program="castle", root="dist"
                 )
             },
             programs={"castle": ProgramSpec(source="/data/repos/castle/app")},
@@ -144,24 +149,24 @@ class TestOffMode:
         assert "litellm" not in cf  # no subdomains without a domain
 
 
-def _service(port: int, *, expose: bool) -> ServiceSpec:
-    return ServiceSpec(
-        run=RunPython(runner="python", program="svc"),
+def _service(port: int, *, expose: bool) -> SystemdDeployment:
+    return SystemdDeployment(
+        manager="systemd",
+        run=RunPython(launcher="python", program="svc"),
         expose=ExposeSpec(http=HttpExposeSpec(internal=HttpInternal(port=port))),
         proxy=expose,
     )
 
 
 def _config(
-    services: dict[str, ServiceSpec], programs: dict[str, ProgramSpec] | None = None
+    deployments: dict[str, DeploymentSpec], programs: dict[str, ProgramSpec] | None = None
 ) -> CastleConfig:
     return CastleConfig(
         root=None,  # type: ignore[arg-type]
         gateway=GatewayConfig(port=9000),
         repo=None,
         programs=programs or {},
-        services=services,
-        jobs={},
+        deployments=deployments,
     )
 
 

@@ -54,12 +54,14 @@ chmod 600 ~/.castle/secrets/cloudflared/$TID.json
 #      tunnel_id: <the-uuid>
 ```
 
-Then create the tunnel service at `~/.castle/services/castle-tunnel.yaml`:
+Then create the tunnel deployment at `~/.castle/deployments/castle-tunnel.yaml`
+(`manager: systemd` → kind: service):
 
 ```yaml
 description: Cloudflare tunnel — public exposure for public:true services
+manager: systemd
 run:
-  runner: command
+  launcher: command
   argv:
     - cloudflared
     - tunnel
@@ -80,7 +82,7 @@ castle service enable castle-tunnel # start the tunnel
 
 ## Using the toggle
 
-Mark a service public in its `services/<name>.yaml`:
+Mark a service public in its `deployments/<name>.yaml`:
 
 ```yaml
 proxy: true      # required — the service must be routed

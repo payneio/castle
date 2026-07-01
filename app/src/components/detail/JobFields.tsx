@@ -1,6 +1,6 @@
 import { useState } from "react"
 import type { JobDetail } from "@/types"
-import { runnerLabel } from "@/lib/labels"
+import { launcherLabel } from "@/lib/labels"
 import { Field, TextField, FormFooter, useEnvSecrets } from "./fields"
 
 interface Props {
@@ -27,7 +27,7 @@ export function JobFields({ job, onSave, onDelete }: Props) {
   )
 
   const { element: envEditor, merged } = useEnvSecrets(obj(obj(m.defaults).env) as Record<string, string>)
-  const runner = (run.runner as string) ?? "?"
+  const launcher = (run.launcher as string) ?? "?"
 
   const handleSave = async () => {
     setSaving(true)
@@ -39,8 +39,8 @@ export function JobFields({ job, onSave, onDelete }: Props) {
       config.schedule = schedule || undefined
 
       const runOut = obj(config.run)
-      if (runner === "command") runOut.argv = runTarget.split(" ").filter(Boolean)
-      else if (runner === "python") runOut.program = runTarget
+      if (launcher === "command") runOut.argv = runTarget.split(" ").filter(Boolean)
+      else if (launcher === "python") runOut.program = runTarget
       config.run = runOut
 
       const env = merged()
@@ -68,7 +68,7 @@ export function JobFields({ job, onSave, onDelete }: Props) {
         hint="Cron expression — castle generates a systemd timer that runs the job on this schedule."
       />
       <Field label="Runs" hint="The console script or command the job runs on each tick, then exits.">
-        <span className="text-sm font-mono text-[var(--muted)]">{runnerLabel(runner)} &middot; </span>
+        <span className="text-sm font-mono text-[var(--muted)]">{launcherLabel(launcher)} &middot; </span>
         <input
           value={runTarget}
           onChange={(e) => setRunTarget(e.target.value)}

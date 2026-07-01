@@ -8,23 +8,32 @@ import { Field, TextField } from "./fields"
 const SELECT =
   "bg-black/30 border border-[var(--border)] rounded px-3 py-1.5 text-sm focus:outline-none focus:border-[var(--primary)]"
 
+export type DeploymentKind = "service" | "job" | "tool" | "static"
+
 export interface CreatePrefill {
   name?: string
   program?: string
   runTarget?: string
-  runner?: string
+  launcher?: string
 }
 
-/** Create a service or job in castle.yaml, then deploy (and start, for a
- * service). The UI twin of `castle expose`. Reachable standalone or prefilled
- * from a program page. */
+const KIND_INFO: Record<DeploymentKind, { label: string; hint: string }> = {
+  service: { label: "Service", hint: "Long-running process (systemd)" },
+  job: { label: "Job", hint: "Scheduled task (systemd timer)" },
+  tool: { label: "Tool", hint: "CLI installed on PATH" },
+  static: { label: "Static", hint: "Static site served by the gateway" },
+}
+
+/** Create a deployment in castle.yaml, then deploy (and start, for a service).
+ * A pick-a-kind wizard: the chosen kind sets the manager and shows only its
+ * relevant fields. Reachable standalone or prefilled from a program page. */
 export function CreateDeploymentForm({
-  kind,
+  kind: initialKind,
   prefill,
   existingNames,
   onCancel,
 }: {
-  kind: "service" | "job"
+  kind?: DeploymentKind
   prefill?: CreatePrefill
   existingNames: string[]
   onCancel: () => void
@@ -32,17 +41,22 @@ export function CreateDeploymentForm({
   const qc = useQueryClient()
   const navigate = useNavigate()
 
+  const [kind, setKind] = useState<DeploymentKind>(initialKind ?? "service")
   const [name, setName] = useState(prefill?.name ?? "")
   const [program] = useState(prefill?.program ?? "")
   const [description, setDescription] = useState("")
-  const [runner, setRunner] = useState(prefill?.runner ?? "python")
+  const [launcher, setLauncher] = useState(prefill?.launcher ?? "python")
   const [runTarget, setRunTarget] = useState(prefill?.runTarget ?? prefill?.name ?? "")
+  const [root, setRoot] = useState("dist")
   const [port, setPort] = useState("")
   const [health, setHealth] = useState("/health")
-  const [expose, setExpose] = useState(true)
+  const [proxy, setProxy] = useState(true)
+  const [isPublic, setIsPublic] = useState(false)
   const [schedule, setSchedule] = useState("0 2 * * *")
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState("")
+
+  const isSystemd = kind === "service" || kind === "job"
 
   const nameError =
     name && !/^[a-z0-9][a-z0-9-]*$/.test(name)
@@ -51,31 +65,41 @@ export function CreateDeploymentForm({
         ? "already exists"
         : ""
 
+  const buildRun = () =>
+    launcher === "command"
+      ? { launcher: "command", argv: runTarget.split(" ").filter(Boolean) }
+      : { launcher: "python", program: runTarget || name }
+
   const buildConfig = (): Record<string, unknown> => {
-    const run =
-      runner === "command"
-        ? { runner: "command", argv: runTarget.split(" ").filter(Boolean) }
-        : { runner: "python", program: runTarget || name }
     const base: Record<string, unknown> = {
       ...(program ? { program } : {}),
       ...(description ? { description } : {}),
-      run,
+    }
+    if (kind === "tool") return { ...base, manager: "path" }
+    if (kind === "static") return { ...base, manager: "caddy", root }
+
+    // systemd (service or job)
+    const cfg: Record<string, unknown> = {
+      ...base,
+      manager: "systemd",
+      run: buildRun(),
       manage: { systemd: {} },
     }
     if (kind === "job") {
-      base.schedule = schedule
-      return base
+      cfg.schedule = schedule
+      return cfg
     }
     if (port) {
-      base.expose = {
+      cfg.expose = {
         http: {
           internal: { port: parseInt(port, 10) },
           ...(health ? { health_path: health } : {}),
         },
       }
     }
-    if (port && expose) base.proxy = true
-    return base
+    if (proxy) cfg.proxy = true
+    if (proxy && isPublic) cfg.public = true
+    return cfg
   }
 
   const submit = async () => {
@@ -83,17 +107,20 @@ export function CreateDeploymentForm({
     setError("")
     try {
       setBusy("Saving…")
-      await apiClient.put(`/config/${kind}s/${name}`, { config: buildConfig() })
+      await apiClient.put(`/config/deployments/${name}`, { config: buildConfig() })
       setBusy("Deploying…")
       await apiClient.post(`/deploy`, { name })
       if (kind === "service") {
         setBusy("Starting…")
         await apiClient.post(`/services/${name}/start`, {})
       }
-      qc.invalidateQueries({ queryKey: [`${kind}s`] })
+      qc.invalidateQueries({ queryKey: ["services"] })
+      qc.invalidateQueries({ queryKey: ["jobs"] })
       qc.invalidateQueries({ queryKey: ["programs"] })
       qc.invalidateQueries({ queryKey: ["status"] })
-      navigate(kind === "service" ? `/services/${name}` : `/jobs/${name}`)
+      if (kind === "service") navigate(`/services/${name}`)
+      else if (kind === "job") navigate(`/jobs/${name}`)
+      else navigate(`/programs/${program || name}`)
     } catch (e: unknown) {
       let msg = e instanceof Error ? e.message : String(e)
       try {
@@ -109,7 +136,7 @@ export function CreateDeploymentForm({
   return (
     <div className="bg-[var(--card)] border border-[var(--primary)] rounded-lg p-5 space-y-4 mt-2">
       <div className="flex items-center justify-between">
-        <h3 className="font-semibold">New {kind}{program ? ` for ${program}` : ""}</h3>
+        <h3 className="font-semibold">New deployment{program ? ` for ${program}` : ""}</h3>
         <button onClick={onCancel} className="text-[var(--muted)] hover:text-[var(--foreground)]">
           <X size={16} />
         </button>
@@ -121,11 +148,31 @@ export function CreateDeploymentForm({
         </div>
       )}
 
+      {/* Kind picker */}
+      <Field label="Kind" hint={KIND_INFO[kind].hint}>
+        <div className="flex flex-wrap gap-1.5">
+          {(Object.keys(KIND_INFO) as DeploymentKind[]).map((k) => (
+            <button
+              key={k}
+              type="button"
+              onClick={() => setKind(k)}
+              className={`px-3 py-1 text-sm rounded border transition-colors ${
+                kind === k
+                  ? "bg-[var(--primary)] text-white border-[var(--primary)]"
+                  : "border-[var(--border)] text-[var(--muted)] hover:text-[var(--foreground)]"
+              }`}
+            >
+              {KIND_INFO[k].label}
+            </button>
+          ))}
+        </div>
+      </Field>
+
       <Field label="Name">
         <input
           value={name}
           onChange={(e) => setName(e.target.value.toLowerCase())}
-          placeholder={kind === "service" ? "my-service" : "my-job"}
+          placeholder="my-deployment"
           autoFocus
           className="w-full bg-black/30 border border-[var(--border)] rounded px-3 py-1.5 text-sm font-mono focus:outline-none focus:border-[var(--primary)]"
         />
@@ -134,35 +181,67 @@ export function CreateDeploymentForm({
 
       <TextField label="Description" value={description} onChange={setDescription} />
 
-      <Field label="Runner">
-        <select value={runner} onChange={(e) => setRunner(e.target.value)} className={`w-40 ${SELECT}`}>
-          <option value="python">python</option>
-          <option value="command">command</option>
-        </select>
-      </Field>
-      <TextField
-        label="Runs"
-        value={runTarget}
-        onChange={setRunTarget}
-        mono
-        placeholder={runner === "command" ? "my-cmd --flag" : "console-script"}
-      />
+      {/* Program ref — informational; tool/static require it, systemd optional. */}
+      {program && (
+        <Field label="Program">
+          <span className="text-sm font-mono text-[var(--muted)]">{program}</span>
+        </Field>
+      )}
 
-      {kind === "service" ? (
+      {isSystemd && (
+        <>
+          <Field label="Launcher">
+            <select value={launcher} onChange={(e) => setLauncher(e.target.value)} className={`w-40 ${SELECT}`}>
+              <option value="python">python</option>
+              <option value="command">command</option>
+            </select>
+          </Field>
+          <TextField
+            label="Runs"
+            value={runTarget}
+            onChange={setRunTarget}
+            mono
+            placeholder={launcher === "command" ? "my-cmd --flag" : "console-script"}
+          />
+        </>
+      )}
+
+      {kind === "service" && (
         <>
           <TextField label="Port" value={port} onChange={setPort} width="w-32" mono placeholder="9001" />
           <TextField label="Health path" value={health} onChange={setHealth} width="w-48" mono />
           <Field label="Expose" hint="Route through the gateway at <name>.<gateway.domain>. Off: reachable only at host:port.">
             <label className="flex items-center gap-2 text-sm cursor-pointer">
-              <input type="checkbox" checked={expose} onChange={(e) => setExpose(e.target.checked)} />
+              <input type="checkbox" checked={proxy} onChange={(e) => setProxy(e.target.checked)} />
               <span className="font-mono text-[var(--muted)]">
-                {expose ? `${name || "name"}.<gateway.domain>` : "off (host:port only)"}
+                {proxy ? `${name || "name"}.<gateway.domain>` : "off (host:port only)"}
               </span>
             </label>
           </Field>
+          {proxy && (
+            <Field label="Public" hint="Also publish to the internet via the Cloudflare tunnel at <name>.<gateway.public_domain>.">
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                <input type="checkbox" checked={isPublic} onChange={(e) => setIsPublic(e.target.checked)} />
+                <span className="font-mono text-[var(--muted)]">{isPublic ? "public (via tunnel)" : "internal only"}</span>
+              </label>
+            </Field>
+          )}
         </>
-      ) : (
+      )}
+
+      {kind === "job" && (
         <TextField label="Schedule" value={schedule} onChange={setSchedule} width="w-48" mono placeholder="0 2 * * *" />
+      )}
+
+      {kind === "static" && (
+        <TextField
+          label="Root"
+          value={root}
+          onChange={setRoot}
+          width="w-48"
+          mono
+          placeholder="dist"
+        />
       )}
 
       <div className="flex justify-end gap-2 pt-2">
@@ -174,7 +253,7 @@ export function CreateDeploymentForm({
           disabled={!name || !!nameError || !!busy}
           className="px-4 py-1.5 text-sm rounded bg-green-700 hover:bg-green-600 text-white transition-colors disabled:opacity-40"
         >
-          {busy ?? `Create ${kind}`}
+          {busy ?? `Create ${KIND_INFO[kind].label.toLowerCase()}`}
         </button>
       </div>
     </div>

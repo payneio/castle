@@ -34,7 +34,7 @@ def unit_env_file(deployed: Deployment, name: str) -> Path | None:
     so systemd must not also read them — return None there. Only deployments that
     actually have secrets get a file.
     """
-    if deployed.runner == "container" or not deployed.secret_env_keys:
+    if deployed.launcher == "container" or not deployed.secret_env_keys:
         return None
     return secret_env_path(name)
 

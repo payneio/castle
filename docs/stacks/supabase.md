@@ -4,7 +4,7 @@
 > web apps.** A stack is a template + conventions, not a runtime requirement.
 > `castle program create --stack supabase` scaffolds from it and seeds the
 > program's default dev-verb commands. See @docs/registry.md for `commands:`,
-> `stack:` (optional), and `behavior:`.
+> `stack:` (optional), and the deployment `manager` (and derived `kind`).
 
 How to build tiny, database-backed web apps as castle programs that target a
 **shared Supabase substrate**. This is Castle's "a stack whose default is a
@@ -17,7 +17,8 @@ Unlike the other stacks (which scaffold a self-contained process), a supabase ap
 is **code + migrations that deploy against a shared backend**:
 
 - **The substrate** is one castle service (`supabase`, the `supabase-substrate`
-  repo) running self-hosted Supabase via the `compose` runner. It is shared by
+  repo) running self-hosted Supabase via a `manager: systemd` deployment with the
+  `compose` launcher. It is shared by
   every supabase app. Stand it up once (see that repo's README).
 - **Each app** is a directory of `migrations/` + `functions/` + `public/` that
   deploys onto the substrate. Its rows/blobs live on the substrate; everything
@@ -55,7 +56,8 @@ my-app/
 └── CLAUDE.md
 ```
 
-Registered as a `behavior: frontend` program with `build.outputs: [public]`, so the
+Registered as a program with `build.outputs: [public]` plus a `manager: caddy`
+deployment (`root: public`, derived **kind: static**), so the
 gateway serves `public/` in place at `/my-app/` — no service, no process.
 
 ## supabase.app.yaml
@@ -117,8 +119,9 @@ the function holds credentials and can meter usage.
 
 ## Gateway & secure context
 
-A supabase app is a `frontend` program (its `public/` is served in place), so the
-gateway serves it at its own subdomain `<name>.<gateway.domain>`. With
+A supabase app is a static deployment (`manager: caddy`; its `public/` is served
+in place), so the gateway serves it at its own subdomain
+`<name>.<gateway.domain>`. With
 `gateway.tls: acme` that subdomain is HTTPS — a **secure context**, which apps
 using **auth or WebCrypto** require — with no private CA to install. (The substrate
 service itself is likewise at `supabase.<gateway.domain>`.) See
@@ -139,6 +142,6 @@ castle deploy && castle gateway reload    # serve the static UI at /my-app/
 registers the program as a static frontend. Set the anon key in `public/config.js`
 (`cat ~/.castle/secrets/SUPABASE_ANON_KEY`), edit your migrations, and build.
 
-See @docs/registry.md for the `compose` runner, the substrate service definition,
+See @docs/registry.md for the `compose` launcher, the substrate deployment definition,
 and the full registry reference. The substrate itself lives in the
 `supabase-substrate` repo (vendored, pinned self-hosted Supabase).

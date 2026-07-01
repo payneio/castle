@@ -2,7 +2,7 @@ import { Clock, Play, RefreshCw, Square, Terminal } from "lucide-react"
 import { Link } from "react-router-dom"
 import type { JobSummary, HealthStatus } from "@/types"
 import { useServiceAction } from "@/services/api/hooks"
-import { runnerLabel } from "@/lib/labels"
+import { launcherLabel } from "@/lib/labels"
 import { StackBadge } from "./StackBadge"
 
 interface JobCardProps {
@@ -50,10 +50,10 @@ export function JobCard({ job, health }: JobCardProps) {
               {job.schedule}
             </span>
           )}
-          {job.runner && (
+          {job.launcher && (
             <span className="flex items-center gap-1">
               <Terminal size={12} />
-              {runnerLabel(job.runner)}
+              {launcherLabel(job.launcher)}
             </span>
           )}
         </div>

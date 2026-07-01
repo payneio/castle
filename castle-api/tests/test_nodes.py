@@ -42,10 +42,10 @@ class TestNodesList:
                 node=NodeConfig(hostname="devbox", gateway_port=9000),
                 deployed={
                     "remote-svc": Deployment(
-                        runner="python",
+                        manager="systemd", launcher="python",
                         run_cmd=["svc"],
                         port=9050,
-                        behavior="daemon",
+                        kind="service",
                     ),
                 },
             )

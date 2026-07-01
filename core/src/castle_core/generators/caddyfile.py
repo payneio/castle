@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from castle_core.config import SPECS_DIR, CastleConfig
-from castle_core.manifest import ServiceSpec
+from castle_core.manifest import CaddyDeployment, SystemdDeployment
 from castle_core.registry import NodeRegistry
 
 # DNS-01 provider → the env var the Caddyfile reads its API token from. The token
@@ -50,44 +50,41 @@ class GatewayRoute:
 ProxyTargets = tuple[bool, int | None, str | None]
 
 
-def service_proxy_targets(name: str, svc: ServiceSpec) -> ProxyTargets:
-    """Derive a service's gateway exposure from its spec.
+def service_proxy_targets(name: str, dep: SystemdDeployment) -> ProxyTargets:
+    """Derive a systemd deployment's gateway exposure from its spec.
 
     The single source of truth shared by the registry build (``deploy``) and
     route computation (``compute_routes``), so they never disagree. ``expose`` is
-    the checkbox (``proxy: true``); the subdomain is always the service name, so
-    there's nothing else to derive.
+    the checkbox (``proxy: true``); the subdomain is always the deployment name.
     """
     port = None
-    if svc.expose and svc.expose.http:
-        port = svc.expose.http.internal.port
-    expose = bool(svc.proxy)
-    base_url = getattr(svc.run, "base_url", None)
-    return expose, port, base_url
+    if dep.expose and dep.expose.http:
+        port = dep.expose.http.internal.port
+    return bool(dep.proxy), port, None
 
 
 def _local_routes(
     config: CastleConfig | None, registry: NodeRegistry
 ) -> list[tuple[str, str, str]]:
-    """Each local service's route as ``(name, kind, target)``, name-sorted.
+    """Each local deployment's route as ``(name, kind, target)``, name-sorted.
 
-    ``kind`` is ``static`` (file-serve a built dir) or ``proxy`` (reverse-proxy a
-    port/base_url). Prefers ``castle.yaml`` (``config.services``) as the source of
-    truth so a regenerated Caddyfile always reflects the current spec; falls back to
-    the deployed registry snapshot when config isn't available.
+    ``kind`` is ``static`` (a caddy deployment — file-serve a built dir) or
+    ``proxy`` (a proxied systemd process). Prefers ``castle.yaml``
+    (``config.deployments``) so a regenerated Caddyfile reflects the current spec;
+    falls back to the deployed registry snapshot when config isn't available.
     """
     out: list[tuple[str, str, str]] = []
-    services = getattr(config, "services", None)
-    if services is not None:
-        for name, svc in sorted(services.items()):
-            if svc.run.runner == "static":
-                src = _program_source(config, svc.program)
+    deployments = getattr(config, "deployments", None)
+    if deployments is not None:
+        for name, dep in sorted(deployments.items()):
+            if isinstance(dep, CaddyDeployment):
+                src = _program_source(config, dep.program)
                 if src is not None:
-                    out.append((name, "static", str(src / svc.run.root)))
-                continue
-            expose, port, base_url = service_proxy_targets(name, svc)
-            if expose and (port or base_url):
-                out.append((name, "proxy", base_url or f"localhost:{port}"))
+                    out.append((name, "static", str(src / dep.root)))
+            elif isinstance(dep, SystemdDeployment):
+                expose, port, base_url = service_proxy_targets(name, dep)
+                if expose and (port or base_url):
+                    out.append((name, "proxy", base_url or f"localhost:{port}"))
         return out
     # No config → route from the deployed registry snapshot.
     for name, d in sorted(registry.deployed.items()):

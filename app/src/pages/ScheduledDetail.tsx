@@ -34,6 +34,7 @@ export function ScheduledDetailPage() {
         backTo="/scheduled"
         backLabel="Back to Jobs"
         name={deployment.id}
+        kind="job"
         stack={deployment.stack}
         source={deployment.source}
       >

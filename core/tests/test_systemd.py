@@ -29,7 +29,7 @@ class TestUnitFromDeployed:
     def test_contains_description(self) -> None:
         """Unit file has service description."""
         deployed = Deployment(
-            runner="python",
+            manager="systemd", launcher="python",
             run_cmd=["/home/user/.local/bin/uv", "run", "test-svc"],
             env={"TEST_SVC_PORT": "19000"},
             description="Test service",
@@ -40,7 +40,7 @@ class TestUnitFromDeployed:
     def test_no_working_directory(self) -> None:
         """Unit file has no WorkingDirectory (source/runtime separation)."""
         deployed = Deployment(
-            runner="python",
+            manager="systemd", launcher="python",
             run_cmd=["/home/user/.local/bin/uv", "run", "test-svc"],
             env={},
             description="Test service",
@@ -51,7 +51,7 @@ class TestUnitFromDeployed:
     def test_contains_environment(self) -> None:
         """Unit file has environment variables from deployed config."""
         deployed = Deployment(
-            runner="python",
+            manager="systemd", launcher="python",
             run_cmd=["/home/user/.local/bin/uv", "run", "test-svc"],
             env={"TEST_SVC_DATA_DIR": "/home/user/.castle/data/test-svc"},
             description="Test service",
@@ -62,7 +62,7 @@ class TestUnitFromDeployed:
     def test_contains_restart_policy(self) -> None:
         """Unit file has restart configuration."""
         deployed = Deployment(
-            runner="python",
+            manager="systemd", launcher="python",
             run_cmd=["/home/user/.local/bin/uv", "run", "test-svc"],
             env={},
             description="Test service",
@@ -73,7 +73,7 @@ class TestUnitFromDeployed:
     def test_exec_start_from_run_cmd(self) -> None:
         """Unit file ExecStart uses resolved run_cmd."""
         deployed = Deployment(
-            runner="python",
+            manager="systemd", launcher="python",
             run_cmd=["/home/user/.local/bin/uv", "run", "test-svc"],
             env={},
             description="Test service",
@@ -84,7 +84,7 @@ class TestUnitFromDeployed:
     def test_basic_service(self) -> None:
         """Generate a unit from a deployed component."""
         deployed = Deployment(
-            runner="python",
+            manager="systemd", launcher="python",
             run_cmd=["/home/user/.local/bin/uv", "run", "my-svc"],
             env={
                 "MY_SVC_PORT": "9001",
@@ -103,7 +103,7 @@ class TestUnitFromDeployed:
     def test_scheduled_job(self) -> None:
         """Scheduled component generates oneshot unit."""
         deployed = Deployment(
-            runner="command",
+            manager="systemd", launcher="command",
             run_cmd=["/home/user/.local/bin/my-job"],
             env={},
             description="Nightly job",
@@ -116,7 +116,7 @@ class TestUnitFromDeployed:
     def test_no_repo_paths(self) -> None:
         """Generated units must not reference repo paths."""
         deployed = Deployment(
-            runner="python",
+            manager="systemd", launcher="python",
             run_cmd=["/home/user/.local/bin/uv", "run", "my-svc"],
             env={"DATA_DIR": "/home/user/.castle/data/my-svc"},
             description="Test",
@@ -127,7 +127,7 @@ class TestUnitFromDeployed:
     def test_exec_stop_emitted_for_compose(self) -> None:
         """A compose deployment's stop_cmd becomes ExecStop= (clean teardown)."""
         deployed = Deployment(
-            runner="compose",
+            manager="systemd", launcher="compose",
             run_cmd=["/usr/bin/docker", "compose", "-p", "castle-x", "-f", "c.yml", "up"],
             stop_cmd=["/usr/bin/docker", "compose", "-p", "castle-x", "-f", "c.yml", "down"],
             description="Stack",
@@ -138,7 +138,7 @@ class TestUnitFromDeployed:
     def test_no_exec_stop_without_stop_cmd(self) -> None:
         """Runners without a stop_cmd rely on SIGTERM — no ExecStop line."""
         deployed = Deployment(
-            runner="python", run_cmd=["/uv", "run", "x"], description="X"
+            manager="systemd", launcher="python", run_cmd=["/uv", "run", "x"], description="X"
         )
         unit = generate_unit_from_deployed("x", deployed)
         assert "ExecStop=" not in unit
@@ -149,7 +149,7 @@ class TestSecretEnvFile:
 
     def test_environment_file_added_for_simple_unit(self) -> None:
         deployed = Deployment(
-            runner="python",
+            manager="systemd", launcher="python",
             run_cmd=["/uv", "run", "my-svc"],
             env={"PORT": "9001"},
             secret_env_keys=["API_KEY"],
@@ -162,7 +162,7 @@ class TestSecretEnvFile:
 
     def test_environment_file_added_for_oneshot_job(self) -> None:
         deployed = Deployment(
-            runner="command",
+            manager="systemd", launcher="command",
             run_cmd=["/bin/job"],
             env={},
             schedule="0 2 * * *",
@@ -174,14 +174,14 @@ class TestSecretEnvFile:
         assert f"EnvironmentFile={path}" in unit
 
     def test_no_environment_file_when_none(self) -> None:
-        deployed = Deployment(runner="python", run_cmd=["/uv", "run", "x"], env={})
+        deployed = Deployment(manager="systemd", launcher="python", run_cmd=["/uv", "run", "x"], env={})
         unit = generate_unit_from_deployed("x", deployed, env_file=None)
         assert "EnvironmentFile" not in unit
 
     def test_secret_values_never_in_unit(self) -> None:
         """The unit references the file path; resolved secret values never appear."""
         deployed = Deployment(
-            runner="python",
+            manager="systemd", launcher="python",
             run_cmd=["/uv", "run", "x"],
             env={"PORT": "9001"},
             secret_env_keys=["API_KEY"],
@@ -195,16 +195,16 @@ class TestUnitEnvFile:
     """unit_env_file decides which runners get an EnvironmentFile= path."""
 
     def test_none_without_secrets(self) -> None:
-        d = Deployment(runner="python", run_cmd=[], env={}, secret_env_keys=[])
+        d = Deployment(manager="systemd", launcher="python", run_cmd=[], env={}, secret_env_keys=[])
         assert unit_env_file(d, "x") is None
 
     def test_path_for_python_with_secrets(self) -> None:
-        d = Deployment(runner="python", run_cmd=[], env={}, secret_env_keys=["K"])
+        d = Deployment(manager="systemd", launcher="python", run_cmd=[], env={}, secret_env_keys=["K"])
         assert unit_env_file(d, "x") == secret_env_path("x")
 
     def test_none_for_container(self) -> None:
         """Containers load secrets via docker --env-file, not systemd."""
-        d = Deployment(runner="container", run_cmd=[], env={}, secret_env_keys=["K"])
+        d = Deployment(manager="systemd", launcher="container", run_cmd=[], env={}, secret_env_keys=["K"])
         assert unit_env_file(d, "x") is None
 
 

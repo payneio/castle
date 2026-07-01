@@ -1,21 +1,26 @@
-export const RUNNER_LABELS: Record<string, string> = {
+export const LAUNCHER_LABELS: Record<string, string> = {
   python: "Python",
   command: "Command",
   container: "Container",
+  compose: "Compose",
   node: "Node.js",
-  remote: "Remote",
 }
 
-export const BEHAVIOR_LABELS: Record<string, string> = {
-  daemon: "Daemon",
+// Derived deployment kinds (service | job | tool | static | reference).
+export const KIND_LABELS: Record<string, string> = {
+  service: "Service",
+  job: "Job",
   tool: "Tool",
-  frontend: "Frontend",
+  static: "Static",
+  reference: "Reference",
 }
 
-export const BEHAVIOR_DESCRIPTIONS: Record<string, string> = {
-  daemon: "Long-running process that exposes ports",
-  tool: "CLI utility or scheduled task",
-  frontend: "Built web application",
+export const KIND_DESCRIPTIONS: Record<string, string> = {
+  service: "Long-running process (systemd)",
+  job: "Scheduled task (timer)",
+  tool: "CLI installed on PATH",
+  static: "Static site served by the gateway",
+  reference: "External service on another node",
 }
 
 export const STACK_LABELS: Record<string, string> = {
@@ -31,12 +36,12 @@ export const STACK_LABELS: Record<string, string> = {
   remote: "Remote",
 }
 
-export function runnerLabel(runner: string): string {
-  return RUNNER_LABELS[runner] ?? runner
+export function launcherLabel(launcher: string): string {
+  return LAUNCHER_LABELS[launcher] ?? launcher
 }
 
-export function behaviorLabel(behavior: string): string {
-  return BEHAVIOR_LABELS[behavior] ?? behavior
+export function kindLabel(kind: string): string {
+  return KIND_LABELS[kind] ?? kind
 }
 
 export function stackLabel(stack: string): string {

@@ -103,42 +103,42 @@ class Settings(BaseSettings):
 settings = Settings()
 ```
 
-Castle passes config via env vars in castle.yaml:
+Castle passes config via env vars in the deployment's `defaults.env`:
 
 ```yaml
-programs:
-  my-service:
-    description: Does something useful
-    source: /data/repos/my-service
-    stack: python-fastapi
-    behavior: daemon
-
-services:
-  my-service:
-    program: my-service
-    run:
-      runner: python
-      program: my-service
-    expose:
-      http:
-        internal: { port: 9001 }
-        health_path: /health
-    proxy: true   # expose at my-service.<gateway.domain>
-    manage:
-      systemd: {}
+# programs/my-service.yaml
+description: Does something useful
+source: /data/repos/my-service
+stack: python-fastapi
+```
+```yaml
+# deployments/my-service.yaml (manager: systemd → kind: service)
+program: my-service
+manager: systemd
+run:
+  launcher: python
+  program: my-service
+expose:
+  http:
+    internal: { port: 9001 }
+    health_path: /health
+proxy: true   # expose at my-service.<gateway.domain>
+manage:
+  systemd: {}
 ```
 
 The env a service runs with is exactly what's in `defaults.env` — castle injects
 nothing implicitly. Map the vars your settings read (above, `env_prefix:
 "MY_SERVICE_"` → `MY_SERVICE_PORT`/`MY_SERVICE_DATA_DIR`) to castle's computed
-values with the `${port}`/`${data_dir}` placeholders:
+values with the `${port}`/`${data_dir}` placeholders — add to
+`deployments/my-service.yaml`:
 
 ```yaml
-    defaults:
-      env:
-        MY_SERVICE_PORT: ${port}            # = expose.http.internal.port
-        MY_SERVICE_DATA_DIR: ${data_dir}    # = $CASTLE_DATA_DIR/my-service
-        CENTRAL_CONTEXT_URL: http://localhost:9001
+defaults:
+  env:
+    MY_SERVICE_PORT: ${port}            # = expose.http.internal.port
+    MY_SERVICE_DATA_DIR: ${data_dir}    # = $CASTLE_DATA_DIR/my-service
+    CENTRAL_CONTEXT_URL: http://localhost:9001
 ```
 
 `castle program create` scaffolds the `${port}`/`${data_dir}` lines for you.

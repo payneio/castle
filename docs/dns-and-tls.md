@@ -141,7 +141,7 @@ a DNS token.
 - **`acme` only — a provider API token.** Store it as a secret
   (`~/.castle/secrets/<TOKEN_NAME>`, scope: the DNS provider's "edit DNS records"
   permission for your zone) and map it into the gateway service env in
-  `services/castle-gateway.yaml` (`defaults.env`), so Caddy reads it as
+  `deployments/castle-gateway.yaml` (`defaults.env`), so Caddy reads it as
   `{env.<TOKEN_NAME>}`. `castle deploy` warns if the domain, env var, or secret is
   missing.
 - **`acme` — stage first.** Set `CASTLE_ACME_STAGING=1` at deploy to use Let's

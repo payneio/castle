@@ -110,14 +110,15 @@ def registry_path(tmp_path: Path, castle_root: Path) -> Generator[Path, None, No
         ),
         deployed={
             "test-svc": Deployment(
-                runner="python",
+                manager="systemd",
+                launcher="python",
                 run_cmd=["uv", "run", "test-svc"],
                 env={
                     "TEST_SVC_PORT": "19000",
                     "TEST_SVC_DATA_DIR": "/home/user/.castle/data/test-svc",
                 },
                 description="Test service",
-                behavior="daemon",
+                kind="service",
                 port=19000,
                 health_path="/health",
                 subdomain="test-svc",

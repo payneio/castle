@@ -29,7 +29,7 @@ def _build_program_group(subparsers: argparse._SubParsersAction) -> None:
     sub = prog.add_subparsers(dest="program_command")
 
     p = sub.add_parser("list", help="List programs")
-    p.add_argument("--behavior", choices=["daemon", "tool", "frontend"], help="Filter by behavior")
+    p.add_argument("--kind", choices=["service", "job", "tool", "static", "reference"], help="Filter by derived kind")
     p.add_argument("--stack", help="Filter by stack")
     p.add_argument("--json", action="store_true", help="Output as JSON")
 
@@ -78,7 +78,7 @@ def _add_service_create(sub: argparse._SubParsersAction, kind: str) -> None:
     p.add_argument("--program", help="Program this deployment runs (convenience ref)")
     p.add_argument("--description", default="", help="Description")
     p.add_argument("--run", help="Console script / command to run (default: --program or name)")
-    p.add_argument("--runner", choices=["python", "command"], default="python")
+    p.add_argument("--launcher", choices=["python", "command"], default="python")
     p.add_argument(
         "--env",
         action="append",
@@ -167,7 +167,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     # Cross-resource overview
     p = subparsers.add_parser("list", help="List programs, services, and jobs")
-    p.add_argument("--behavior", choices=["daemon", "tool", "frontend"], help="Filter by behavior")
+    p.add_argument("--kind", choices=["service", "job", "tool", "static", "reference"], help="Filter by derived kind")
     p.add_argument("--stack", help="Filter by stack")
     p.add_argument("--json", action="store_true", help="Output as JSON")
 

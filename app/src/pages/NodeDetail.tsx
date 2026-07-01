@@ -1,7 +1,7 @@
 import { useParams, Link } from "react-router-dom"
 import { ArrowLeft, Server } from "lucide-react"
 import { useNode } from "@/services/api/hooks"
-import { BehaviorBadge } from "@/components/BehaviorBadge"
+import { KindBadge } from "@/components/KindBadge"
 import { StackBadge } from "@/components/StackBadge"
 import { cn } from "@/lib/utils"
 
@@ -63,9 +63,9 @@ export function NodeDetailPage() {
             <thead>
               <tr className="bg-[var(--card)] border-b border-[var(--border)] text-left">
                 <th className="px-3 py-2 font-medium text-[var(--muted)]">Deployment</th>
-                <th className="px-3 py-2 font-medium text-[var(--muted)]">Behavior</th>
+                <th className="px-3 py-2 font-medium text-[var(--muted)]">Kind</th>
                 <th className="px-3 py-2 font-medium text-[var(--muted)]">Stack</th>
-                <th className="px-3 py-2 font-medium text-[var(--muted)]">Runner</th>
+                <th className="px-3 py-2 font-medium text-[var(--muted)]">Manager</th>
                 <th className="px-3 py-2 font-medium text-[var(--muted)]">Port</th>
               </tr>
             </thead>
@@ -87,13 +87,13 @@ export function NodeDetailPage() {
                     )}
                   </td>
                   <td className="px-3 py-2.5">
-                    <BehaviorBadge behavior={comp.behavior} />
+                    <KindBadge kind={comp.kind} />
                   </td>
                   <td className="px-3 py-2.5">
                     <StackBadge stack={comp.stack} />
                   </td>
                   <td className="px-3 py-2.5 text-[var(--muted)]">
-                    {comp.runner ?? "—"}
+                    {comp.manager ?? "—"}
                   </td>
                   <td className="px-3 py-2.5 font-mono text-[var(--muted)]">
                     {comp.port ?? "—"}

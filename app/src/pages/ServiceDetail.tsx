@@ -1,7 +1,7 @@
 import { useParams, Link } from "react-router-dom"
 import { Server, ExternalLink, Terminal } from "lucide-react"
 import { useService, useStatus, useCaddyfile } from "@/services/api/hooks"
-import { runnerLabel, subdomainUrl } from "@/lib/labels"
+import { launcherLabel, subdomainUrl } from "@/lib/labels"
 import { HealthBadge } from "@/components/HealthBadge"
 import { LogViewer } from "@/components/LogViewer"
 import { DetailHeader } from "@/components/detail/DetailHeader"
@@ -38,7 +38,7 @@ export function ServiceDetailPage() {
         backTo="/services"
         backLabel="Back to Services"
         name={deployment.id}
-        behavior="daemon"
+        kind="service"
         stack={deployment.stack}
         source={deployment.source}
       >
@@ -78,12 +78,12 @@ export function ServiceDetailPage() {
               </a>
             </>
           )}
-          {deployment.runner && (
+          {deployment.launcher && (
             <>
               <span className="text-[var(--muted)]">Runs</span>
               <span className="flex items-center gap-1 min-w-0">
                 <Terminal size={12} className="shrink-0" />
-                {runnerLabel(deployment.runner)}
+                {launcherLabel(deployment.launcher)}
                 {deployment.run_target && <> &middot; <span className="font-mono break-all">{deployment.run_target}</span></>}
               </span>
             </>

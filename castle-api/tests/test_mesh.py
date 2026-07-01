@@ -96,7 +96,7 @@ class TestMeshStateManager:
         mgr.update_node("devbox", _make_registry("devbox"))
         new_reg = _make_registry(
             "devbox",
-            {"svc": Deployment(runner="python", run_cmd=["svc"])},
+            {"svc": Deployment(manager="systemd", launcher="python", run_cmd=["svc"])},
         )
         mgr.update_node("devbox", new_reg)
         node = mgr.get_node("devbox")

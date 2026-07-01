@@ -5,49 +5,49 @@ from __future__ import annotations
 import pytest
 from castle_core.manifest import (
     BuildSpec,
-    ProgramSpec,
+    CaddyDeployment,
     ExposeSpec,
     HttpExposeSpec,
     HttpInternal,
-    JobSpec,
     ManageSpec,
+    PathDeployment,
+    ProgramSpec,
     RunCommand,
     RunPython,
-    RunRemote,
-    ServiceSpec,
+    RemoteDeployment,
+    SystemdDeployment,
     SystemdSpec,
+    kind_for,
 )
 
 
 class TestProgramSpec:
-    """Tests for component (software catalog) model."""
+    """Tests for program (software catalog) model."""
 
     def test_minimal(self) -> None:
-        """Minimal component just needs an id."""
+        """Minimal program just needs an id."""
         c = ProgramSpec(id="bare")
         assert c.description is None
         assert c.source is None
-        assert c.behavior is None
+        # `kind` is derived at load time; a bare spec has none.
+        assert c.kind is None
         assert c.build is None
 
-    def test_tool_component(self) -> None:
-        """Component with tool behavior and system_dependencies."""
+    def test_tool_program(self) -> None:
+        """Program with source and system_dependencies."""
         c = ProgramSpec(
             id="my-tool",
             description="A tool",
             source="my-tool/",
-            behavior="tool",
             system_dependencies=["pandoc"],
         )
         assert c.source == "my-tool/"
-        assert c.behavior == "tool"
         assert c.system_dependencies == ["pandoc"]
 
-    def test_frontend_component(self) -> None:
-        """Component with build spec."""
+    def test_frontend_program(self) -> None:
+        """Program with build spec."""
         c = ProgramSpec(
             id="my-app",
-            behavior="frontend",
             build=BuildSpec(commands=[["pnpm", "build"]], outputs=["dist/"]),
         )
         assert c.build.outputs == ["dist/"]
@@ -63,109 +63,91 @@ class TestProgramSpec:
         assert c.source_dir is None
 
 
-class TestServiceSpec:
-    """Tests for service (long-running daemon) model."""
+class TestSystemdDeployment:
+    """Tests for the systemd deployment (service or job)."""
 
     def test_basic_service(self) -> None:
-        """Service with run and expose."""
-        s = ServiceSpec(
+        """A systemd deployment with a launcher and expose is a service."""
+        s = SystemdDeployment(
             id="svc",
-            run=RunPython(runner="python", program="svc"),
+            manager="systemd",
+            run=RunPython(launcher="python", program="svc"),
             expose=ExposeSpec(http=HttpExposeSpec(internal=HttpInternal(port=8000))),
         )
-        assert s.run.runner == "python"
+        assert s.run.launcher == "python"
         assert s.expose.http.internal.port == 8000
+        assert kind_for(s) == "service"
 
-    def test_service_with_component_ref(self) -> None:
-        """Service can reference a component."""
-        s = ServiceSpec(
-            id="svc",
-            program="my-component",
-            run=RunPython(runner="python", program="svc"),
-        )
-        assert s.program == "my-component"
-
-    def test_service_with_proxy(self) -> None:
-        """Service with proxy spec."""
-        s = ServiceSpec(
-            id="svc",
-            run=RunPython(runner="python", program="svc"),
-            proxy=True,
-        )
-        assert s.proxy is True
-
-    def test_service_with_manage(self) -> None:
-        """Service with systemd management."""
-        s = ServiceSpec(
-            id="svc",
-            run=RunCommand(runner="command", argv=["bin"]),
-            manage=ManageSpec(systemd=SystemdSpec()),
-        )
-        assert s.manage.systemd.enable is True
-
-    def test_remote_with_systemd_raises(self) -> None:
-        """Remote runner + systemd management is invalid."""
-        with pytest.raises(
-            ValueError, match="manage.systemd cannot be enabled for runner=remote"
-        ):
-            ServiceSpec(
-                id="bad",
-                run=RunRemote(runner="remote", base_url="http://example.com"),
-                manage=ManageSpec(systemd=SystemdSpec()),
-            )
-
-    def test_no_run_is_invalid(self) -> None:
-        """Service requires a run spec."""
-        with pytest.raises(Exception):
-            ServiceSpec(id="bad")
-
-
-class TestJobSpec:
-    """Tests for job (scheduled task) model."""
-
-    def test_basic_job(self) -> None:
-        """Job with run and schedule."""
-        j = JobSpec(
+    def test_scheduled_is_a_job(self) -> None:
+        """A systemd deployment with a schedule derives kind `job`."""
+        j = SystemdDeployment(
             id="my-job",
-            run=RunCommand(runner="command", argv=["backup"]),
+            manager="systemd",
+            run=RunCommand(launcher="command", argv=["backup"]),
             schedule="0 2 * * *",
         )
         assert j.schedule == "0 2 * * *"
         assert j.timezone == "America/Los_Angeles"
+        assert kind_for(j) == "job"
 
-    def test_job_with_component_ref(self) -> None:
-        """Job can reference a component."""
-        j = JobSpec(
-            id="sync",
-            program="protonmail",
-            run=RunCommand(runner="command", argv=["protonmail", "sync"]),
-            schedule="*/5 * * * *",
+    def test_program_ref(self) -> None:
+        """A deployment can reference a program."""
+        s = SystemdDeployment(
+            id="svc",
+            manager="systemd",
+            program="my-program",
+            run=RunPython(launcher="python", program="svc"),
         )
-        assert j.program == "protonmail"
+        assert s.program == "my-program"
 
-    def test_job_requires_schedule(self) -> None:
-        """Job without schedule is invalid."""
-        with pytest.raises(Exception):
-            JobSpec(
+    def test_with_manage(self) -> None:
+        """A deployment with systemd management."""
+        s = SystemdDeployment(
+            id="svc",
+            manager="systemd",
+            run=RunCommand(launcher="command", argv=["bin"]),
+            manage=ManageSpec(systemd=SystemdSpec()),
+        )
+        assert s.manage.systemd.enable is True
+
+    def test_public_requires_proxy(self) -> None:
+        """public without proxy is invalid (public needs an exposed process)."""
+        with pytest.raises(ValueError, match="public requires proxy"):
+            SystemdDeployment(
                 id="bad",
-                run=RunCommand(runner="command", argv=["x"]),
+                manager="systemd",
+                run=RunPython(launcher="python", program="svc"),
+                public=True,
             )
 
-    def test_job_custom_timezone(self) -> None:
-        """Job with custom timezone."""
-        j = JobSpec(
-            id="job",
-            run=RunCommand(runner="command", argv=["x"]),
-            schedule="0 0 * * *",
-            timezone="UTC",
-        )
-        assert j.timezone == "UTC"
+    def test_no_run_is_invalid(self) -> None:
+        """A systemd deployment requires a run (launch) spec."""
+        with pytest.raises(Exception):
+            SystemdDeployment(id="bad", manager="systemd")
+
+
+class TestOtherManagers:
+    """Tests for the non-systemd managers and derived kinds."""
+
+    def test_caddy_is_static(self) -> None:
+        c = CaddyDeployment(id="fe", manager="caddy", program="fe", root="dist")
+        assert c.root == "dist"
+        assert kind_for(c) == "static"
+
+    def test_path_is_tool(self) -> None:
+        p = PathDeployment(id="cli", manager="path", program="cli")
+        assert kind_for(p) == "tool"
+
+    def test_none_is_reference(self) -> None:
+        r = RemoteDeployment(id="ext", manager="none", base_url="http://example.com")
+        assert r.base_url == "http://example.com"
+        assert kind_for(r) == "reference"
 
 
 class TestModelSerialization:
     """Tests for model_dump behavior."""
 
-    def test_dump_component_excludes_none(self) -> None:
+    def test_dump_program_excludes_none(self) -> None:
         """model_dump with exclude_none drops None fields."""
         c = ProgramSpec(id="test", description="Test")
         data = c.model_dump(exclude_none=True, exclude={"id"})
@@ -173,11 +155,12 @@ class TestModelSerialization:
         assert "build" not in data
 
     def test_dump_service(self) -> None:
-        """Full service serializes correctly."""
-        s = ServiceSpec(
+        """Full systemd deployment serializes correctly."""
+        s = SystemdDeployment(
             id="svc",
+            manager="systemd",
             description="A service",
-            run=RunPython(runner="python", program="svc"),
+            run=RunPython(launcher="python", program="svc"),
             expose=ExposeSpec(
                 http=HttpExposeSpec(
                     internal=HttpInternal(port=9001), health_path="/health"
@@ -187,6 +170,7 @@ class TestModelSerialization:
             manage=ManageSpec(systemd=SystemdSpec()),
         )
         data = s.model_dump(exclude_none=True, exclude={"id"})
-        assert data["run"]["runner"] == "python"
+        assert data["manager"] == "systemd"
+        assert data["run"]["launcher"] == "python"
         assert data["expose"]["http"]["internal"]["port"] == 9001
         assert data["proxy"] is True

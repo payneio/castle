@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { useParams } from "react-router-dom"
 import { useProgram } from "@/services/api/hooks"
-import { runnerLabel, subdomainUrl } from "@/lib/labels"
+import { launcherLabel, subdomainUrl } from "@/lib/labels"
 import { DetailHeader } from "@/components/detail/DetailHeader"
 import { ConfigPanel } from "@/components/detail/ConfigPanel"
 import { DeploymentsSection } from "@/components/detail/DeploymentsSection"
@@ -27,11 +27,11 @@ export function ProgramDetailPage() {
     )
   }
 
-  // A static frontend (frontend behavior, build outputs, no service) is served by
-  // the gateway in place at its own subdomain — show where.
+  // A static (caddy) deployment with build outputs is served by the gateway in
+  // place at its own subdomain — show where.
   const buildOutputs = (deployment.manifest.build as { outputs?: string[] } | undefined)?.outputs
   const servedAt =
-    deployment.behavior === "frontend" && deployment.services.length === 0 && buildOutputs?.length
+    deployment.kind === "static" && buildOutputs?.length
       ? (subdomainUrl(deployment.id) ?? `${deployment.id}.<gateway.domain>`)
       : null
 
@@ -41,7 +41,7 @@ export function ProgramDetailPage() {
         backTo="/programs"
         backLabel="Back to Programs"
         name={deployment.id}
-        behavior={deployment.behavior}
+        kind={deployment.kind}
         stack={deployment.stack}
         source={deployment.source}
       >
@@ -49,8 +49,7 @@ export function ProgramDetailPage() {
           name={deployment.id}
           actions={deployment.actions}
           active={deployment.active}
-          behavior={deployment.behavior}
-          deployedAs={[...deployment.services, ...deployment.jobs]}
+          kind={deployment.kind}
           onOutput={setActionOutput}
         />
       </DetailHeader>
@@ -96,8 +95,8 @@ export function ProgramDetailPage() {
           )}
           {deployment.runner && (
             <>
-              <span className="text-[var(--muted)]">Runner</span>
-              <span>{runnerLabel(deployment.runner)}</span>
+              <span className="text-[var(--muted)]">Launcher</span>
+              <span>{launcherLabel(deployment.runner)}</span>
             </>
           )}
           {deployment.active !== null && (

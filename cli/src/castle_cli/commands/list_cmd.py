@@ -20,10 +20,12 @@ CYAN = "\033[96m"
 MAGENTA = "\033[95m"
 YELLOW = "\033[93m"
 
-BEHAVIOR_COLORS: dict[str, str] = {
-    "daemon": GREEN,
+KIND_COLORS: dict[str, str] = {
+    "service": GREEN,
+    "job": MAGENTA,
     "tool": CYAN,
-    "frontend": YELLOW,
+    "static": YELLOW,
+    "reference": DIM,
 }
 
 STACK_DISPLAY: dict[str, str] = {
@@ -62,20 +64,20 @@ def _resolve_stack(config: object, name: str) -> str | None:
 def run_list(args: argparse.Namespace) -> int:
     """List all programs, services, and jobs.
 
-    Two orthogonal axes: the **Programs** catalog (filtered by real `behavior`)
-    and the **Services**/**Jobs** deployment views. `--behavior` filters the
-    catalog only — it's a property of a program, not of a deployment.
+    Two orthogonal axes: the **Programs** catalog (filtered by derived `kind`)
+    and the **Services**/**Jobs** deployment views. `--kind` filters the catalog
+    by a program's derived kind (service/job/tool/static/reference).
     """
     from castle_core.lifecycle import is_active
 
     config = load_config()
 
-    filter_behavior = getattr(args, "behavior", None)
+    filter_kind = getattr(args, "kind", None)
     filter_stack = getattr(args, "stack", None)
     resource = getattr(args, "resource", None)  # scope to one section, or all
 
     if getattr(args, "json", False):
-        return _list_json(config, filter_behavior, filter_stack)
+        return _list_json(config, filter_kind, filter_stack)
 
     def dot(name: str) -> str:
         return f"{GREEN}●{RESET}" if is_active(name, config) else f"{RED}○{RESET}"
@@ -87,7 +89,7 @@ def run_list(args: argparse.Namespace) -> int:
         {
             name: comp
             for name, comp in config.programs.items()
-            if (not filter_behavior or comp.behavior == filter_behavior)
+            if (not filter_kind or comp.kind == filter_kind)
             and (not filter_stack or comp.stack == filter_stack)
         }
         if resource in (None, "program")
@@ -98,20 +100,20 @@ def run_list(args: argparse.Namespace) -> int:
         print(f"\n{BOLD}{CYAN}Programs{RESET}")
         print(f"{CYAN}{'─' * 40}{RESET}")
         for name, comp in progs.items():
-            behavior = comp.behavior or "program"
-            bcolor = BEHAVIOR_COLORS.get(behavior, "")
-            behavior_str = f"  {bcolor}{behavior}{RESET}"
+            kind = comp.kind or "program"
+            bcolor = KIND_COLORS.get(kind, "")
+            behavior_str = f"  {bcolor}{kind}{RESET}"
             stack_str = f"  {DIM}{comp.stack}{RESET}" if comp.stack else ""
             desc = f"  {DIM}{comp.description}{RESET}" if comp.description else ""
             print(f"  {dot(name)} {BOLD}{name}{RESET}{behavior_str}{stack_str}{desc}")
 
     # Services + Jobs (deployment views) — independent of behavior, so only shown
     # when no behavior filter is applied. Each gated by its own resource scope.
-    if not filter_behavior and resource in (None, "service"):
+    if not filter_kind and resource in (None, "service"):
         services = _filter_by_stack(config.services, config, filter_stack)
         if services:
             any_output = True
-            color = BEHAVIOR_COLORS["daemon"]
+            color = KIND_COLORS["service"]
             print(f"\n{BOLD}{color}Services{RESET}")
             print(f"{color}{'─' * 40}{RESET}")
             for name, svc in services.items():
@@ -123,7 +125,7 @@ def run_list(args: argparse.Namespace) -> int:
                 desc = f"  {DIM}{svc.description}{RESET}" if svc.description else ""
                 print(f"  {dot(name)} {BOLD}{name}{RESET}{port_str}{stack_str}{desc}")
 
-    if not filter_behavior and resource in (None, "job"):
+    if not filter_kind and resource in (None, "job"):
         jobs = _filter_by_stack(config.jobs, config, filter_stack)
         if jobs:
             any_output = True
@@ -158,24 +160,23 @@ def _filter_by_stack(
 
 def _list_json(
     config: object,
-    filter_behavior: str | None,
+    filter_kind: str | None,
     filter_stack: str | None,
 ) -> int:
-    """Output JSON: the program catalog (behavior-filterable) plus deployments."""
+    """Output JSON: the program catalog (kind-filterable) plus deployments."""
     from castle_core.lifecycle import is_active
 
     output = []
 
-    # Programs (catalog) — filtered by real behavior + stack
+    # Programs (catalog) — filtered by derived kind + stack
     for name, comp in config.programs.items():
-        if filter_behavior and comp.behavior != filter_behavior:
+        if filter_kind and comp.kind != filter_kind:
             continue
         if filter_stack and comp.stack != filter_stack:
             continue
         entry: dict = {
             "name": name,
-            "kind": "program",
-            "behavior": comp.behavior,
+            "kind": comp.kind,
             "active": is_active(name, config),
         }
         if comp.stack:
@@ -184,8 +185,8 @@ def _list_json(
             entry["description"] = comp.description
         output.append(entry)
 
-    # Services + Jobs (deployments) — only when not filtering by behavior
-    if not filter_behavior:
+    # Services + Jobs (deployments) — only when not filtering by kind
+    if not filter_kind:
         for name, svc in config.services.items():
             stack = _resolve_stack(config, name)
             if filter_stack and stack != filter_stack:

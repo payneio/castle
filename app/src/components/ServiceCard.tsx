@@ -2,7 +2,7 @@ import { ExternalLink, Play, RefreshCw, Server, Square, Terminal } from "lucide-
 import { Link } from "react-router-dom"
 import type { ServiceSummary, HealthStatus } from "@/types"
 import { useServiceAction } from "@/services/api/hooks"
-import { runnerLabel, subdomainUrl } from "@/lib/labels"
+import { launcherLabel, subdomainUrl } from "@/lib/labels"
 import { HealthBadge } from "./HealthBadge"
 import { StackBadge } from "./StackBadge"
 
@@ -52,10 +52,10 @@ export function ServiceCard({ service, health }: ServiceCardProps) {
               <Server size={12} />:{service.port}
             </span>
           )}
-          {service.runner && (
+          {service.launcher && (
             <span className="flex items-center gap-1">
               <Terminal size={12} />
-              {runnerLabel(service.runner)}
+              {launcherLabel(service.launcher)}
             </span>
           )}
           {service.subdomain && (

@@ -140,17 +140,13 @@ def get_unit(name: str) -> dict[str, str | None]:
         from castle_core.config import load_config
 
         config = load_config(root)
-        if name in config.services:
-            svc = config.services[name]
-            if svc.manage and svc.manage.systemd:
-                systemd_spec = svc.manage.systemd
-            description = svc.description
-        elif name in config.jobs:
-            job = config.jobs[name]
-            if job.manage and job.manage.systemd:
-                systemd_spec = job.manage.systemd
-            schedule = job.schedule
-            description = job.description
+        dep = config.deployments.get(name)
+        if dep is not None:
+            manage = getattr(dep, "manage", None)
+            if manage and manage.systemd:
+                systemd_spec = manage.systemd
+            description = dep.description
+            schedule = getattr(dep, "schedule", None)
 
     unit = generate_unit_from_deployed(name, deployed, systemd_spec)
     timer = generate_timer(name, schedule, description) if schedule else None

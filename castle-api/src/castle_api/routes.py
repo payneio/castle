@@ -13,10 +13,8 @@ from castle_core.config import SPECS_DIR
 from castle_core.generators.caddyfile import generate_caddyfile_from_registry
 from castle_core.manifest import (
     ProgramSpec,
-    JobSpec,
-    ServiceSpec,
-    behavior_for_runner,
-    manager_for,
+    SystemdDeployment,
+    kind_for,
 )
 from castle_core.stacks import available_actions
 
@@ -80,7 +78,7 @@ def _summary_from_deployed(name: str, deployed: object) -> DeploymentSummary:
 
     # A PATH-managed deployment (a tool) is "installed" when it's on PATH.
     installed: bool | None = None
-    if manager_for(deployed.runner) == "path":
+    if deployed.manager == "path":
         installed = shutil.which(name) is not None
 
     category = "job" if deployed.schedule else "service"
@@ -89,9 +87,10 @@ def _summary_from_deployed(name: str, deployed: object) -> DeploymentSummary:
         id=name,
         category=category,
         description=deployed.description,
-        behavior=deployed.behavior,
+        kind=deployed.kind,
         stack=deployed.stack,
-        runner=deployed.runner,
+        manager=deployed.manager,
+        launcher=deployed.launcher,
         port=deployed.port,
         health_path=deployed.health_path,
         subdomain=deployed.subdomain,
@@ -103,9 +102,9 @@ def _summary_from_deployed(name: str, deployed: object) -> DeploymentSummary:
 
 
 def _summary_from_service(
-    name: str, svc: ServiceSpec, config: object
+    name: str, svc: SystemdDeployment, config: object
 ) -> DeploymentSummary:
-    """Build a DeploymentSummary from a ServiceSpec (non-deployed)."""
+    """Build a DeploymentSummary from a systemd deployment (service, non-deployed)."""
     port = None
     health_path = None
     if svc.expose and svc.expose.http:
@@ -133,15 +132,14 @@ def _summary_from_service(
         source = comp.source
         stack = comp.stack
 
-    runner = svc.run.runner
-
     return DeploymentSummary(
         id=name,
         category="service",
         description=description,
-        behavior=behavior_for_runner(runner),
+        kind=kind_for(svc),
         stack=stack,
-        runner=runner,
+        manager="systemd",
+        launcher=svc.run.launcher,
         port=port,
         health_path=health_path,
         subdomain=subdomain,
@@ -151,8 +149,8 @@ def _summary_from_service(
     )
 
 
-def _summary_from_job(name: str, job: JobSpec, config: object) -> DeploymentSummary:
-    """Build a DeploymentSummary from a JobSpec (non-deployed)."""
+def _summary_from_job(name: str, job: SystemdDeployment, config: object) -> DeploymentSummary:
+    """Build a DeploymentSummary from a systemd deployment (job, non-deployed)."""
     managed = bool(job.manage and job.manage.systemd and job.manage.systemd.enable)
 
     systemd_info: SystemdInfo | None = None
@@ -175,9 +173,10 @@ def _summary_from_job(name: str, job: JobSpec, config: object) -> DeploymentSumm
         id=name,
         category="job",
         description=description,
-        behavior="tool",
+        kind="job",
         stack=stack,
-        runner=job.run.runner,
+        manager="systemd",
+        launcher=job.run.launcher,
         managed=managed,
         systemd=systemd_info,
         schedule=job.schedule,
@@ -188,17 +187,8 @@ def _summary_from_job(name: str, job: JobSpec, config: object) -> DeploymentSumm
 def _summary_from_program(
     name: str, comp: ProgramSpec, root: Path
 ) -> DeploymentSummary:
-    """Build a DeploymentSummary from a ProgramSpec (tools/frontends)."""
+    """Build a DeploymentSummary from a ProgramSpec (its derived kind)."""
     source = comp.source
-
-    # Infer runner from source directory
-    runner = None
-    if source:
-        source_dir = Path(source)
-        if (source_dir / "pyproject.toml").exists():
-            runner = "python"
-        elif source_dir.is_file():
-            runner = "command"
 
     installed: bool | None = None
     if comp.source and (comp.stack or comp.commands):
@@ -208,9 +198,8 @@ def _summary_from_program(
         id=name,
         category="program",
         description=comp.description,
-        behavior=comp.behavior,
+        kind=comp.kind,
         stack=comp.stack,
-        runner=runner,
         version=comp.version,
         source=source,
         repo=comp.repo,
@@ -268,7 +257,7 @@ def _service_from_deployed(name: str, deployed: object) -> ServiceSummary:
         id=name,
         description=deployed.description,
         stack=deployed.stack,
-        runner=deployed.runner,
+        launcher=deployed.launcher,
         run_target=run_target,
         port=deployed.port,
         health_path=deployed.health_path,
@@ -278,8 +267,8 @@ def _service_from_deployed(name: str, deployed: object) -> ServiceSummary:
     )
 
 
-def _service_from_spec(name: str, svc: ServiceSpec, config: object) -> ServiceSummary:
-    """Build a ServiceSummary from a ServiceSpec."""
+def _service_from_spec(name: str, svc: SystemdDeployment, config: object) -> ServiceSummary:
+    """Build a ServiceSummary from a systemd deployment."""
     port = None
     health_path = None
     if svc.expose and svc.expose.http:
@@ -305,7 +294,7 @@ def _service_from_spec(name: str, svc: ServiceSpec, config: object) -> ServiceSu
         id=name,
         description=description,
         stack=stack,
-        runner=svc.run.runner,
+        launcher=svc.run.launcher,
         run_target=_run_target(svc.run),
         port=port,
         health_path=health_path,
@@ -325,7 +314,7 @@ def _job_from_deployed(name: str, deployed: object) -> JobSummary:
         id=name,
         description=deployed.description,
         stack=deployed.stack,
-        runner=deployed.runner,
+        launcher=deployed.launcher,
         run_target=run_target,
         schedule=deployed.schedule,
         managed=deployed.managed,
@@ -333,8 +322,8 @@ def _job_from_deployed(name: str, deployed: object) -> JobSummary:
     )
 
 
-def _job_from_spec(name: str, job: JobSpec, config: object) -> JobSummary:
-    """Build a JobSummary from a JobSpec."""
+def _job_from_spec(name: str, job: SystemdDeployment, config: object) -> JobSummary:
+    """Build a JobSummary from a systemd deployment (job)."""
     managed = bool(job.manage and job.manage.systemd and job.manage.systemd.enable)
     systemd_info = _make_systemd_info(name, timer=True) if managed else None
 
@@ -352,7 +341,7 @@ def _job_from_spec(name: str, job: JobSpec, config: object) -> JobSummary:
         id=name,
         description=description,
         stack=stack,
-        runner=job.run.runner,
+        launcher=job.run.launcher,
         run_target=_run_target(job.run),
         schedule=job.schedule,
         managed=managed,
@@ -367,13 +356,6 @@ def _program_from_spec(
 ) -> ProgramSummary:
     """Build a ProgramSummary from a ProgramSpec."""
     source = comp.source
-    runner = None
-    if source:
-        source_dir = Path(source)
-        if (source_dir / "pyproject.toml").exists():
-            runner = "python"
-        elif source_dir.is_file():
-            runner = "command"
 
     installed: bool | None = None
     if comp.source and (comp.stack or comp.commands):
@@ -394,9 +376,8 @@ def _program_from_spec(
     return ProgramSummary(
         id=name,
         description=comp.description,
-        behavior=comp.behavior,
+        kind=comp.kind,
         stack=comp.stack,
-        runner=runner,
         version=comp.version,
         source=source,
         repo=comp.repo,
@@ -508,7 +489,8 @@ def get_service(name: str) -> ServiceDetail:
         if config is not None and summary.source is None:
             summary.source = _backfill_source(name, config)
         manifest = {
-            "runner": deployed.runner,
+            "manager": deployed.manager,
+            "launcher": deployed.launcher,
             "run_cmd": deployed.run_cmd,
             "env": deployed.env,
             "secret_env_keys": deployed.secret_env_keys,
@@ -516,7 +498,7 @@ def get_service(name: str) -> ServiceDetail:
             "health_path": deployed.health_path,
             "subdomain": deployed.subdomain,
             "managed": deployed.managed,
-            "behavior": deployed.behavior,
+            "kind": deployed.kind,
             "stack": deployed.stack,
         }
         return ServiceDetail(**summary.model_dump(), manifest=manifest)
@@ -609,13 +591,14 @@ def get_job(name: str) -> JobDetail:
         if config is not None and summary.source is None:
             summary.source = _backfill_source(name, config)
         manifest = {
-            "runner": deployed.runner,
+            "manager": deployed.manager,
+            "launcher": deployed.launcher,
             "run_cmd": deployed.run_cmd,
             "env": deployed.env,
             "secret_env_keys": deployed.secret_env_keys,
             "managed": deployed.managed,
             "schedule": deployed.schedule,
-            "behavior": deployed.behavior,
+            "kind": deployed.kind,
             "stack": deployed.stack,
         }
         return JobDetail(**summary.model_dump(), manifest=manifest)
@@ -627,10 +610,10 @@ def get_job(name: str) -> JobDetail:
 
 
 @router.get("/programs", response_model=list[ProgramSummary], tags=["programs"])
-def list_programs(behavior: str | None = None) -> list[ProgramSummary]:
+def list_programs(kind: str | None = None) -> list[ProgramSummary]:
     """List all programs from the software catalog (castle.yaml programs section).
 
-    Optionally filter by behavior: daemon, tool, or frontend.
+    Optionally filter by derived kind: service, job, tool, static, or reference.
     """
     root = get_castle_root()
     if not root:
@@ -648,9 +631,9 @@ def list_programs(behavior: str | None = None) -> list[ProgramSummary]:
 
     for name, comp in config.programs.items():
         summary = _program_from_spec(name, comp, root, config)
-        if summary.behavior is None:
+        if summary.kind is None:
             continue
-        if behavior and summary.behavior != behavior:
+        if kind and summary.kind != kind:
             continue
         summary.node = hostname
         summaries.append(summary)
@@ -742,7 +725,7 @@ def list_components(include_remote: bool = False) -> list[DeploymentSummary]:
             # Programs from the software catalog
             for name, comp in config.programs.items():
                 summary = _summary_from_program(name, comp, root)
-                if summary.behavior is None:
+                if summary.kind is None:
                     continue
                 summary.node = local_hostname
                 summaries.append(summary)
@@ -759,9 +742,10 @@ def list_components(include_remote: bool = False) -> list[DeploymentSummary]:
                             id=name,
                             category="job" if d.schedule else "service",
                             description=d.description,
-                            behavior=d.behavior,
+                            kind=d.kind,
                             stack=d.stack,
-                            runner=d.runner,
+                            manager=d.manager,
+                            launcher=d.launcher,
                             port=d.port,
                             health_path=d.health_path,
                             subdomain=d.subdomain,
@@ -805,7 +789,8 @@ def get_component(name: str) -> DeploymentDetail:
                 pass
 
         raw = {
-            "runner": deployed.runner,
+            "manager": deployed.manager,
+            "launcher": deployed.launcher,
             "run_cmd": deployed.run_cmd,
             "env": deployed.env,
             "secret_env_keys": deployed.secret_env_keys,
@@ -813,7 +798,7 @@ def get_component(name: str) -> DeploymentDetail:
             "health_path": deployed.health_path,
             "subdomain": deployed.subdomain,
             "managed": deployed.managed,
-            "behavior": deployed.behavior,
+            "kind": deployed.kind,
             "stack": deployed.stack,
         }
         return DeploymentDetail(**summary.model_dump(), manifest=raw)
