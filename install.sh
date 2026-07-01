@@ -3,12 +3,14 @@
 #
 # Idempotent script that sets up the infrastructure "control layer":
 #   - Docker, Caddy (system binary)
-#   - MQTT broker, Postgres, Neo4j (Docker containers or existing)
+#   - MQTT broker, Postgres (Docker containers or existing)
+#   - Neo4j — optional, off by default (opt in with --with-neo4j or the prompt)
 #   - Directory structure, systemd lingering, seed configs
 #
 # Usage:
-#   ./install.sh          # Interactive — prompts for existing services
-#   ./install.sh --yes    # Non-interactive — use containers for everything
+#   ./install.sh                # Interactive — prompts for existing services + Neo4j
+#   ./install.sh --yes          # Non-interactive — containers for MQTT/Postgres, no Neo4j
+#   ./install.sh --with-neo4j   # Also set up the optional Neo4j graph database
 
 set -euo pipefail
 
@@ -411,6 +413,28 @@ setup_neo4j() {
         "$NEO4J_IMAGE"
 }
 
+# Neo4j is optional — off by default (a graph DB isn't core; don't foist it on new
+# users). Enable with `--with-neo4j`, an interactive yes, or a previous run's choice
+# (remembered in infra.conf so re-runs don't re-prompt).
+maybe_setup_neo4j() {
+    local prev; prev=$(conf_get NEO4J)
+    if [ "${WITH_NEO4J:-0}" = "1" ] || [ "$prev" = "container" ] || [ "$prev" = "existing" ]; then
+        setup_neo4j
+        return
+    fi
+    log_step "Neo4j (optional)"
+    if [ "$prev" = "disabled" ]; then
+        log_skip "off — enable later with ./install.sh --with-neo4j"
+        return
+    fi
+    if ask_yes_no "Set up Neo4j? (optional graph database — you can add it later)" "n"; then
+        setup_neo4j
+    else
+        conf_set NEO4J "disabled"
+        log_skip "off by default — enable later with ./install.sh --with-neo4j"
+    fi
+}
+
 # ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
@@ -460,11 +484,13 @@ main() {
     # Parse args
     AUTO_YES=0
     WITH_DNS_PLUGIN=""   # e.g. "cloudflare" → also build a DNS-plugin Caddy for acme TLS
+    WITH_NEO4J=0         # Neo4j is optional and off by default; --with-neo4j opts in
     for arg in "$@"; do
         case "$arg" in
             --yes|-y) AUTO_YES=1 ;;
             --with-dns-plugin) WITH_DNS_PLUGIN="cloudflare" ;;
             --with-dns-plugin=*) WITH_DNS_PLUGIN="${arg#*=}" ;;
+            --with-neo4j) WITH_NEO4J=1 ;;
             *) printf "Unknown argument: %s\n" "$arg"; exit 1 ;;
         esac
     done
@@ -480,7 +506,7 @@ main() {
     migrate_old_containers
     setup_mqtt
     setup_postgres
-    setup_neo4j
+    maybe_setup_neo4j
     print_summary
 }
 
