@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react"
 import { Link, NavLink, Outlet } from "react-router-dom"
 import {
+  Boxes,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Clock,
@@ -12,46 +14,121 @@ import {
   Share2,
   Wrench,
   X,
+  type LucideIcon,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useEventStream } from "@/services/api/hooks"
 
-const NAV = [
+type NavLeaf = { to: string; label: string; icon: LucideIcon; end?: boolean }
+type NavGroup = { label: string; icon: LucideIcon; children: NavLeaf[] }
+
+// Services, Scheduled, and Tools are all deployment lenses — grouped under a
+// "Deployments" parent. Programs (the catalog) stays top-level.
+const NAV: (NavLeaf | NavGroup)[] = [
   { to: "/", label: "Overview", icon: LayoutDashboard, end: true },
-  { to: "/gateway", label: "Gateway", icon: Globe, end: false },
-  { to: "/services", label: "Services", icon: Server, end: false },
-  { to: "/scheduled", label: "Scheduled", icon: Clock, end: false },
-  { to: "/tools", label: "Tools", icon: Wrench, end: false },
-  { to: "/programs", label: "Programs", icon: Package, end: false },
-  { to: "/mesh", label: "Mesh", icon: Share2, end: false },
+  { to: "/gateway", label: "Gateway", icon: Globe },
+  {
+    label: "Deployments",
+    icon: Boxes,
+    children: [
+      { to: "/services", label: "Services", icon: Server },
+      { to: "/scheduled", label: "Scheduled", icon: Clock },
+      { to: "/tools", label: "Tools", icon: Wrench },
+    ],
+  },
+  { to: "/programs", label: "Programs", icon: Package },
+  { to: "/mesh", label: "Mesh", icon: Share2 },
 ]
 
 const COLLAPSE_KEY = "castle-nav-collapsed"
 
+function NavLeafLink({
+  leaf,
+  collapsed,
+  indent,
+  onNavigate,
+}: {
+  leaf: NavLeaf
+  collapsed: boolean
+  indent?: boolean
+  onNavigate?: () => void
+}) {
+  const Icon = leaf.icon
+  return (
+    <NavLink
+      to={leaf.to}
+      end={leaf.end}
+      onClick={onNavigate}
+      title={collapsed ? leaf.label : undefined}
+      className={({ isActive }) =>
+        cn(
+          "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
+          collapsed && "justify-center px-0",
+          indent && !collapsed && "pl-9",
+          isActive
+            ? "bg-[var(--primary)]/10 text-[var(--foreground)] font-medium"
+            : "text-[var(--muted)] hover:text-[var(--foreground)] hover:bg-[var(--card)]",
+        )
+      }
+    >
+      <Icon size={18} className="shrink-0" />
+      {!collapsed && <span>{leaf.label}</span>}
+    </NavLink>
+  )
+}
+
+function NavGroupItem({
+  group,
+  collapsed,
+  onNavigate,
+}: {
+  group: NavGroup
+  collapsed: boolean
+  onNavigate?: () => void
+}) {
+  const [open, setOpen] = useState(true)
+  // On the icon rail there's no room for a group header — show the children flat.
+  if (collapsed) {
+    return (
+      <>
+        {group.children.map((c) => (
+          <NavLeafLink key={c.to} leaf={c} collapsed onNavigate={onNavigate} />
+        ))}
+      </>
+    )
+  }
+  const Icon = group.icon
+  return (
+    <div>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center gap-3 rounded-md px-3 py-2 text-sm text-[var(--muted)] hover:text-[var(--foreground)] hover:bg-[var(--card)] transition-colors"
+      >
+        <Icon size={18} className="shrink-0" />
+        <span className="flex-1 text-left">{group.label}</span>
+        {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+      </button>
+      {open && (
+        <div className="mt-1 space-y-1">
+          {group.children.map((c) => (
+            <NavLeafLink key={c.to} leaf={c} collapsed={false} indent onNavigate={onNavigate} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function NavItems({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: () => void }) {
   return (
     <nav className="flex-1 px-2 py-3 space-y-1 overflow-y-auto">
-      {NAV.map(({ to, label, icon: Icon, end }) => (
-        <NavLink
-          key={to}
-          to={to}
-          end={end}
-          onClick={onNavigate}
-          title={collapsed ? label : undefined}
-          className={({ isActive }) =>
-            cn(
-              "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
-              collapsed && "justify-center px-0",
-              isActive
-                ? "bg-[var(--primary)]/10 text-[var(--foreground)] font-medium"
-                : "text-[var(--muted)] hover:text-[var(--foreground)] hover:bg-[var(--card)]",
-            )
-          }
-        >
-          <Icon size={18} className="shrink-0" />
-          {!collapsed && <span>{label}</span>}
-        </NavLink>
-      ))}
+      {NAV.map((item) =>
+        "children" in item ? (
+          <NavGroupItem key={item.label} group={item} collapsed={collapsed} onNavigate={onNavigate} />
+        ) : (
+          <NavLeafLink key={item.to} leaf={item} collapsed={collapsed} onNavigate={onNavigate} />
+        ),
+      )}
     </nav>
   )
 }

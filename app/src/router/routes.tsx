@@ -9,6 +9,7 @@ import { GatewayPage } from "@/pages/GatewayPage"
 import { MeshPage } from "@/pages/MeshPage"
 import { ServiceDetailPage } from "@/pages/ServiceDetail"
 import { ScheduledDetailPage } from "@/pages/ScheduledDetail"
+import { ToolDetailPage } from "@/pages/ToolDetail"
 import { ProgramDetailPage } from "@/pages/ProgramDetail"
 import { ProgramRedirect } from "@/pages/ProgramRedirect"
 import { NodeDetailPage } from "@/pages/NodeDetail"
@@ -27,6 +28,7 @@ export const router = createBrowserRouter([
       { path: "mesh", element: <MeshPage /> },
       { path: "services/:name", element: <ServiceDetailPage /> },
       { path: "jobs/:name", element: <ScheduledDetailPage /> },
+      { path: "tools/:name", element: <ToolDetailPage /> },
       { path: "programs/:name", element: <ProgramDetailPage /> },
       { path: "deployment/:name", element: <ProgramRedirect /> },
       { path: "node/:hostname", element: <NodeDetailPage /> },

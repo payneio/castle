@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom"
-import { Clock, Globe, Package, Server, Share2 } from "lucide-react"
+import { Clock, Globe, Package, Server, Share2, Wrench } from "lucide-react"
 import {
   useGateway,
   useJobs,
@@ -15,6 +15,7 @@ import { PageHeader } from "@/components/PageHeader"
 export function Overview() {
   const { data: services } = useServices()
   const { data: jobs } = useJobs()
+  const { data: tools } = usePrograms("tool")
   const { data: programs } = usePrograms()
   const { data: statusResp } = useStatus()
   const { data: gateway } = useGateway()
@@ -42,6 +43,13 @@ export function Overview() {
       label: "Scheduled",
       value: jobs?.length ?? 0,
       detail: jobs ? `${jobs.length === 1 ? "job" : "jobs"}` : "",
+    },
+    {
+      to: "/tools",
+      icon: Wrench,
+      label: "Tools",
+      value: tools?.length ?? 0,
+      detail: tools ? "on PATH" : "",
     },
     {
       to: "/programs",
@@ -72,7 +80,7 @@ export function Overview() {
 
       {nodes && <NodeBar nodes={nodes} />}
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
         {tiles.map(({ to, icon: Icon, label, value, detail }) => (
           <Link
             key={to}

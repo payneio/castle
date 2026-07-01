@@ -32,20 +32,28 @@ export function ServiceDetailPage() {
     )
   }
 
+  // A static is a caddy-served site, not a systemd unit — no start/stop, no logs;
+  // it shows its served URL and the dir it serves instead of a port/launcher.
+  const isStatic = deployment.kind === "static" || deployment.manager === "caddy"
+  const servedUrl = subdomainUrl(deployment.subdomain ?? deployment.id)
+  const root = (deployment.manifest?.root as string | undefined) ?? undefined
+
   return (
     <div className="max-w-3xl mx-auto px-6 py-8">
       <DetailHeader
         backTo="/services"
         backLabel="Back to Services"
         name={deployment.id}
-        kind="service"
+        kind={isStatic ? "static" : "service"}
         stack={deployment.stack}
         source={deployment.source}
       >
-        <div className="flex items-center gap-2">
-          {health && <HealthBadge status={health.status} latency={health.latency_ms} />}
-          <ServiceControls name={deployment.id} health={health} />
-        </div>
+        {!isStatic && (
+          <div className="flex items-center gap-2">
+            {health && <HealthBadge status={health.status} latency={health.latency_ms} />}
+            <ServiceControls name={deployment.id} health={health} />
+          </div>
+        )}
       </DetailHeader>
 
       <div className="bg-[var(--card)] border border-[var(--border)] rounded-lg p-5 mb-6">
@@ -53,6 +61,32 @@ export function ServiceDetailPage() {
           Overview
         </h2>
         <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+          {isStatic && (
+            <>
+              <span className="text-[var(--muted)]">Status</span>
+              <span className="text-green-400">
+                ● served by the gateway
+                <span className="text-xs text-[var(--muted)]"> · manager: caddy</span>
+              </span>
+              {servedUrl && (
+                <>
+                  <span className="text-[var(--muted)]">Served at</span>
+                  <a
+                    href={servedUrl}
+                    className="flex items-center gap-1 min-w-0 break-all text-[var(--primary)] hover:underline font-mono"
+                  >
+                    <ExternalLink size={12} className="shrink-0" />{deployment.subdomain ?? deployment.id}
+                  </a>
+                </>
+              )}
+              {root && (
+                <>
+                  <span className="text-[var(--muted)]">Root</span>
+                  <span className="font-mono break-all">{root}</span>
+                </>
+              )}
+            </>
+          )}
           {deployment.port && (
             <>
               <span className="text-[var(--muted)]">Port</span>
@@ -128,7 +162,11 @@ export function ServiceDetailPage() {
         </div>
       )}
 
-      <ConfigPanel deployment={deployment} configSection="services" onRefetch={refetch} />
+      <ConfigPanel
+        deployment={deployment}
+        configSection={isStatic ? "static" : "services"}
+        onRefetch={refetch}
+      />
 
       {deployment.managed && (
         <div className="mb-6">

@@ -3,14 +3,22 @@ import { useNavigate } from "react-router-dom"
 import { useQueryClient } from "@tanstack/react-query"
 import { Check, RefreshCw } from "lucide-react"
 import { apiClient } from "@/services/api/client"
-import type { AnyDetail, ProgramDetail, ServiceDetail, JobDetail } from "@/types"
+import type {
+  AnyDetail,
+  DeploymentDetail,
+  ProgramDetail,
+  ServiceDetail,
+  JobDetail,
+} from "@/types"
 import { ProgramFields } from "./ProgramFields"
 import { ServiceFields } from "./ServiceFields"
 import { JobFields } from "./JobFields"
+import { ToolFields } from "./ToolFields"
+import { StaticFields } from "./StaticFields"
 
 interface ConfigPanelProps {
-  deployment: AnyDetail
-  configSection: "services" | "jobs" | "programs"
+  deployment: AnyDetail | DeploymentDetail
+  configSection: "services" | "jobs" | "programs" | "tools" | "static"
   onRefetch: () => void
 }
 
@@ -136,6 +144,18 @@ export function ConfigPanel({ deployment, configSection, onRefetch }: ConfigPane
         ) : configSection === "services" ? (
           <ServiceFields
             service={deployment as ServiceDetail}
+            onSave={handleSave}
+            onDelete={handleDelete}
+          />
+        ) : configSection === "tools" ? (
+          <ToolFields
+            tool={deployment as DeploymentDetail}
+            onSave={handleSave}
+            onDelete={handleDelete}
+          />
+        ) : configSection === "static" ? (
+          <StaticFields
+            static_={deployment as DeploymentDetail}
             onSave={handleSave}
             onDelete={handleDelete}
           />
