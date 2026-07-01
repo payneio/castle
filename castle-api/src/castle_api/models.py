@@ -45,12 +45,18 @@ class DeploymentDetail(DeploymentSummary):
 
 
 class ServiceSummary(BaseModel):
-    """Summary of a service (long-running daemon)."""
+    """Summary of a service — a systemd daemon OR a caddy-served static site.
+
+    Both are "services" (exposed, URL-reachable things); `kind`/`manager`
+    distinguish them (service+systemd vs static+caddy).
+    """
 
     id: str
     description: str | None = None
     stack: str | None = None
-    launcher: str | None = None  # python|command|container|compose|node
+    kind: str | None = None  # service | static
+    manager: str | None = None  # systemd | caddy
+    launcher: str | None = None  # python|command|container|compose|node (systemd only)
     run_target: str | None = None  # what it runs: program name, argv, image, …
     port: int | None = None
     health_path: str | None = None
@@ -90,12 +96,22 @@ class JobDetail(JobSummary):
     manifest: dict
 
 
+class DeploymentRef(BaseModel):
+    """A reference to one of a program's deployments (name + its derived kind)."""
+
+    name: str
+    kind: str  # service | job | tool | static | reference
+
+
 class ProgramSummary(BaseModel):
-    """Summary of a program (software catalog entry)."""
+    """Summary of a program (software catalog entry).
+
+    A program has NO kind of its own — it *has deployments*, each with a kind
+    (a program can be a tool AND a job). `deployments` is that list.
+    """
 
     id: str
     description: str | None = None
-    kind: str | None = None  # derived: service|job|tool|static|reference
     stack: str | None = None
     version: str | None = None
     source: str | None = None
@@ -106,8 +122,7 @@ class ProgramSummary(BaseModel):
     installed: bool | None = None
     active: bool | None = None  # uniform lifecycle state (on PATH / running / served)
     actions: list[str] = []
-    services: list[str] = []  # services that deploy this program
-    jobs: list[str] = []  # jobs that deploy this program
+    deployments: list[DeploymentRef] = []  # this program's deployments (name + kind)
     node: str | None = None
 
 

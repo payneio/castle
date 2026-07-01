@@ -84,12 +84,17 @@ def run_list(args: argparse.Namespace) -> int:
 
     any_output = False
 
-    # Programs (the catalog) — filtered by real behavior + stack
+    # A program's kinds are the kinds of its deployments (a program has no kind
+    # of its own). Sorted, de-duplicated.
+    def prog_kinds(name: str) -> list[str]:
+        return sorted({kind for _, kind in config.deployments_of(name)})
+
+    # Programs (the catalog) — filtered by a deployment kind + stack.
     progs = (
         {
             name: comp
             for name, comp in config.programs.items()
-            if (not filter_kind or comp.kind == filter_kind)
+            if (not filter_kind or filter_kind in prog_kinds(name))
             and (not filter_stack or comp.stack == filter_stack)
         }
         if resource in (None, "program")
@@ -100,12 +105,13 @@ def run_list(args: argparse.Namespace) -> int:
         print(f"\n{BOLD}{CYAN}Programs{RESET}")
         print(f"{CYAN}{'─' * 40}{RESET}")
         for name, comp in progs.items():
-            kind = comp.kind or "program"
-            bcolor = KIND_COLORS.get(kind, "")
-            behavior_str = f"  {bcolor}{kind}{RESET}"
+            kinds = prog_kinds(name)
+            kinds_str = "".join(
+                f"  {KIND_COLORS.get(k, '')}{k}{RESET}" for k in kinds
+            )
             stack_str = f"  {DIM}{comp.stack}{RESET}" if comp.stack else ""
             desc = f"  {DIM}{comp.description}{RESET}" if comp.description else ""
-            print(f"  {dot(name)} {BOLD}{name}{RESET}{behavior_str}{stack_str}{desc}")
+            print(f"  {dot(name)} {BOLD}{name}{RESET}{kinds_str}{stack_str}{desc}")
 
     # Services + Jobs (deployment views) — independent of behavior, so only shown
     # when no behavior filter is applied. Each gated by its own resource scope.
@@ -168,15 +174,16 @@ def _list_json(
 
     output = []
 
-    # Programs (catalog) — filtered by derived kind + stack
+    # Programs (catalog) — a program's kinds are its deployments' kinds.
     for name, comp in config.programs.items():
-        if filter_kind and comp.kind != filter_kind:
+        kinds = sorted({kind for _, kind in config.deployments_of(name)})
+        if filter_kind and filter_kind not in kinds:
             continue
         if filter_stack and comp.stack != filter_stack:
             continue
         entry: dict = {
             "name": name,
-            "kind": comp.kind,
+            "kinds": kinds,
             "active": is_active(name, config),
         }
         if comp.stack:

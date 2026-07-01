@@ -183,7 +183,9 @@ def run_status(args: argparse.Namespace) -> int:
             on = is_active(name, config)
             color = "\033[92m" if on else "\033[90m"
             label = "active" if on else "inactive"
-            print(f"  {color}{label:10s}\033[0m  {name}  ({comp.kind or 'program'})")
+            kinds = sorted({k for _, k in config.deployments_of(name)})
+            tag = ", ".join(kinds) if kinds else "program"
+            print(f"  {color}{label:10s}\033[0m  {name}  ({tag})")
         print()
     return 0
 

@@ -23,6 +23,7 @@ from castle_api.mesh import mesh_state
 from castle_api.health import check_all_health
 from castle_api.models import (
     DeploymentDetail,
+    DeploymentRef,
     DeploymentSummary,
     GatewayConfigRequest,
     GatewayInfo,
@@ -187,7 +188,11 @@ def _summary_from_job(name: str, job: SystemdDeployment, config: object) -> Depl
 def _summary_from_program(
     name: str, comp: ProgramSpec, root: Path
 ) -> DeploymentSummary:
-    """Build a DeploymentSummary from a ProgramSpec (its derived kind)."""
+    """Build a DeploymentSummary from a ProgramSpec (legacy unified view).
+
+    A program has no single kind (kind is a deployment property), so the legacy
+    entry carries none — the typed /programs view exposes its deployment list.
+    """
     source = comp.source
 
     installed: bool | None = None
@@ -198,7 +203,7 @@ def _summary_from_program(
         id=name,
         category="program",
         description=comp.description,
-        kind=comp.kind,
+        kind=None,
         stack=comp.stack,
         version=comp.version,
         source=source,
@@ -257,6 +262,8 @@ def _service_from_deployed(name: str, deployed: object) -> ServiceSummary:
         id=name,
         description=deployed.description,
         stack=deployed.stack,
+        kind=deployed.kind,
+        manager=deployed.manager,
         launcher=deployed.launcher,
         run_target=run_target,
         port=deployed.port,
@@ -294,6 +301,8 @@ def _service_from_spec(name: str, svc: SystemdDeployment, config: object) -> Ser
         id=name,
         description=description,
         stack=stack,
+        kind="service",
+        manager="systemd",
         launcher=svc.run.launcher,
         run_target=_run_target(svc.run),
         port=port,
@@ -363,20 +372,20 @@ def _program_from_spec(
 
     # Uniform lifecycle state (on PATH / running / served) — needs full config.
     active: bool | None = None
-    services: list[str] = []
-    jobs: list[str] = []
+    deployments: list[DeploymentRef] = []
     if config is not None:
         from castle_core.lifecycle import is_active
 
         active = is_active(name, config)
-        # Deployments that reference this program (a program → 0-N services/jobs).
-        services = [s for s, spec in config.services.items() if spec.program == name]
-        jobs = [j for j, spec in config.jobs.items() if spec.program == name]
+        # A program → 0-N deployments, each with its own kind.
+        deployments = [
+            DeploymentRef(name=dname, kind=kind)
+            for dname, kind in config.deployments_of(name)
+        ]
 
     return ProgramSummary(
         id=name,
         description=comp.description,
-        kind=comp.kind,
         stack=comp.stack,
         version=comp.version,
         source=source,
@@ -387,8 +396,7 @@ def _program_from_spec(
         installed=installed,
         active=active,
         actions=available_actions(comp),
-        services=services,
-        jobs=jobs,
+        deployments=deployments,
     )
 
 
@@ -405,9 +413,10 @@ def list_services(include_remote: bool = False) -> list[ServiceSummary]:
     summaries: list[ServiceSummary] = []
     seen: set[str] = set()
 
-    # Deployed services only — not jobs, tools (path), statics (caddy), or remotes.
+    # Services page shows services (systemd) AND statics (caddy) — both are
+    # exposed, URL-reachable "services". Not jobs, tools, or remotes.
     for name, deployed in registry.deployed.items():
-        if deployed.kind != "service":
+        if deployed.kind not in ("service", "static"):
             continue
         s = _service_from_deployed(name, deployed)
         s.node = hostname
@@ -631,9 +640,8 @@ def list_programs(kind: str | None = None) -> list[ProgramSummary]:
 
     for name, comp in config.programs.items():
         summary = _program_from_spec(name, comp, root, config)
-        if summary.kind is None:
-            continue
-        if kind and summary.kind != kind:
+        # A program's kinds are the kinds of its deployments; filter by membership.
+        if kind and kind not in {d.kind for d in summary.deployments}:
             continue
         summary.node = hostname
         summaries.append(summary)
@@ -722,11 +730,9 @@ def list_components(include_remote: bool = False) -> list[DeploymentSummary]:
                     if ref and ref in config.programs:
                         s.source = config.programs[ref].source
 
-            # Programs from the software catalog
+            # Programs from the software catalog (legacy unified view)
             for name, comp in config.programs.items():
                 summary = _summary_from_program(name, comp, root)
-                if summary.kind is None:
-                    continue
                 summary.node = local_hostname
                 summaries.append(summary)
         except FileNotFoundError:

@@ -42,10 +42,10 @@ class TestAdd:
         )
         rc, config = _run_add(castle_root, target=str(repo))
         assert rc == 0
-        # `add` adopts source only (kind is derived from a deployment declared
-        # later); a fastapi project is detected as the python-fastapi stack.
+        # `add` adopts source only — no deployment yet (kind is a deployment
+        # property); a fastapi project is detected as the python-fastapi stack.
         assert config.programs["svc"].stack == "python-fastapi"
-        assert config.programs["svc"].kind is None
+        assert config.deployments_of("svc") == []
 
     def test_adopt_rust_declares_commands(self, castle_root: Path, tmp_path: Path) -> None:
         repo = tmp_path / "rusty"

@@ -144,10 +144,6 @@ def run_create(args: argparse.Namespace) -> int:
             ),
         )
 
-    # Populate the derived kind on the in-memory program so readers see the live
-    # value immediately (it's excluded from disk — kind_of recomputes on load).
-    config.programs[name].kind = config.kind_of(name)
-
     save_config(config)
 
     label = f"{stack} program" if stack else "bare program"

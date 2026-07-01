@@ -29,8 +29,8 @@ class TestProgramSpec:
         c = ProgramSpec(id="bare")
         assert c.description is None
         assert c.source is None
-        # `kind` is derived at load time; a bare spec has none.
-        assert c.kind is None
+        # A program has no `kind` of its own — kind is a deployment property.
+        assert not hasattr(c, "kind")
         assert c.build is None
 
     def test_tool_program(self) -> None:

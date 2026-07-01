@@ -207,9 +207,9 @@ class ProgramSpec(BaseModel):
 
     id: str = ""
     description: str | None = None
-    # Derived at load time from how the program is deployed (its deployment's
-    # kind: service|job|tool|static|reference) — never stored. See kind_for.
-    kind: str | None = None
+    # A program has NO kind of its own — kind is a *deployment* property. A program
+    # is a catalog entry that has 0..N deployments, each with its own kind (see
+    # kind_for and CastleConfig.deployments_of).
 
     source: str | None = None
     stack: str | None = None

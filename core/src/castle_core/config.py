@@ -143,13 +143,19 @@ class CastleConfig:
     # reference are *derived views* over this, filtered by kind_for — see below.
     deployments: dict[str, DeploymentSpec]
 
-    def kind_of(self, name: str) -> str | None:
-        """A program's *derived* kind, from its deployment (service|job|tool|
-        static|reference); None if it has no deployment. Never a stored value."""
-        for dname, dep in self.deployments.items():
-            if dname == name or dep.program == name:
-                return kind_for(dep)
-        return None
+    def deployments_of(self, name: str) -> list[tuple[str, str]]:
+        """A program's deployments as (deployment-name, kind) pairs, name-sorted.
+
+        A program has no kind of its own — it *has deployments*, each with a kind.
+        A deployment belongs to a program when it names it (`program:`) or shares
+        its name (the 1:1 tool/static case). Empty for a bare, undeployed program.
+        """
+        out = [
+            (dname, kind_for(dep))
+            for dname, dep in self.deployments.items()
+            if dname == name or dep.program == name
+        ]
+        return sorted(out)
 
     @property
     def services(self) -> dict[str, DeploymentSpec]:
@@ -163,8 +169,12 @@ class CastleConfig:
 
     @property
     def tools(self) -> dict[str, ProgramSpec]:
-        """Programs deployed as a PATH tool — derived, not a stored label."""
-        return {k: v for k, v in self.programs.items() if self.kind_of(k) == "tool"}
+        """Programs with a PATH (tool) deployment — derived, not a stored label."""
+        return {
+            k: v
+            for k, v in self.programs.items()
+            if any(kind == "tool" for _, kind in self.deployments_of(k))
+        }
 
     @property
     def frontends(self) -> dict[str, ProgramSpec]:
@@ -361,10 +371,6 @@ def load_config(root: Path | None = None) -> CastleConfig:
         programs=programs,
         deployments=deployments,
     )
-    # `kind` is derived from deployments, never stored — populate it so every
-    # reader of `program.kind` gets the live, accurate label.
-    for pname, prog in config.programs.items():
-        prog.kind = config.kind_of(pname)
     return config
 
 
@@ -402,8 +408,7 @@ _STRUCTURAL_KEYS = {
 
 def _spec_to_yaml_dict(spec: BaseModel) -> dict:
     """Serialize a ProgramSpec or DeploymentSpec to a YAML-friendly dict."""
-    # `kind` is derived at load time from deployments — never persisted.
-    exclude_fields = {"id", "kind"} if isinstance(spec, ProgramSpec) else {"id"}
+    exclude_fields = {"id"}
     full = spec.model_dump(mode="json", exclude_none=True, exclude=exclude_fields)
     minimal = spec.model_dump(
         mode="json", exclude_none=True, exclude=exclude_fields, exclude_defaults=True

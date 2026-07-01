@@ -203,12 +203,14 @@ class TestProgramsList:
         names = [p["id"] for p in data]
         assert "test-tool" in names
 
-    def test_program_has_kind(self, client: TestClient) -> None:
-        """Program summary includes the derived kind."""
+    def test_program_lists_deployments(self, client: TestClient) -> None:
+        """Program summary lists its deployments (name + kind), not a single kind."""
         response = client.get("/programs")
         data = response.json()
         tool = next(p for p in data if p["id"] == "test-tool")
-        assert tool["kind"] == "tool"
+        assert "kind" not in tool
+        kinds = {d["kind"] for d in tool["deployments"]}
+        assert "tool" in kinds
 
     def test_no_port_field(self, client: TestClient) -> None:
         """ProgramSummary does not have port field."""
@@ -235,7 +237,7 @@ class TestProgramDetail:
         data = response.json()
         assert data["id"] == "test-tool"
         assert "manifest" in data
-        assert data["kind"] == "tool"
+        assert {d["kind"] for d in data["deployments"]} == {"tool"}
 
     def test_not_found(self, client: TestClient) -> None:
         """Returns 404 for unknown program."""

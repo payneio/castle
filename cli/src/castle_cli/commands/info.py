@@ -53,16 +53,18 @@ def run_info(args: argparse.Namespace) -> int:
     print(f"\n{BOLD}{name}{RESET}")
     print(f"{'─' * 40}")
 
-    # Determine kind (derived)
-    kind = None
-    if program and program.kind:
-        kind = program.kind
+    # Determine kind(s) — for a program, the kinds of its deployments; for a
+    # single deployment, its own kind.
+    kinds: list[str] = []
+    if program:
+        kinds = sorted({k for _, k in config.deployments_of(name)})
     elif service:
-        kind = "service"
+        kinds = ["service"]
     elif job:
-        kind = "job"
-    if kind:
-        print(f"  {BOLD}kind{RESET}:        {kind}")
+        kinds = ["job"]
+    if kinds:
+        label = "kind" if len(kinds) == 1 else "kinds"
+        print(f"  {BOLD}{label}{RESET}:        {', '.join(kinds)}")
 
     # Show stack
     stack = None
@@ -182,8 +184,8 @@ def _info_json(
         data["service"] = service.model_dump(exclude_none=True, exclude={"id"})
     if job:
         data["job"] = job.model_dump(exclude_none=True, exclude={"id"})
-    if program and program.kind:
-        data["kind"] = program.kind
+    if program:
+        data["kinds"] = sorted({k for _, k in config.deployments_of(name)})
     elif service:
         data["kind"] = "service"
     elif job:

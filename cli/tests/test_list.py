@@ -89,7 +89,7 @@ class TestListCommand:
         assert "test-svc" in names
         assert "test-tool" in names
         svc = next(p for p in data if p["name"] == "test-svc")
-        assert svc["kind"] == "service"
-        # test-tool is a program deployed on PATH → its derived kind is `tool`.
+        assert svc["kind"] == "service"  # a service deployment entry (singular)
+        # test-tool is a program with a PATH deployment → kinds includes `tool`.
         tool = next(p for p in data if p["name"] == "test-tool")
-        assert tool["kind"] == "tool"
+        assert "tool" in tool["kinds"]
