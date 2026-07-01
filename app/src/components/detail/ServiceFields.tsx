@@ -12,10 +12,10 @@ type Obj = Record<string, unknown>
 const obj = (v: unknown): Obj => (v as Obj) ?? {}
 
 // The systemd launch mechanisms (a service is manager=systemd). Editable, so a
-// mis-set launcher can be corrected; the primary "Runs" target maps per launcher.
+// mis-set launcher can be corrected; the primary "Launch" target maps per launcher.
 const LAUNCHERS = ["python", "command", "container", "compose", "node"]
 
-/** Fold the "Runs" text into the run block for the chosen launcher, preserving
+/** Fold the "Launch" text into the run block for the chosen launcher, preserving
  * any other run fields (args, ports, package_manager, …) already present. */
 function applyLauncher(run: Obj, launcher: string, target: string): Obj {
   const out: Obj = { ...run, launcher }
@@ -104,7 +104,7 @@ export function ServiceFields({ service, onSave, onDelete }: Props) {
     <div className="space-y-4">
       <TextField label="Description" value={description} onChange={setDescription} />
       <Field
-        label="Runs"
+        label="Launch"
         hint="How this service starts: the launcher, and its target — a console script (python), a command/argv (command), an image (container), a script (node), or a compose file (compose)."
       >
         <div className="flex items-center gap-2">

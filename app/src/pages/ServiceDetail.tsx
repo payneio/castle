@@ -116,7 +116,7 @@ export function ServiceDetailPage() {
           )}
           {deployment.launcher && (
             <>
-              <span className="text-[var(--muted)]">Runs</span>
+              <span className="text-[var(--muted)]">Launch</span>
               <span className="flex items-center gap-1 min-w-0">
                 <Terminal size={12} className="shrink-0" />
                 {launcherLabel(deployment.launcher)}

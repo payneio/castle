@@ -90,7 +90,7 @@ export function JobFields({ job, onSave, onDelete }: Props) {
         placeholder="0 2 * * *"
         hint="Cron expression — castle generates a systemd timer that runs the job on this schedule."
       />
-      <Field label="Runs" hint="How the job runs on each tick, then exits: the launcher and its target (a console script, command/argv, image, node script, or compose file).">
+      <Field label="Launch" hint="How the job runs on each tick, then exits: the launcher and its target (a console script, command/argv, image, node script, or compose file).">
         <div className="flex items-center gap-2">
           <select
             value={launcher}

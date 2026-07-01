@@ -197,7 +197,7 @@ export function CreateDeploymentForm({
             </select>
           </Field>
           <TextField
-            label="Runs"
+            label="Launch"
             value={runTarget}
             onChange={setRunTarget}
             mono
