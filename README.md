@@ -1,232 +1,266 @@
 # Castle
 
-"Standing to author, run, govern, and maintain your own software"
+> Standing to author, run, govern, and maintain your own software.
 
-A personal software platform. Castle manages independent services, tools, and frontends from a single CLI, with a unified gateway, systemd integration, and a web dashboard.
+A personal software platform. Castle manages independent services, tools, and
+frontends — and launches your coding agents — from a single CLI, with a unified
+gateway, systemd integration, and a web dashboard.
 
-Historically, applications have been developed by third parties, distributed through app stores, and installed on user devices.
+Historically, applications have usually been developed by third parties, packaged
+for distribution, installed through app stores or package managers, and updated
+through channels controlled by someone other than the user. That model still works
+for large applications, but it is often too heavy for the small, personal,
+situational software people increasingly want to create.
 
-With the advent of AI-assisted software development, users can write the software they need directly, eliminating the need for packaging and distribution. This makes many classes of software simpler. Oftentimes all a user needs are simple scripts or configurations of existing tools. But no matter how simple your script or application, it needed to be tailored and packaged for specific distribution channels. Castle provides a unified environment for developing, managing, deploying, and advertising these simple applications.
+AI-assisted development changes the shape of this problem. Users can now create
+useful software directly: small services, scripts, dashboards, agents, automations,
+and configurations of existing tools. Many of these programs do not need a public
+release process, an app store listing, or a conventional distribution channel. They
+need a reliable place to run.
 
-Castle _stacks_ are pre-configured development environments that provide a starting point for building applications. They include everything needed to get started, from the programming language and framework to the necessary dependencies and tools. This is a design intended for coding assistants to generate castle programs with a level of consistency and to ensure that they are properly configured and ready to use with Castle. If your coding assistant knows about Castle, it can help you create and manage your custom applications more efficiently.
+Castle provides that place.
 
-## Quick Start
+Castle gives simple applications a consistent local environment for development,
+registration, deployment, discovery, and operation. Programs remain independent, but
+Castle provides the surrounding structure: process management, routing, metadata,
+service lifecycle, logs, and a common interface for running and inspecting the
+software in your domain.
+
+In this sense, Castle is a **personal software estate**: a practical way to organize
+the software you create and run yourself, without requiring every tool to become a
+fully packaged product.
+
+## How it works
+
+Castle separates *what software exists* from *how it runs*:
+
+- **Programs** — the catalog. A program is a source repo Castle knows how to work
+  with (dev verbs, build) and where it lives. One file per program under
+  `~/.castle/programs/<name>.yaml`.
+- **Deployments** — how a program is realized on this node. One file per deployment
+  under `~/.castle/deployments/<name>.yaml`, discriminated by its **manager**:
+
+  | manager | what it is | derived **kind** |
+  |---------|------------|------------------|
+  | `systemd` | a supervised process — or, with a `schedule`, a timer | **service** / **job** |
+  | `caddy` | a static site served by the gateway from a build dir | **static** |
+  | `path` | a CLI installed on your PATH (`uv tool install`) | **tool** |
+  | `none` | an external service on another node (reference only) | **reference** |
+
+  For `systemd`, a nested `run.launcher` (`python` / `command` / `container` /
+  `compose` / `node`) says *how* the process starts. The **kind** is always
+  *derived* from the manager (+ `schedule`) — never stored.
+
+A program can have several deployments — a CLI that is both a `tool` on PATH and a
+scheduled `job` — so a program has no single kind of its own; it *has deployments*,
+each with its own.
+
+Standing everything up is the two honest steps `castle deploy` (regenerate systemd
+units and gateway config from your config) then `castle start` (enable/start it).
+There is no bundled "up".
+
+## Stacks
+
+Castle **stacks** are pre-configured development environments that provide starting
+points for building Castle programs. A stack can define the language, framework,
+dependencies, tools, conventions, and Castle integration needed for a particular
+kind of application — `python-fastapi`, `python-cli`, `react-vite`, `supabase`.
+
+Stacks are designed to work well with coding assistants. They give assistants a
+consistent target when generating Castle programs, making it easier to produce
+applications that are correctly structured, configured, and ready to run under
+Castle. If your coding assistant understands Castle, it can help you create,
+register, manage, and evolve custom applications more efficiently.
+
+A stack seeds a new program's scaffold and default dev-verb commands, but it's
+optional at runtime: a program stands on its own via its declared `commands:` and
+`source:`, so you can adopt any existing repo with `castle program add` — no stack
+required.
+
+## Agents
+
+Castle can launch your coding agents. Declare them in `castle.yaml` under `agents:`
+— each entry is just a command Castle runs in a terminal:
+
+```yaml
+agents:
+  claude:
+    command: claude
+    description: Anthropic Claude Code
+  aider:
+    command: aider
+    args: ["--no-auto-commits"]
+    cwd: /data/repos/my-project
+```
+
+The dashboard has a terminal dock that launches any declared agent in a
+pseudo-terminal (over a WebSocket) and manages live sessions (list, resume, kill).
+Castle is **assistant-agnostic** — it only ever runs `command args` in a pty and
+never parses the agent's output, so any interactive CLI works. With no `agents:`
+block set, a sensible default set (`claude`, `opencode`, `amplifier`, …) is offered.
+
+## Quick start
 
 ```bash
-# Install the castle CLI
-cd cli && uv tool install --editable . && cd ..
+# Install the CLI (editable, onto your PATH)
+uv tool install --editable cli/
 
-# Run the installer (sets up Docker, Caddy, MQTT, Postgres, Neo4j, directory tree)
+# Bootstrap infrastructure (Docker, Caddy, directories, containers)
 ./install.sh
 
-# Initialize the global castle.yaml (the registry that tracks everything)
+# Minimal global config
 mkdir -p ~/.castle/programs ~/.castle/deployments
-cat > ~/.castle/castle.yaml << 'EOF'
-gateway:
-  port: 9000
-EOF
+printf 'gateway:\n  port: 9000\n' > ~/.castle/castle.yaml
 
-# See what's here
-castle list
-
-# Deploy and start everything
-castle deploy
-castle services start
-
-# Visit the dashboard
-open http://localhost:9000
+castle list                     # what's registered
+castle deploy && castle start   # apply config to the runtime, then bring it up
+open http://localhost:9000      # the dashboard
 ```
 
-## Creating Components
+## Creating programs
+
+`castle program create` scaffolds the source **and** its deployment from a stack:
 
 ```bash
-# Service — FastAPI app with health endpoint, systemd unit, gateway route
-castle create my-api --stack python-fastapi --description "Does something useful"
-castle test my-api
-castle deploy my-api
-castle services start
+# A service — FastAPI app + a systemd service deployment (health, unit, route)
+castle program create my-api --stack python-fastapi --description "Does something"
+castle program test my-api
+castle deploy my-api && castle service enable my-api
 
-# Standalone tool — CLI tool with argparse, stdin/stdout, Unix pipes
-castle create my-tool --stack python-cli --description "Does something"
+# A tool — a CLI installed on your PATH
+castle program create my-tool --stack python-cli --description "Does something"
+castle tool install my-tool
 
-# Frontend — React/Vite app, built and served through the gateway
-castle create my-app --stack react-vite --description "Web interface"
-castle build my-app
-castle deploy my-app
+# A static frontend — built once, served by the gateway
+castle program create my-app --stack react-vite --description "Web interface"
+castle program build my-app && castle deploy
+
+# Adopt an existing repo (no stack needed — dev verbs detected or declared)
+castle program add ~/projects/some-rust-tool
 ```
 
-## CLI Reference
+## CLI
+
+Operations live under the resource they act on. `program` is the catalog;
+`service`, `job`, and `tool` are **views** over the one deployment set; platform
+lifecycle is top-level.
 
 ```
-castle list [--kind K] [--stack S] [--json]      List all programs and deployments
-castle info NAME [--json]                        Show program details
-castle create NAME [--stack STACK]               Scaffold a new project (bare if no stack)
-castle add PATH|GIT-URL [--name N]               Adopt an existing repo as a program
-castle clone [NAME]                   Clone source for programs that declare repo:
-castle build|test|lint|type-check|check [NAME]   Dev verbs (one or all)
-castle install|uninstall [NAME]       Install/remove a program on PATH
-castle deploy [NAME]                  Deploy to ~/.castle/ (spec -> runtime)
-castle run NAME                       Run a program (declared run) or service in foreground
-castle logs NAME [-f] [-n 50]         View service/job logs
-castle gateway start|stop|reload      Manage Caddy reverse proxy
-castle service enable|disable NAME    Manage a systemd service
-castle service status                 Show all service statuses
-castle services start|stop            Start/stop everything
+# Programs — the software catalog
+castle program list|info|create|add|clone|delete|run|install|uninstall
+castle program build|test|lint|type-check|check [name]        # dev verbs
+
+# Deployment lenses (service = systemd, job = systemd + schedule, tool = path)
+castle service  list|info|create|delete|deploy|enable|disable|start|stop|restart|logs
+castle job      …same verbs; create takes --schedule
+castle tool     list|info|install|uninstall                    # CLIs on your PATH
+
+# Platform-wide
+castle list [--kind K] [--stack S] [--json]   # catalog + every deployment view
+castle status                                 # unified status
+castle deploy [name]                          # apply config → units + Caddyfile
+castle start | stop | restart                 # all deployments (+ gateway)
+castle gateway start|stop|reload|status
 ```
 
-Tools are deployments with `manager: path` (derived **kind: tool**) — list them
-with `castle tool list` (add `--json` for the machine-readable catalog with each
-tool's executable, description, and install state).
+`castle tool list --json` is the machine-readable tool catalog assistants use to
+build context — it surfaces each tool's actual **executable** (which can differ from
+the program name, e.g. `litellm-intent-router` installs `intent-router`), its
+description, and whether it's installed.
 
-## Registry
+## Configuration
 
-The registry lives under `~/.castle/` and is the single source of truth, split
-into a global `castle.yaml` plus one file per resource under `programs/` and
-`deployments/`:
-
-- **`castle.yaml`** — Global settings (`gateway`, `repo`)
-- **`programs/<name>.yaml`** — Software catalog (source, stack, build config)
-- **`deployments/<name>.yaml`** — How a program is realized on this node
-  (`manager` + run/expose/proxy/schedule/systemd). The **kind**
-  (service/job/tool/static/reference) is derived from `manager` (+ `schedule`).
-
-A deployment can reference a program via `program:` for description fallthrough.
+The registry lives under `~/.castle/`: a global `castle.yaml` plus one file per
+resource under `programs/` and `deployments/`.
 
 ```yaml
-# ~/.castle/castle.yaml
+# ~/.castle/castle.yaml — globals
 gateway:
   port: 9000
-repo: /path/to/castle
+repo: /data/repos/castle     # resolves `source: repo:<name>` for castle's own programs
 ```
 
 ```yaml
-# ~/.castle/programs/central-context.yaml
-description: Content storage API
-source: code/central-context
+# ~/.castle/programs/my-api.yaml — the catalog entry
+description: Does something useful
+source: /data/repos/my-api
 stack: python-fastapi
 ```
 
 ```yaml
-# ~/.castle/deployments/central-context.yaml (manager: systemd → kind: service)
-program: central-context
+# ~/.castle/deployments/my-api.yaml — a systemd service (derived kind: service)
+program: my-api
 manager: systemd
-run:
-  launcher: python
-  program: central-context
-expose:
-  http:
-    internal: { port: 9001 }
-    health_path: /health
-proxy: true   # expose at central-context.<gateway.domain>
-manage:
-  systemd: {}
+run: { launcher: python, program: my-api }
+expose: { http: { internal: { port: 9001 }, health_path: /health } }
+proxy: true                        # served at my-api.<gateway.domain>
+manage: { systemd: {} }
+defaults:
+  env:
+    MY_API_PORT: ${port}           # = expose.http.internal.port
+    MY_API_DATA_DIR: ${data_dir}   # = $CASTLE_DATA_DIR/my-api
+    API_KEY: ${secret:MY_API_KEY}
 ```
 
-```yaml
-# ~/.castle/deployments/backup-collect.yaml (manager: systemd + schedule → kind: job)
-program: backup-collect
-manager: systemd
-run:
-  launcher: command
-  argv: [backup-collect]
-schedule: "0 2 * * *"
-manage:
-  systemd: {}
+`defaults.env` is the **single, explicit source** of a deployment's environment —
+Castle injects nothing implicitly. The placeholders `${port}`, `${data_dir}`,
+`${name}`, `${public_url}`, and `${secret:NAME}` map your program's own env var names
+to Castle's computed values. Secrets live in `~/.castle/secrets/` (never in a repo).
+
+## Gateway, DNS & TLS
+
+Every gateway-exposed deployment gets its own subdomain — `<name>.<gateway.domain>`
+— routed to it by the Caddy gateway (there are no path-prefix routes). Exposure is a
+single checkbox: `proxy: true` on a service, while a static deployment is inherently
+served. The dashboard is `castle.<domain>` and the API `castle-api.<domain>`; on a
+node with no domain, `:9000` serves the dashboard plus a `/api` proxy.
+
+`gateway.tls` is a per-node choice: `off` (plain HTTP on `:9000`) or `acme` (a real
+Let's Encrypt wildcard `*.<domain>` via a DNS-01 challenge — publicly trusted, no CA
+to install, while the services stay internal-only). Reaching a service from the
+public internet is separately opt-in via a Cloudflare tunnel (`public: true`). See
+[docs/dns-and-tls.md](docs/dns-and-tls.md).
+
+## Layout
+
+```
+~/.castle/                 # instance: config, artifacts, secrets
+  castle.yaml              #   globals (gateway, repo, agents)
+  programs/  deployments/  #   one file per program / deployment
+  secrets/                 #   secret files (mode 700)
+  artifacts/specs/         #   generated Caddyfile, registry.yaml
+/data/repos/<name>/        # your program source (absolute source:)
+/data/castle/<name>/       # per-deployment data volume
+<repo>/                    # castle itself: cli/ core/ castle-api/ app/ docs/
 ```
 
-Convention-based env vars (`<PREFIX>_DATA_DIR`, `<PREFIX>_PORT`) are generated
-automatically by `castle deploy`. Only non-convention values need `defaults.env`.
+**Independence principle:** your programs never depend on Castle. They accept
+configuration (data dir, port, URLs) via environment variables; only Castle's own
+programs (CLI, API, gateway) know Castle internals.
 
-The optional `repo:` field enables `source: repo:<path>` references that resolve relative to the git repo rather than `~/.castle/`.
+## Dashboard & API
 
-## Architecture
+The **dashboard** (`app/`, served at `castle.<domain>` or `http://localhost:9000`)
+lists programs and deployments, edits their config, drives lifecycle, shows the
+gateway route table and logs, and hosts the agent terminal dock.
 
-```
-~/.castle/
-  castle.yaml          <- program registry (single source of truth)
-  code/                <- component source directories
-  data/                <- per-service data directories
-  secrets/             <- secret files (700 permissions)
-  artifacts/
-    specs/             <- generated Caddyfile, registry.yaml, systemd units
-    content/           <- built frontend assets
+**`castle-api`** (port 9020, proxied at `castle-api.<domain>`) is the control plane:
+`/deployments`, `/programs`, `/services`, `/jobs`, `/gateway`, `/status`, an SSE
+`/stream`, config editing under `/config/…`, and the agent session endpoints under
+`/agents`. The full endpoint reference is in [CLAUDE.md](CLAUDE.md).
 
-<repo>/
-  cli/                 <- castle CLI
-  core/                <- castle-core library (models, config, generators)
-  castle-api/          <- Castle API (dashboard backend)
-  app/                 <- Castle web app (React/Vite frontend)
-  docs/                <- architecture docs
-  install.sh           <- infrastructure bootstrapper
-```
+## Mesh (opt-in)
 
-**Independence principle:** Services never depend on castle. They accept configuration (data dir, port, URLs) via environment variables. Only castle infrastructure (CLI, API, gateway) knows about castle internals.
+Castle nodes can discover each other via MQTT + mDNS to form a personal
+infrastructure mesh — the gateway can route to services on other nodes and the
+dashboard shows discovered nodes and cross-node routes. It's all off by default;
+single-node needs none of it. Enable on `castle-api` via `CASTLE_API_MQTT_ENABLED`
+and `CASTLE_API_MDNS_ENABLED`.
 
-**Gateway:** Caddy reverse proxy at port 9000. Services are proxied under one address (`localhost:9000/central-context/*` -> `localhost:9001/*`). The web app is served at the root.
+## Docs
 
-**Systemd:** The CLI generates user units under `~/.config/systemd/user/castle-*.service`. Scheduled jobs get `.timer` files alongside.
-
-**Data:** Service data lives in `~/.castle/data/<service-name>/`. Secrets live in `~/.castle/secrets/`.
-
-## Mesh Coordination
-
-Castle nodes can discover each other via MQTT and mDNS, forming a personal infrastructure mesh. All mesh features are opt-in — single-node works without them.
-
-```bash
-# Enable on castle-api (via systemd drop-in or env vars)
-CASTLE_API_MQTT_ENABLED=true     # Connect to MQTT broker
-CASTLE_API_MQTT_HOST=localhost    # Broker address (default)
-CASTLE_API_MQTT_PORT=1883         # Broker port (default)
-CASTLE_API_MDNS_ENABLED=true     # Advertise/discover via mDNS
-```
-
-When enabled, the API publishes the node's registry to `castle/{hostname}/registry` (retained) and subscribes to other nodes. The gateway can proxy to services on remote nodes. The dashboard shows discovered nodes, cross-node routes, and mesh connection status.
-
-## API
-
-`castle-api` runs on port 9020 and is proxied at `/api` through the gateway.
-
-| Endpoint | Description |
-|----------|-------------|
-| `GET /health` | Health check |
-| `GET /stream` | SSE stream (health, service-action, mesh events) |
-| **Programs** | |
-| `GET /programs` | List all programs (`?kind=tool\|service\|job\|static` to filter) |
-| `GET /programs/{name}` | Program detail |
-| `POST /programs/{name}/{action}` | Run a lifecycle action (build, test, lint, install, etc.) |
-| `GET /components` | Unified view across nodes (`?include_remote=true` for cross-node) |
-| `GET /components/{name}` | Component detail |
-| **Services** | |
-| `GET /services` | List all services with status |
-| `GET /services/{name}` | Service detail |
-| `POST /services/{name}/start` | Start a service |
-| `POST /services/{name}/stop` | Stop a service |
-| `POST /services/{name}/restart` | Restart a service |
-| `GET /services/{name}/unit` | View generated systemd unit |
-| **Jobs** | |
-| `GET /jobs` | List all jobs |
-| `GET /jobs/{name}` | Job detail |
-| **Gateway** | |
-| `GET /gateway` | Gateway info with route table |
-| `GET /gateway/caddyfile` | Generated Caddyfile content |
-| `POST /gateway/reload` | Regenerate Caddyfile and reload Caddy |
-| `GET /status` | Live health for all services |
-| **Deploy** | |
-| `POST /deploy` | Deploy all services and jobs (spec to runtime) |
-| **Config** | |
-| `GET /config` | Read castle.yaml |
-| `PUT /config` | Write castle.yaml |
-| `PUT /config/programs/{name}` | Update a program entry |
-| `PUT /config/deployments/{name}` | Update a deployment entry (service/job/tool/static) |
-| `POST /config/apply` | Apply config changes (deploy + reload) |
-| **Secrets** | |
-| `GET /secrets` | List secrets |
-| `GET /secrets/{name}` | Read a secret |
-| `PUT /secrets/{name}` | Write a secret |
-| `DELETE /secrets/{name}` | Delete a secret |
-| **Logs** | |
-| `GET /logs/{name}` | View service/job logs |
-| **Mesh** | |
-| `GET /mesh/status` | Mesh connection state (MQTT, mDNS, peers) |
-| `GET /nodes` | All known nodes (local + remote) |
-| `GET /nodes/{hostname}` | Node detail with deployed components |
+- [docs/registry.md](docs/registry.md) — the registry model, `castle.yaml`, deployment fields, lifecycle
+- [docs/dns-and-tls.md](docs/dns-and-tls.md) — gateway routing, DNS, the `off` / `acme` TLS modes
+- [docs/stacks/](docs/stacks/) — per-stack guides (python-fastapi, python-cli, react-vite, supabase)
+- [AGENTS.md](AGENTS.md) — the canonical, assistant-agnostic operator guide (recipes, gateway, tunnel, mesh)
+- [CLAUDE.md](CLAUDE.md) — notes for developing Castle's own code, and the full API reference
