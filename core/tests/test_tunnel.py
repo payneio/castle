@@ -68,3 +68,15 @@ def test_none_when_no_public_services() -> None:
 def test_none_when_tunnel_unconfigured() -> None:
     assert generate_tunnel_config(_registry(tunnel_id=None)) is None
     assert generate_tunnel_config(_registry(public_domain=None)) is None
+
+
+def test_public_static_frontend_gets_ingress() -> None:
+    # A `static` (frontend) service can be public too — the toggle composes for
+    # any exposed deployment, process-backed or not.
+    reg = _registry(deployed={
+        "guestbook": Deployment(runner="static", run_cmd=[], subdomain="guestbook",
+                               static_root="/data/repos/guestbook/public", public=True),
+    })
+    hosts = {r["hostname"] for r in yaml.safe_load(generate_tunnel_config(reg))["ingress"]
+             if "hostname" in r}
+    assert hosts == {"guestbook.pub.payne.io"}

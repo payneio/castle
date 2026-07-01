@@ -216,16 +216,35 @@ Services define **how long-running daemons are deployed**.
 
 ### `run` — How to start it (required)
 
+A deployment (service/job) is a *managed materialization* of a program. Its
+**runner** determines the **manager** — who makes it available and supervises its
+lifecycle:
+
+| Manager | Makes available as | Runners | start/stop |
+|---------|--------------------|---------|------------|
+| **systemd** | a running process (or a `.timer` for jobs) | `python`, `command`, `container`, `compose`, `node` | `systemctl` |
+| **caddy** | a gateway route | `static` (file_server) — and any exposed process (reverse_proxy) | add/remove route + reload |
+| **path** | an installed CLI on `PATH` | `path` | `uv tool install` / `uninstall` |
+| **none** | an external reference | `remote` | *(nothing — not ours)* |
+
+`manager_for(runner)` (in `manifest.py`) is the single source of truth; lifecycle,
+deploy, and status all dispatch on it. `behavior` (`tool`/`daemon`/`frontend`) is a
+**derived display label only** — it never drives logic. A program is a *tool* when
+it has a `path` service, a *frontend* when it has a `static` service, a *daemon*
+when it has a process service.
+
 Discriminated union on `runner`:
 
-| Runner | Sync | Deploy | Key fields |
-|--------|------|--------|------------|
-| `python` | *(none — `uv run` self-syncs)* | `uv run --project <source> --no-dev <program>` | `program`, `args` |
-| `command` | *(none)* | `which(argv[0])` → resolved path | `argv` |
-| `container` | *(none)* | `docker`/`podman` `run` | `image`, `command`, `ports`, `volumes` |
-| `compose` | *(none)* | `docker compose -p <project> -f <file> up` (+ `ExecStop=down`) | `file`, `project_name` |
-| `node` | `package_manager install` | `package_manager run script` | `script`, `package_manager` |
-| `remote` | *(none)* | *(none — no local process)* | `base_url`, `health_url` |
+| Runner | Manager | Deploy | Key fields |
+|--------|---------|--------|------------|
+| `python` | systemd | `uv run --project <source> --no-dev <program>` | `program`, `args` |
+| `command` | systemd | `which(argv[0])` → resolved path | `argv` |
+| `container` | systemd | `docker`/`podman` `run` | `image`, `command`, `ports`, `volumes` |
+| `compose` | systemd | `docker compose -p <project> -f <file> up` (+ `ExecStop=down`) | `file`, `project_name` |
+| `node` | systemd | `package_manager run script` | `script`, `package_manager` |
+| `static` | caddy | *(no process — `file_server` from `<source>/<root>`)* | `root` |
+| `path` | path | *(no process — `uv tool install` at enable time)* | *(the referenced program)* |
+| `remote` | none | *(none — no local process)* | `base_url`, `health_url` |
 
 A `python` service runs **in place from its own project venv** via `uv run`, which
 syncs the env to the project's lockfile before launching. There is no separate

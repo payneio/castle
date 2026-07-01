@@ -324,8 +324,11 @@ class ServiceSpec(BaseModel):
         if self.manage and self.manage.systemd and self.manage.systemd.enable:
             if self.run.runner == "remote":
                 raise ValueError("manage.systemd cannot be enabled for runner=remote.")
-        if self.public and not self.proxy:
-            raise ValueError("public requires proxy (a service must be routed to be exposed).")
+        # A static service is inherently exposed (that's its purpose); other
+        # runners need the proxy checkbox to be routed. Public requires exposure.
+        exposed = self.proxy or self.run.runner == "static"
+        if self.public and not exposed:
+            raise ValueError("public requires the service to be exposed (proxy or static).")
         return self
 
 
