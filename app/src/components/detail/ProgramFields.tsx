@@ -28,7 +28,6 @@ export function ProgramFields({ program, onSave, onDelete }: Props) {
 
   const [description, setDescription] = useState((m.description as string) ?? "")
   const [source, setSource] = useState((m.source as string) ?? "")
-  const [behavior, setBehavior] = useState((m.behavior as string) ?? "")
   const [stack, setStack] = useState((m.stack as string) ?? "")
   const [version, setVersion] = useState((m.version as string) ?? "")
   const [repo, setRepo] = useState((m.repo as string) ?? "")
@@ -56,7 +55,6 @@ export function ProgramFields({ program, onSave, onDelete }: Props) {
       delete config.id
       config.description = description || undefined
       config.source = source || undefined
-      config.behavior = behavior || undefined
       config.stack = stack || undefined
       config.version = version || undefined
       config.repo = repo || undefined
@@ -99,17 +97,6 @@ export function ProgramFields({ program, onSave, onDelete }: Props) {
         placeholder="/data/repos/my-prog"
         hint="The working copy on disk. Castle runs dev verbs and builds here. Absolute path, or repo:<name> for castle's own programs."
       />
-      <Field
-        label="Behavior"
-        hint="What this program is. tool = a CLI you invoke; daemon = a long-running server; frontend = a web UI. Drives how it activates and deploys."
-      >
-        <select value={behavior} onChange={(e) => setBehavior(e.target.value)} className={`w-48 ${SELECT}`}>
-          <option value="">(none)</option>
-          <option value="tool">tool</option>
-          <option value="daemon">daemon</option>
-          <option value="frontend">frontend</option>
-        </select>
-      </Field>
       <Field
         label="Stack"
         hint="Optional toolchain template — seeds default dev-verb commands and a scaffold for new code. Leave empty and declare commands below to wire in any repo."

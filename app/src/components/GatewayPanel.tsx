@@ -89,30 +89,29 @@ export function GatewayPanel({ gateway, statuses }: GatewayPanelProps) {
                   className="border-b border-[var(--border)] last:border-b-0 hover:bg-black/20 transition-colors"
                 >
                   <td className="px-4 py-2 font-mono text-[var(--primary)]">
-                    {url ? (
-                      <a
-                        href={url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 hover:underline"
-                      >
-                        {route.address}
-                        <ExternalLink size={11} className="opacity-60 shrink-0" />
-                      </a>
-                    ) : (
-                      route.address
-                    )}
-                    {route.public_url && (
-                      <a
-                        href={route.public_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        title={route.public_url}
-                        className="ml-2 inline-flex items-center gap-1 text-[0.65rem] px-1.5 py-0.5 rounded bg-green-500/15 text-green-500 hover:bg-green-500/25"
-                      >
-                        <Cable size={10} /> public
-                      </a>
-                    )}
+                    {(() => {
+                      // A public route links to its public URL; otherwise the
+                      // internal subdomain URL.
+                      const primaryUrl = route.public_url || url
+                      const isPublic = !!route.public_url
+                      return primaryUrl ? (
+                        <a
+                          href={primaryUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title={primaryUrl}
+                          className={`inline-flex items-center gap-1 hover:underline ${
+                            isPublic ? "text-green-500" : ""
+                          }`}
+                        >
+                          {isPublic && <Cable size={11} className="shrink-0" />}
+                          {route.address}
+                          <ExternalLink size={11} className="opacity-60 shrink-0" />
+                        </a>
+                      ) : (
+                        route.address
+                      )
+                    })()}
                   </td>
                   <td className="px-4 py-2">
                     <KindBadge kind={route.kind} />
