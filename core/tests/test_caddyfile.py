@@ -246,6 +246,25 @@ class TestCaddyfileTlsInternal:
         assert "tls internal" in caddyfile
         assert "reverse_proxy localhost:18789" in caddyfile
 
+    def test_compose_substrate_host_route_is_tls_site(self) -> None:
+        """The Supabase substrate (compose runner + host route) becomes its own
+        HTTPS site under tls:internal — routing is runner-agnostic."""
+        registry = _make_registry(
+            gateway_tls="internal",
+            deployed={
+                "supabase": Deployment(
+                    runner="compose",
+                    run_cmd=["docker", "compose", "-p", "castle-supabase", "up"],
+                    port=8000,
+                    proxy_host="supabase.lan",
+                ),
+            },
+        )
+        caddyfile = generate_caddyfile_from_registry(registry)
+        assert "supabase.lan {" in caddyfile
+        assert "tls internal" in caddyfile
+        assert "reverse_proxy localhost:8000" in caddyfile
+
     def test_no_auto_https_off_in_tls_mode(self) -> None:
         # auto_https off would suppress the internal-CA certs we now want.
         caddyfile = generate_caddyfile_from_registry(self._host_registry("internal"))

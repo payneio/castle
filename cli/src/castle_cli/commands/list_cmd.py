@@ -30,6 +30,7 @@ STACK_DISPLAY: dict[str, str] = {
     "python-fastapi": "python-fastapi",
     "python-cli": "python-cli",
     "react-vite": "react-vite",
+    "supabase": "supabase",
     "rust": "rust",
     "go": "go",
     "bash": "bash",

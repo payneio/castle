@@ -5,8 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import patch
 
-from castle_core.deploy import _build_run_cmd
-from castle_core.manifest import RunContainer, RunNode, RunPython
+from castle_core.deploy import _build_run_cmd, _build_stop_cmd
+from castle_core.manifest import RunCompose, RunContainer, RunNode, RunPython
 
 
 def test_python_runner_uses_uv_run_from_source(tmp_path: Path) -> None:
@@ -105,3 +105,64 @@ def test_container_without_secrets_has_no_env_file() -> None:
     with patch("castle_core.deploy.shutil.which", return_value="/usr/bin/docker"):
         cmd = _build_run_cmd("svc", run, {}, [], secret_env_file=None)
     assert "--env-file" not in cmd
+
+
+def test_compose_runner_up_with_resolved_file(tmp_path: Path) -> None:
+    """A compose service runs `docker compose -p <project> -f <abs-file> up`."""
+    run = RunCompose(runner="compose", file="docker-compose.yml")
+    with patch("castle_core.deploy.shutil.which", return_value="/usr/bin/docker"):
+        cmd = _build_run_cmd("supabase", run, {}, [], source_dir=tmp_path)
+    assert cmd == [
+        "/usr/bin/docker",
+        "compose",
+        "-p",
+        "castle-supabase",
+        "-f",
+        str(tmp_path / "docker-compose.yml"),
+        "up",
+    ]
+
+
+def test_compose_runner_secrets_never_hit_argv(tmp_path: Path) -> None:
+    """Compose reads env from the process (systemd), not --env-file/-e — argv is clean."""
+    run = RunCompose(runner="compose", file="docker-compose.yml")
+    env_file = Path("/home/u/.castle/secrets/env/castle-supabase.service.env")
+    with patch("castle_core.deploy.shutil.which", return_value="/usr/bin/docker"):
+        cmd = _build_run_cmd(
+            "supabase", run, {"PORT": "8000"}, [], source_dir=tmp_path,
+            secret_env_file=env_file,
+        )
+    joined = " ".join(cmd)
+    assert "--env-file" not in cmd
+    assert "-e" not in cmd
+    assert str(env_file) not in joined
+
+
+def test_compose_project_name_override(tmp_path: Path) -> None:
+    run = RunCompose(runner="compose", file="stack.yml", project_name="myproj")
+    with patch("castle_core.deploy.shutil.which", return_value="/usr/bin/docker"):
+        cmd = _build_run_cmd("s", run, {}, [], source_dir=tmp_path)
+    assert cmd[:6] == [
+        "/usr/bin/docker", "compose", "-p", "myproj", "-f", str(tmp_path / "stack.yml"),
+    ]
+
+
+def test_compose_stop_cmd_is_down(tmp_path: Path) -> None:
+    """The teardown command mirrors up but ends in `down` (same project + file)."""
+    run = RunCompose(runner="compose", file="docker-compose.yml")
+    with patch("castle_core.deploy.shutil.which", return_value="/usr/bin/docker"):
+        stop = _build_stop_cmd("supabase", run, tmp_path)
+    assert stop == [
+        "/usr/bin/docker",
+        "compose",
+        "-p",
+        "castle-supabase",
+        "-f",
+        str(tmp_path / "docker-compose.yml"),
+        "down",
+    ]
+
+
+def test_non_compose_runner_has_no_stop_cmd(tmp_path: Path) -> None:
+    run = RunPython(runner="python", program="svc")
+    assert _build_stop_cmd("svc", run, tmp_path) == []

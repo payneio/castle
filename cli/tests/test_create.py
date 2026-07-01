@@ -76,6 +76,39 @@ class TestCreateCommand:
         comp = config.programs["my-tool2"]
         assert comp.behavior == "tool"
 
+    def test_create_supabase_app(self, castle_root: Path, tmp_path: Path) -> None:
+        """A supabase app scaffolds a Patch-shaped project registered as a static
+        frontend (build.outputs=[public]) with no service."""
+        repos = tmp_path / "repos"
+        with (
+            patch("castle_cli.commands.create.load_config") as mock_load,
+            patch("castle_cli.commands.create.save_config"),
+            patch("castle_cli.commands.create.REPOS_DIR", repos),
+        ):
+            config = load_config(castle_root)
+            mock_load.return_value = config
+
+            from castle_cli.commands.create import run_create
+
+            args = Namespace(
+                name="guestbook", stack="supabase", description="Guestbook", port=None
+            )
+            result = run_create(args)
+
+        assert result == 0
+        project_dir = repos / "guestbook"
+        assert (project_dir / "migrations" / "0001_init.sql").exists()
+        assert (project_dir / "functions" / "hello" / "index.ts").exists()
+        assert (project_dir / "public" / "index.html").exists()
+        assert (project_dir / "supabase.app.yaml").exists()
+
+        # Registered as a static frontend, no service, build output = public/
+        comp = config.programs["guestbook"]
+        assert comp.behavior == "frontend"
+        assert comp.stack == "supabase"
+        assert comp.build is not None and comp.build.outputs == ["public"]
+        assert "guestbook" not in config.services
+
     def test_create_duplicate_fails(self, castle_root: Path, capsys: object) -> None:
         """Creating a project with existing name fails."""
         with patch("castle_cli.commands.create.load_config") as mock_load:

@@ -124,6 +124,25 @@ class TestUnitFromDeployed:
         unit = generate_unit_from_deployed("my-svc", deployed)
         assert "/data/repos/" not in unit
 
+    def test_exec_stop_emitted_for_compose(self) -> None:
+        """A compose deployment's stop_cmd becomes ExecStop= (clean teardown)."""
+        deployed = Deployment(
+            runner="compose",
+            run_cmd=["/usr/bin/docker", "compose", "-p", "castle-x", "-f", "c.yml", "up"],
+            stop_cmd=["/usr/bin/docker", "compose", "-p", "castle-x", "-f", "c.yml", "down"],
+            description="Stack",
+        )
+        unit = generate_unit_from_deployed("x", deployed)
+        assert "ExecStop=/usr/bin/docker compose -p castle-x -f c.yml down" in unit
+
+    def test_no_exec_stop_without_stop_cmd(self) -> None:
+        """Runners without a stop_cmd rely on SIGTERM — no ExecStop line."""
+        deployed = Deployment(
+            runner="python", run_cmd=["/uv", "run", "x"], description="X"
+        )
+        unit = generate_unit_from_deployed("x", deployed)
+        assert "ExecStop=" not in unit
+
 
 class TestSecretEnvFile:
     """Secrets are referenced via EnvironmentFile=, never inlined."""

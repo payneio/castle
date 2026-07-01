@@ -251,14 +251,16 @@ def _build_deployed_service(
         _ensure_python_tool(config, svc.program, messages)
 
     # Build run_cmd (container runners get --env-file for the secrets).
+    source_dir = _program_source_dir(config, svc.program)
     run_cmd = _build_run_cmd(
         name,
         run,
         env,
         messages,
-        _program_source_dir(config, svc.program),
+        source_dir,
         secret_env_file=secret_env_file,
     )
+    stop_cmd = _build_stop_cmd(name, run, source_dir)
 
     # Proxy: a path prefix (handle_path on the gateway) and/or a hostname (a
     # dedicated host site block, so a root-based app serves unchanged).
@@ -284,6 +286,7 @@ def _build_deployed_service(
     return Deployment(
         runner=run.runner,
         run_cmd=run_cmd,
+        stop_cmd=stop_cmd,
         env=env,
         secret_env_keys=sorted(secret_env),
         description=_resolve_description(config, svc),
@@ -473,6 +476,13 @@ def _build_run_cmd(
             if run.args:  # type: ignore[union-attr]
                 cmd.extend(run.args)  # type: ignore[union-attr]
             return cmd
+        case "compose":
+            # A whole docker-compose stack supervised as one unit. `up` runs
+            # attached (no -d) so systemd Type=simple owns the lifecycle; teardown
+            # is a generated ExecStop (`down`, see _build_stop_cmd). Secrets/env
+            # reach compose via the unit's Environment=/EnvironmentFile= (compose
+            # interpolates from the process env), not argv — so nothing here.
+            return [*_compose_base(name, run, source_dir), "up"]
         case "node":
             # Like the python runner bakes `--project <source>` into `uv run`, the
             # node runner bakes `--dir <source>` so the package manager runs the
@@ -491,6 +501,33 @@ def _build_run_cmd(
             return []
         case _:
             raise ValueError(f"Unsupported runner: {run.runner}")  # type: ignore[union-attr]
+
+
+def _compose_base(name: str, run: object, source_dir: Path | None) -> list[str]:
+    """The shared ``docker compose -p <project> -f <file>`` prefix for a stack.
+
+    The compose file is resolved against the program source (like the node runner
+    uses ``--dir``) so the unit — which carries no WorkingDirectory — finds it. The
+    project name defaults to the unit name so a stack's containers/networks are
+    namespaced and collision-free.
+    """
+    runtime = shutil.which("docker") or shutil.which("podman") or "docker"
+    project = run.project_name or f"castle-{name}"  # type: ignore[union-attr]
+    compose_file = Path(run.file)  # type: ignore[union-attr]
+    if not compose_file.is_absolute() and source_dir is not None:
+        compose_file = source_dir / compose_file
+    return [runtime, "compose", "-p", project, "-f", str(compose_file)]
+
+
+def _build_stop_cmd(name: str, run: object, source_dir: Path | None) -> list[str]:
+    """The ExecStop teardown command for a runner, or [] if a plain SIGTERM suffices.
+
+    Compose stacks need an explicit ``down`` so networks/anonymous volumes are
+    reclaimed rather than left dangling when the unit stops.
+    """
+    if run.runner == "compose":  # type: ignore[union-attr]
+        return [*_compose_base(name, run, source_dir), "down"]
+    return []
 
 
 def _format_deployed(name: str, deployed: Deployment) -> str:

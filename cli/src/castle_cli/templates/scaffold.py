@@ -18,6 +18,8 @@ def scaffold_project(
         _scaffold_service(project_dir, name, package_name, description, port or 9000)
     elif stack == "python-cli":
         _scaffold_tool(project_dir, name, package_name, description)
+    elif stack == "supabase":
+        _scaffold_supabase(project_dir, name, description)
     else:
         raise ValueError(f"No scaffold template for stack: {stack}")
 
@@ -563,6 +565,199 @@ uv run ruff format .        # Format
 - `src/{package_name}/` — Library source code
 - `tests/` — pytest tests
 """,
+    )
+
+
+def _scaffold_supabase(project_dir: Path, name: str, description: str) -> None:
+    """Scaffold a Patch-shaped app that targets the shared Supabase substrate.
+
+    Produces migrations/ (applied to the substrate by `castle program build`),
+    functions/ (deno edge functions), public/ (static UI served in place at
+    /<name>/ by the gateway), and supabase.app.yaml (auth policy + wiring).
+
+    The app owns its code and stays repo-durable; only its rows/blobs live on the
+    shared substrate. Tables are namespaced by the app id (they share the `public`
+    schema so no substrate reconfiguration is needed) and protected by RLS.
+    """
+    ident = name.replace("-", "_")  # a safe SQL/JS identifier
+    table = f"{ident}_entries"
+
+    def sub(text: str) -> str:
+        return (
+            text.replace("__NAME__", name)
+            .replace("__IDENT__", ident)
+            .replace("__TABLE__", table)
+            .replace("__DESC__", description)
+        )
+
+    # --- supabase.app.yaml — app manifest (substrate wiring + auth policy) ---
+    _write(
+        project_dir / "supabase.app.yaml",
+        sub(
+            """# Patch-shaped app targeting the shared Supabase substrate.
+name: __NAME__
+description: __DESC__
+substrate: supabase          # the shared castle service this app deploys against
+
+# auth policy: public | private | shared
+#   public  — anyone with the URL (anon read/write, still RLS-gated)
+#   private — only the owner; RLS locks rows to auth.uid()
+#   shared  — owner + named people (list handles below)
+auth: public
+# shared: [alice, bob]
+
+# Tables are namespaced by this prefix in the shared `public` schema.
+table_prefix: __IDENT___
+"""
+        ),
+    )
+
+    # --- migrations/0001_init.sql — versioned, idempotent, forward-only ---
+    _write(
+        project_dir / "migrations" / "0001_init.sql",
+        sub(
+            """-- 0001_init: example table + RLS. Applied by `castle program build`
+-- via the versioned migration runner (tracked in schema_migrations; only
+-- unapplied migrations run). Forward-only — never edit an applied migration;
+-- add a new numbered file instead.
+
+create table if not exists public.__TABLE__ (
+    id          bigint generated always as identity primary key,
+    message     text not null check (char_length(message) <= 500),
+    author      text,
+    created_at  timestamptz not null default now()
+);
+
+-- RLS is necessary but NOT sufficient on its own: it protects rows, not the
+-- static app shell or Storage objects. For a `public` app, anon read/write is
+-- intended (still row-gated). For `private`/`shared`, replace the policies below
+-- with owner checks (auth.uid()) AND gate the shell + use signed Storage URLs.
+alter table public.__TABLE__ enable row level security;
+
+drop policy if exists "__IDENT___public_read" on public.__TABLE__;
+create policy "__IDENT___public_read"  on public.__TABLE__ for select using (true);
+
+drop policy if exists "__IDENT___public_write" on public.__TABLE__;
+create policy "__IDENT___public_write" on public.__TABLE__ for insert with check (true);
+"""
+        ),
+    )
+
+    # --- functions/hello/index.ts — deno edge-function stub ---
+    _write(
+        project_dir / "functions" / "hello" / "index.ts",
+        sub(
+            """// Edge function for __NAME__. Runs on the substrate's edge-runtime.
+// Deployed alongside migrations; call it from the app (never expose the
+// service_role key to the browser — privileged work happens here, server-side).
+import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
+
+serve((_req: Request) => {
+  return new Response(
+    JSON.stringify({ ok: true, app: "__NAME__", ts: new Date().toISOString() }),
+    { headers: { "content-type": "application/json" } },
+  );
+});
+"""
+        ),
+    )
+
+    # --- public/config.js — substrate wiring (anon key is public-safe by design) ---
+    _write(
+        project_dir / "public" / "config.js",
+        sub(
+            """// Substrate wiring for __NAME__. The anon key is designed to be public
+// (RLS enforces access) — paste yours here, or inject at deploy time:
+//   cat ~/.castle/secrets/SUPABASE_ANON_KEY
+window.APP = {
+  SUPABASE_URL: "https://supabase.lan",
+  SUPABASE_ANON_KEY: "PASTE_ANON_KEY_HERE",
+  TABLE: "__TABLE__",
+};
+"""
+        ),
+    )
+
+    # --- public/index.html — reads/writes the substrate via supabase-js ---
+    _write(
+        project_dir / "public" / "index.html",
+        sub(
+            """<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>__NAME__</title>
+  <script src="./config.js"></script>
+  <script type="module">
+    import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+    const { SUPABASE_URL, SUPABASE_ANON_KEY, TABLE } = window.APP;
+    const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    const list = document.getElementById("list");
+    async function refresh() {
+      const { data, error } = await db.from(TABLE)
+        .select("message, author, created_at")
+        .order("created_at", { ascending: false }).limit(50);
+      list.textContent = error ? "Error: " + error.message
+        : (data.map(r => `${r.author ?? "anon"}: ${r.message}`).join("\\n") || "(empty)");
+    }
+    document.getElementById("form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const message = e.target.message.value.trim();
+      if (!message) return;
+      const { error } = await db.from(TABLE).insert({ message });
+      if (error) { alert(error.message); return; }
+      e.target.reset();
+      refresh();
+    });
+    refresh();
+  </script>
+</head>
+<body>
+  <h1>__NAME__</h1>
+  <p>__DESC__</p>
+  <form id="form"><input name="message" placeholder="Say something…" autocomplete="off" />
+    <button>Post</button></form>
+  <pre id="list">Loading…</pre>
+</body>
+</html>
+"""
+        ),
+    )
+
+    # --- CLAUDE.md — how this app works ---
+    _write(
+        project_dir / "CLAUDE.md",
+        sub(
+            """# __NAME__
+
+__DESC__
+
+A **supabase-stack** app: it owns its code (this repo) and rents its backend from
+the shared Supabase substrate (the `supabase` castle service). Only its rows/blobs
+live on the substrate; rebuild the rest from git anytime.
+
+## Layout
+- `migrations/` — versioned, idempotent Postgres migrations (forward-only). Applied
+  to the substrate by `castle program build __NAME__`.
+- `functions/` — deno edge functions deployed to the substrate's edge-runtime.
+- `public/` — static UI served in place at `/__NAME__/` by the gateway. Talks to
+  the substrate with `@supabase/supabase-js` + the public anon key (RLS-gated).
+- `supabase.app.yaml` — substrate wiring + auth policy (public/private/shared).
+
+## Develop
+- Edit `migrations/`, then `castle program build __NAME__` to apply new migrations
+  (re-running is a no-op — only unapplied migrations run).
+- Set the anon key in `public/config.js` (`cat ~/.castle/secrets/SUPABASE_ANON_KEY`).
+- `castle deploy && castle gateway reload` → served at `/__NAME__/`.
+
+## Privacy note
+RLS protects rows, not the static shell or Storage. For a `private`/`shared` app,
+also gate the shell and use signed Storage URLs — RLS alone is not leak-proof.
+Auth/WebCrypto apps should get their own HTTPS host route (secure context).
+"""
+        ),
     )
 
 

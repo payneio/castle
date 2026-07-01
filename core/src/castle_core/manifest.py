@@ -60,6 +60,22 @@ class RunNode(RunBase):
     args: list[str] = Field(default_factory=list)
 
 
+class RunCompose(RunBase):
+    """A multi-container stack supervised as one unit via ``docker compose``.
+
+    Unlike ``container`` (a single ``docker run``), compose owns the stack's own
+    networking, startup ordering, and per-service health — Castle delegates rather
+    than reinventing orchestration. The unit runs ``compose up`` attached
+    (``Type=simple``) and tears the stack down via a generated ``ExecStop`` (down).
+    Env/secrets flow through systemd ``Environment=``/``EnvironmentFile=`` (from
+    ``defaults.env``); compose interpolates them from the process environment.
+    """
+
+    runner: Literal["compose"]
+    file: str = "docker-compose.yml"  # resolved relative to the program source
+    project_name: str | None = None  # ``-p``; defaults to ``castle-<name>``
+
+
 class RunRemote(RunBase):
     runner: Literal["remote"]
     base_url: str
@@ -67,7 +83,7 @@ class RunRemote(RunBase):
 
 
 RunSpec = Annotated[
-    Union[RunCommand, RunPython, RunContainer, RunNode, RunRemote],
+    Union[RunCommand, RunPython, RunContainer, RunNode, RunCompose, RunRemote],
     Field(discriminator="runner"),
 ]
 

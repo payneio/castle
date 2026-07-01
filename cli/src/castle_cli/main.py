@@ -37,7 +37,11 @@ def _build_program_group(subparsers: argparse._SubParsersAction) -> None:
 
     p = sub.add_parser("create", help="Scaffold a new program")
     _add_name(p, "Program name")
-    p.add_argument("--stack", choices=["python-cli", "python-fastapi", "react-vite"], default=None)
+    p.add_argument(
+        "--stack",
+        choices=["python-cli", "python-fastapi", "react-vite", "supabase"],
+        default=None,
+    )
     p.add_argument("--description", default="", help="Program description")
     p.add_argument("--port", type=int, help="Port (daemons only)")
 

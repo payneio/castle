@@ -44,6 +44,7 @@ Stack guides (for writing *new* code, AI-facing):
 - @docs/stacks/python-fastapi.md — FastAPI service patterns (config, routes, models, testing)
 - @docs/stacks/python-cli.md — CLI tool patterns (argparse, stdin/stdout, piping, testing)
 - @docs/stacks/react-vite.md — React/Vite/TypeScript frontend patterns
+- @docs/stacks/supabase.md — Database-backed apps on the shared Supabase substrate (migrations, RLS, edge functions)
 
 ### Quick start
 
@@ -64,8 +65,8 @@ castle program add https://github.com/me/widget.git --name widget
 ```
 
 `castle program create` scaffolds under `/data/repos/` (override with
-`CASTLE_REPOS_DIR`) and registers the program in `castle.yaml` with an absolute
-`source:`. `castle program add` registers an existing repo in place (or records
+`CASTLE_REPOS_DIR`) and registers the program under `programs/<name>.yaml` with an absolute
+`source:`. `castle program add` registers an existing repo in place under `programs/<name>.yaml` (or records
 its `repo:` URL for `castle program clone`).
 
 ## Castle CLI

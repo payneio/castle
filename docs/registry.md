@@ -224,6 +224,7 @@ Discriminated union on `runner`:
 | `python` | *(none — `uv run` self-syncs)* | `uv run --project <source> --no-dev <program>` | `program`, `args` |
 | `command` | *(none)* | `which(argv[0])` → resolved path | `argv` |
 | `container` | *(none)* | `docker`/`podman` `run` | `image`, `command`, `ports`, `volumes` |
+| `compose` | *(none)* | `docker compose -p <project> -f <file> up` (+ `ExecStop=down`) | `file`, `project_name` |
 | `node` | `package_manager install` | `package_manager run script` | `script`, `package_manager` |
 | `remote` | *(none)* | *(none — no local process)* | `base_url`, `health_url` |
 
@@ -240,6 +241,23 @@ lookup of the script.
 run:
   runner: python
   program: my-service     # name in [project.scripts]
+```
+
+A `compose` service supervises a **whole multi-container stack as one systemd
+unit** — `ExecStart` runs `docker compose … up` attached (`Type=simple`) and a
+generated `ExecStop` runs `… down` so networks/anonymous volumes are reclaimed on
+stop. Unlike the single-container `container` runner, compose owns the stack's own
+networking, startup ordering, and per-service health — Castle delegates rather
+than reinventing orchestration. Secrets/env reach compose through the unit's
+`Environment=`/`EnvironmentFile=` (from `defaults.env`), which compose interpolates
+from the process environment. This is what runs the shared **Supabase substrate**
+(see @docs/stacks/supabase.md).
+
+```yaml
+run:
+  runner: compose
+  file: docker-compose.yml   # resolved under the program source
+  # project_name: castle-my-stack   # optional; defaults to castle-<name>
 ```
 
 ### `expose` — What it exposes
@@ -599,7 +617,7 @@ The Pydantic models live in `core/src/castle_core/manifest.py`. Key classes:
 - `ProgramSpec` — software catalog entry (source, behavior, stack, build, system_dependencies)
 - `ServiceSpec` — long-running daemon (run, expose, proxy, manage, defaults)
 - `JobSpec` — scheduled task (run, schedule, manage, defaults)
-- `RunSpec` — discriminated union (RunPython, RunCommand, RunContainer, RunNode, RunRemote)
+- `RunSpec` — discriminated union (RunPython, RunCommand, RunContainer, RunCompose, RunNode, RunRemote)
 - `ExposeSpec`, `ProxySpec`, `ManageSpec`, `BuildSpec`
 - `CaddySpec`, `SystemdSpec`, `HttpExposeSpec`, `HttpInternal`
 

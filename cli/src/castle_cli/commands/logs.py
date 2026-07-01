@@ -19,6 +19,8 @@ def run_logs(args: argparse.Namespace) -> int:
         svc = config.services[name]
         if svc.run.runner == "container":
             return _container_logs(name, args)
+        if svc.run.runner == "compose":
+            return _compose_logs(name, svc, args)
         return _systemd_logs(name, args)
 
     # Check jobs
@@ -37,6 +39,25 @@ def _systemd_logs(name: str, args: argparse.Namespace) -> int:
     lines = getattr(args, "lines", 50)
     if lines:
         cmd.extend(["-n", str(lines)])
+
+    if getattr(args, "follow", False):
+        cmd.append("-f")
+
+    result = subprocess.run(cmd)
+    return result.returncode
+
+
+def _compose_logs(name: str, svc: object, args: argparse.Namespace) -> int:
+    """Show aggregated logs for a compose-runner stack (by project label)."""
+    import shutil
+
+    runtime = shutil.which("docker") or shutil.which("podman") or "docker"
+    project = getattr(svc.run, "project_name", None) or f"castle-{name}"  # type: ignore[attr-defined]
+    cmd = [runtime, "compose", "-p", project, "logs"]
+
+    lines = getattr(args, "lines", 50)
+    if lines:
+        cmd.extend(["--tail", str(lines)])
 
     if getattr(args, "follow", False):
         cmd.append("-f")

@@ -2,8 +2,48 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from castle_core.manifest import ProgramSpec
-from castle_core.stacks import _declared_commands, available_actions, is_available
+from castle_core.stacks import (
+    _declared_commands,
+    _migration_version,
+    available_actions,
+    is_available,
+    plan_migrations,
+)
+
+
+class TestMigrationPlanner:
+    """The supabase stack's forward-only, idempotent migration runner (pure part)."""
+
+    def test_version_is_leading_token(self) -> None:
+        assert _migration_version(Path("0007_add_users.sql")) == "0007"
+
+    def test_orders_by_filename_and_skips_applied(self) -> None:
+        files = [Path("0003_c.sql"), Path("0001_a.sql"), Path("0002_b.sql")]
+        pending = plan_migrations(files, {"0001"})
+        assert [p.name for p in pending] == ["0002_b.sql", "0003_c.sql"]
+
+    def test_none_pending_when_all_applied(self) -> None:
+        files = [Path("0001_a.sql"), Path("0002_b.sql")]
+        assert plan_migrations(files, {"0001", "0002"}) == []
+
+    def test_all_pending_on_fresh_db(self) -> None:
+        files = [Path("0002_b.sql"), Path("0001_a.sql")]
+        assert [p.name for p in plan_migrations(files, set())] == [
+            "0001_a.sql",
+            "0002_b.sql",
+        ]
+
+
+class TestSupabaseStackResolution:
+    def test_supabase_stack_resolves_verbs(self) -> None:
+        """A supabase program resolves build (migrations) + deno verbs."""
+        p = ProgramSpec.model_validate({"source": "/tmp/x", "stack": "supabase"})
+        actions = available_actions(p)
+        assert "build" in actions and "test" in actions
+        assert "install" in actions and "uninstall" in actions
 
 
 class TestResolution:

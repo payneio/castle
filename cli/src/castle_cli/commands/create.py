@@ -7,6 +7,7 @@ import subprocess
 
 from castle_cli.config import REPOS_DIR, load_config, save_config
 from castle_cli.manifest import (
+    BuildSpec,
     CaddySpec,
     DefaultsSpec,
     ExposeSpec,
@@ -26,6 +27,15 @@ STACK_DEFAULTS: dict[str, str] = {
     "python-fastapi": "daemon",
     "python-cli": "tool",
     "react-vite": "frontend",
+    "supabase": "frontend",
+}
+
+# Static build output per stack, for `behavior: frontend` programs. The gateway
+# serves this dir in place at /<name>/ (no service, no process). A supabase app
+# ships a raw `public/`; react-vite builds to `dist/`.
+STACK_BUILD_OUTPUTS: dict[str, str] = {
+    "supabase": "public",
+    "react-vite": "dist",
 }
 
 
@@ -85,12 +95,19 @@ def run_create(args: argparse.Namespace) -> int:
     # Initialize a git repo for the new source.
     subprocess.run(["git", "init", "-q", str(project_dir)], check=False)
 
+    # Frontend stacks with a static output get a build spec so the gateway emits
+    # an in-place static route at /<name>/ (no service, no process).
+    build = None
+    if stack in STACK_BUILD_OUTPUTS:
+        build = BuildSpec(outputs=[STACK_BUILD_OUTPUTS[stack]])
+
     config.programs[name] = ProgramSpec(
         id=name,
         description=description,
         source=str(project_dir),
         stack=stack,
         behavior=behavior,
+        build=build,
     )
     if behavior == "daemon":
         prefix = name.replace("-", "_").upper()
@@ -122,7 +139,11 @@ def run_create(args: argparse.Namespace) -> int:
     print("  Registered in castle.yaml")
     print("\nNext steps:")
     print(f"  cd {project_dir}")
-    if stack:
+    if stack == "supabase":
+        print("  # edit migrations/, functions/, public/ — targets the shared substrate")
+        print(f"  castle program build {name}   # apply migrations to the substrate")
+        print(f"  castle deploy && castle gateway reload   # serve at /{name}/")
+    elif stack:
         print("  uv sync")
         if behavior == "daemon":
             print(f"  uv run {name}  # starts on port {port}")

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import shutil
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
@@ -335,10 +336,181 @@ class ReactViteHandler(StackHandler):
         )
 
 
+def _migration_version(path: Path) -> str:
+    """The version key of a migration file — the leading token before '_'.
+
+    e.g. ``0001_init.sql`` → ``0001``. Recorded in ``schema_migrations`` so a
+    redeploy applies only the unapplied files.
+    """
+    return path.name.split("_", 1)[0]
+
+
+def plan_migrations(files: list[Path], applied: set[str]) -> list[Path]:
+    """Order migrations by filename and drop any whose version is already applied.
+
+    Forward-only and idempotent (mirrors Patch's runner): re-running applies only
+    new files, never re-applies an existing one. Pure — no DB — so it's unit-tested
+    without a substrate.
+    """
+    return [
+        p
+        for p in sorted(files, key=lambda x: x.name)
+        if _migration_version(p) not in applied
+    ]
+
+
+def _substrate_db_url() -> str | None:
+    """Best-effort Postgres URL for the shared substrate.
+
+    Prefers an explicit ``SUPABASE_DB_URL``; otherwise builds one from the
+    generated ``SUPABASE_POSTGRES_PASSWORD`` secret against localhost:5432. Returns
+    None if neither is available (build then fails loud with guidance).
+    """
+    explicit = os.environ.get("SUPABASE_DB_URL")
+    if explicit:
+        return explicit
+    from castle_core.config import SECRETS_DIR
+
+    pw_file = SECRETS_DIR / "SUPABASE_POSTGRES_PASSWORD"
+    if pw_file.exists():
+        pw = pw_file.read_text().strip()
+        return f"postgresql://postgres:{pw}@localhost:5432/postgres"
+    return None
+
+
+class SupabaseHandler(StackHandler):
+    """Stack handler for supabase apps (migrations + edge functions + static UI).
+
+    `build` runs the versioned migration runner against the shared substrate; the
+    static UI is served in place by the gateway (no process), so install/uninstall
+    are no-ops like a frontend.
+    """
+
+    async def build(self, name: str, comp: ProgramSpec, root: Path) -> ActionResult:
+        """Apply unapplied migrations to the shared substrate (idempotent)."""
+        src = _source_dir(comp, root)
+        mig_dir = src / "migrations"
+        files = sorted(mig_dir.glob("*.sql")) if mig_dir.is_dir() else []
+        if not files:
+            return ActionResult(name, "build", "ok", "No migrations to apply.")
+
+        psql = shutil.which("psql")
+        url = _substrate_db_url()
+        if not psql:
+            return ActionResult(
+                name,
+                "build",
+                "error",
+                "psql not found — install postgresql-client to run migrations.",
+            )
+        if not url:
+            return ActionResult(
+                name,
+                "build",
+                "error",
+                "No substrate DB URL. Set SUPABASE_DB_URL, or generate secrets "
+                "(scripts/gen-keys.py) so SUPABASE_POSTGRES_PASSWORD exists.",
+            )
+
+        # Ensure the tracking table, then read applied versions.
+        rc, out = await _run(
+            [
+                psql,
+                url,
+                "-v",
+                "ON_ERROR_STOP=1",
+                "-c",
+                "create table if not exists public.schema_migrations "
+                "(version text primary key, applied_at timestamptz default now())",
+            ],
+            src,
+        )
+        if rc != 0:
+            return ActionResult(name, "build", "error", f"connect/init failed:\n{out}")
+        rc, out = await _run(
+            [psql, url, "-tA", "-c", "select version from public.schema_migrations"],
+            src,
+        )
+        if rc != 0:
+            return ActionResult(
+                name, "build", "error", f"read migrations failed:\n{out}"
+            )
+        applied = {line.strip() for line in out.splitlines() if line.strip()}
+
+        pending = plan_migrations(files, applied)
+        if not pending:
+            return ActionResult(name, "build", "ok", "All migrations already applied.")
+
+        log = []
+        for path in pending:
+            version = _migration_version(path)
+            # File + version-insert in ONE transaction: a failed migration records
+            # nothing, so the next build safely retries it.
+            rc, out = await _run(
+                [
+                    psql,
+                    url,
+                    "-v",
+                    "ON_ERROR_STOP=1",
+                    "--single-transaction",
+                    "-f",
+                    str(path),
+                    "-c",
+                    f"insert into public.schema_migrations(version) values('{version}')",
+                ],
+                src,
+            )
+            if rc != 0:
+                log.append(f"✗ {path.name}\n{out}")
+                return ActionResult(name, "build", "error", "\n".join(log))
+            log.append(f"✓ {path.name}")
+        return ActionResult(name, "build", "ok", "\n".join(log))
+
+    async def _deno(
+        self, name: str, action: str, comp: ProgramSpec, root: Path, args: list[str]
+    ) -> ActionResult:
+        """Run a `deno` subcommand over functions/, or skip cleanly if deno absent."""
+        src = _source_dir(comp, root)
+        fns = src / "functions"
+        deno = shutil.which("deno")
+        if not deno or not fns.is_dir():
+            return ActionResult(
+                name, action, "ok", f"{action}: skipped (no deno/functions)"
+            )
+        rc, out = await _run([deno, *args, "functions/"], src)
+        return ActionResult(name, action, "ok" if rc == 0 else "error", out)
+
+    async def test(self, name: str, comp: ProgramSpec, root: Path) -> ActionResult:
+        return await self._deno(name, "test", comp, root, ["test", "--allow-all"])
+
+    async def lint(self, name: str, comp: ProgramSpec, root: Path) -> ActionResult:
+        return await self._deno(name, "lint", comp, root, ["lint"])
+
+    async def format(self, name: str, comp: ProgramSpec, root: Path) -> ActionResult:
+        return await self._deno(name, "format", comp, root, ["fmt"])
+
+    async def type_check(
+        self, name: str, comp: ProgramSpec, root: Path
+    ) -> ActionResult:
+        return await self._deno(name, "type-check", comp, root, ["check"])
+
+    async def install(self, name: str, comp: ProgramSpec, root: Path) -> ActionResult:
+        """Static UI is served in place by the gateway; nothing to install."""
+        return ActionResult(
+            name, "install", "ok", f"{name}: served in place at /{name}/."
+        )
+
+    async def uninstall(self, name: str, comp: ProgramSpec, root: Path) -> ActionResult:
+        return ActionResult(
+            name, "uninstall", "ok", f"{name}: served in place; nothing to remove."
+        )
+
+
 HANDLERS: dict[str, StackHandler] = {
     "python-cli": PythonHandler(),
     "python-fastapi": PythonHandler(),
     "react-vite": ReactViteHandler(),
+    "supabase": SupabaseHandler(),
 }
 
 

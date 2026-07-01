@@ -145,6 +145,10 @@ ExecStart={exec_start}
 RestartSec={restart_sec}
 SuccessExitStatus=143
 """
+        # Explicit teardown (e.g. compose `down`) so the stack's networks/volumes
+        # are reclaimed on stop rather than left dangling.
+        if deployed.stop_cmd:
+            unit += f"ExecStop={' '.join(deployed.stop_cmd)}\n"
 
     if sd and sd.exec_reload:
         reload_argv = sd.exec_reload.split()

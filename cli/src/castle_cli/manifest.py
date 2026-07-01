@@ -20,6 +20,7 @@ from castle_core.manifest import (  # noqa: F401 — explicit re-exports for typ
     RestartPolicy,
     RunBase,
     RunCommand,
+    RunCompose,
     RunContainer,
     RunNode,
     RunPython,

@@ -34,6 +34,9 @@ class Deployment:
 
     runner: str
     run_cmd: list[str]
+    # Optional teardown command emitted as systemd ``ExecStop=`` (e.g. compose
+    # ``down``). Empty for runners whose stop is just SIGTERM to the ExecStart pid.
+    stop_cmd: list[str] = field(default_factory=list)
     env: dict[str, str] = field(default_factory=dict)
     # Names (never values) of secret-bearing env vars. Their resolved values live
     # only in the mode-0600 env file, never in env/run_cmd/registry — this is for
@@ -102,6 +105,7 @@ def load_registry(path: Path | None = None) -> NodeRegistry:
         deployed[name] = Deployment(
             runner=comp_data.get("runner", "command"),
             run_cmd=comp_data.get("run_cmd", []),
+            stop_cmd=comp_data.get("stop_cmd", []),
             env=comp_data.get("env", {}),
             secret_env_keys=comp_data.get("secret_env_keys", []),
             description=comp_data.get("description"),
@@ -145,6 +149,8 @@ def save_registry(registry: NodeRegistry, path: Path | None = None) -> None:
             "runner": comp.runner,
             "run_cmd": comp.run_cmd,
         }
+        if comp.stop_cmd:
+            entry["stop_cmd"] = comp.stop_cmd
         if comp.env:
             entry["env"] = comp.env
         if comp.secret_env_keys:
