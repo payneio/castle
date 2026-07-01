@@ -1,10 +1,11 @@
 """Castle CLI entry point — resource-first command surface.
 
-Operations live under the resource they act on (`program`, `service`, `job`,
-`gateway`); platform-wide lifecycle (`start`/`stop`/`restart`/`status`/`deploy`)
-and the cross-resource `list` are top-level. Names can collide across resource
-types (a program and a service may share a name), so the resource is always
-explicit.
+Operations live under the resource they act on. `program` is the catalog;
+`service`, `job`, and `tool` are deployment lenses (systemd services, scheduled
+timers, and PATH-installed CLIs); `gateway` is infrastructure. Platform-wide
+lifecycle (`start`/`stop`/`restart`/`status`/`deploy`) and the cross-resource
+`list` are top-level. Names can collide across resource types (a program and a
+service may share a name), so the resource is always explicit.
 """
 
 from __future__ import annotations
@@ -41,7 +42,7 @@ def _build_program_group(subparsers: argparse._SubParsersAction) -> None:
     _add_name(p, "Program name")
     p.add_argument("--stack", choices=available_stacks(), default=None)
     p.add_argument("--description", default="", help="Program description")
-    p.add_argument("--port", type=int, help="Port (daemons only)")
+    p.add_argument("--port", type=int, help="Port (service deployments only)")
 
     p = sub.add_parser("add", help="Adopt an existing repo (path or git URL)")
     p.add_argument("target", help="Local path or git URL")
@@ -60,7 +61,7 @@ def _build_program_group(subparsers: argparse._SubParsersAction) -> None:
     _add_name(p, "Program name")
     p.add_argument("extra", nargs=argparse.REMAINDER, help="Extra args passed to the program")
 
-    sub.add_parser("install", help="Activate a program (tool→PATH, frontend→served)").add_argument(
+    sub.add_parser("install", help="Activate a program (tool→PATH, static→served)").add_argument(
         "name", nargs="?", help="Program (default: all)"
     )
     sub.add_parser("uninstall", help="Deactivate a program").add_argument(
@@ -70,6 +71,23 @@ def _build_program_group(subparsers: argparse._SubParsersAction) -> None:
     for verb in DEV_VERBS:
         p = sub.add_parser(verb, help=f"Run {verb}")
         _add_name(p, "Program (default: all)", optional=True)
+
+
+def _build_tool_group(subparsers: argparse._SubParsersAction) -> None:
+    """The `tool` lens — programs installed on PATH (path deployments)."""
+    grp = subparsers.add_parser("tool", help="Tools on your PATH (the tools lens)")
+    grp.set_defaults(resource="tool")
+    sub = grp.add_subparsers(dest="tool_command")
+
+    p = sub.add_parser("list", help="List tools with their executable + description")
+    p.add_argument("--json", action="store_true", help="Machine-readable output")
+
+    p = sub.add_parser("info", help="Show a tool's executable, description, install state")
+    _add_name(p, "Tool name")
+    p.add_argument("--json", action="store_true", help="Machine-readable output")
+
+    sub.add_parser("install", help="Install a tool on PATH").add_argument("name", help="Tool name")
+    sub.add_parser("uninstall", help="Remove a tool from PATH").add_argument("name", help="Tool name")
 
 
 def _add_service_create(sub: argparse._SubParsersAction, kind: str) -> None:
@@ -138,7 +156,7 @@ def _build_deployment_group(subparsers: argparse._SubParsersAction, kind: str) -
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="castle",
-        description="Castle platform CLI — programs, services, jobs, and infrastructure",
+        description="Castle platform CLI — programs, deployments (services, jobs, tools), and infrastructure",
     )
     parser.add_argument("--version", action="version", version=f"castle {__version__}")
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
@@ -146,6 +164,7 @@ def build_parser() -> argparse.ArgumentParser:
     _build_program_group(subparsers)
     _build_deployment_group(subparsers, "service")
     _build_deployment_group(subparsers, "job")
+    _build_tool_group(subparsers)
 
     # Gateway (infrastructure)
     gw = subparsers.add_parser("gateway", help="Manage the Caddy gateway")
@@ -166,7 +185,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("name", nargs="?", help="Service/job to deploy (default: all)")
 
     # Cross-resource overview
-    p = subparsers.add_parser("list", help="List programs, services, and jobs")
+    p = subparsers.add_parser("list", help="List programs, services, jobs, and tools")
     p.add_argument("--kind", choices=["service", "job", "tool", "static", "reference"], help="Filter by derived kind")
     p.add_argument("--stack", help="Filter by stack")
     p.add_argument("--json", action="store_true", help="Output as JSON")
@@ -223,6 +242,30 @@ def _dispatch_program(args: argparse.Namespace) -> int:
     return 1
 
 
+def _dispatch_tool(args: argparse.Namespace) -> int:
+    sub = args.tool_command
+    if not sub:
+        print("Usage: castle tool {list|info|install|uninstall}")
+        return 1
+    if sub == "list":
+        from castle_cli.commands.tool import run_tool_list
+
+        return run_tool_list(args)
+    if sub == "info":
+        from castle_cli.commands.tool import run_tool_info
+
+        return run_tool_info(args)
+    if sub == "install":
+        from castle_cli.commands.dev import run_install
+
+        return run_install(args)
+    if sub == "uninstall":
+        from castle_cli.commands.dev import run_uninstall
+
+        return run_uninstall(args)
+    return 1
+
+
 def _dispatch_deployment(args: argparse.Namespace, kind: str) -> int:
     sub = getattr(args, f"{kind}_command")
     if not sub:
@@ -273,6 +316,8 @@ def main() -> int:
         return _dispatch_program(args)
     if cmd in ("service", "job"):
         return _dispatch_deployment(args, cmd)
+    if cmd == "tool":
+        return _dispatch_tool(args)
     if cmd == "gateway":
         from castle_cli.commands.gateway import run_gateway
 

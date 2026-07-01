@@ -195,7 +195,7 @@ system_dependencies: [pandoc, poppler-utils]
 ```
 
 System packages that must be installed for the program to work. Displayed
-in `castle list --kind tool` and the dashboard.
+in `castle tool list` / `castle tool info` and the dashboard.
 
 ### `version` — Program version
 

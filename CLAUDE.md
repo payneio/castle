@@ -108,6 +108,11 @@ castle service logs <name> [-f] [-n 50]
 castle job create <name> [--program P] --schedule "0 2 * * *" [--launcher ...]
 castle job <list|info|delete|deploy|enable|disable|start|stop|restart|logs> ...
 
+# Tools — CLIs on your PATH (deployments with manager: path)
+castle tool list [--json]          # each tool's executable + description + install state
+castle tool info <name> [--json]   # a tool's executable, description, source, installed?
+castle tool install|uninstall <name>
+
 # Platform-wide (top-level)
 castle list [--kind ...] [--stack ...] [--json]       # all deployments (services, jobs, tools, statics)
 castle status                                         # unified status
@@ -119,15 +124,18 @@ castle gateway start|stop|reload|status               # the Caddy gateway
 Bringing everything online is the two honest steps `castle deploy && castle
 start` (apply config, then start) — there is no bundled `up`.
 
-`castle service` and `castle job` are **views** over the single deployment set,
-filtered by derived kind (systemd-no-schedule → service, systemd+schedule → job).
-Tools (`manager: path`) and statics (`manager: caddy`) are deployments too —
-reach them via `castle list --kind tool` / `--kind static`.
+`castle service`, `castle job`, and `castle tool` are **views** over the single
+deployment set, filtered by derived kind (systemd-no-schedule → service,
+systemd+schedule → job, `manager: path` → tool). `castle tool list --json` is the
+machine-readable tool catalog for assistants — it surfaces each tool's actual
+**executable** (which can differ from the program name — `litellm-intent-router`
+installs `intent-router`), its description, and install state. Statics
+(`manager: caddy`) surface via `castle list --kind static`.
 
 **Dev verbs** resolve per-program: a declared `commands:` entry (or `build:`)
 overrides the stack default, falling back to the program's stack handler, else
 the verb is unavailable. So a wired-in repo with **no `stack`** works as long as
-it declares its commands. Tools are reached via `castle list --kind tool`.
+it declares its commands. Tools are reached via `castle tool list`.
 
 ## Infrastructure
 

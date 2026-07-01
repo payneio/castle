@@ -22,15 +22,14 @@ def _is_git_url(s: str) -> bool:
     )
 
 
-def _detect(src: Path) -> tuple[str | None, dict[str, list[list[str]]], str]:
-    """Detect (stack, commands, behavior) for a source dir.
+def _detect(src: Path) -> tuple[str | None, dict[str, list[list[str]]]]:
+    """Detect (stack, commands) for a source dir.
 
     Returns a stack name when the project fits a known one (so it inherits those
-    defaults), otherwise an explicit commands map. behavior defaults to 'tool'.
+    defaults), otherwise an explicit commands map. `add` adopts source only; the
+    deployment (and thus kind) is declared separately, so no kind is inferred here.
     """
-    stack: str | None = None
     commands: dict[str, list[list[str]]] = {}
-    behavior = "tool"
 
     pyproject = src / "pyproject.toml"
     if pyproject.exists():
@@ -39,11 +38,8 @@ def _detect(src: Path) -> tuple[str | None, dict[str, list[list[str]]], str]:
         except (OSError, tomllib.TOMLDecodeError):
             data = {}
         deps = " ".join(data.get("project", {}).get("dependencies", []))
-        if "fastapi" in deps or "uvicorn" in deps:
-            stack, behavior = "python-fastapi", "daemon"
-        else:
-            stack = "python-cli"
-        return stack, commands, behavior
+        stack = "python-fastapi" if ("fastapi" in deps or "uvicorn" in deps) else "python-cli"
+        return stack, commands
 
     if (src / "Cargo.toml").exists():
         commands = {
@@ -52,7 +48,7 @@ def _detect(src: Path) -> tuple[str | None, dict[str, list[list[str]]], str]:
             "lint": [["cargo", "clippy"]],
             "run": [["cargo", "run"]],
         }
-        return None, commands, "tool"
+        return None, commands
 
     if (src / "package.json").exists():
         commands = {
@@ -60,13 +56,13 @@ def _detect(src: Path) -> tuple[str | None, dict[str, list[list[str]]], str]:
             "test": [["pnpm", "test"]],
             "lint": [["pnpm", "lint"]],
         }
-        return None, commands, "frontend"
+        return None, commands
 
     if (src / "Makefile").exists() or (src / "makefile").exists():
         commands = {"build": [["make"]], "test": [["make", "test"]]}
-        return None, commands, "tool"
+        return None, commands
 
-    return None, commands, "tool"
+    return None, commands
 
 
 def run_add(args: argparse.Namespace) -> int:
@@ -101,7 +97,7 @@ def run_add(args: argparse.Namespace) -> int:
     stack: str | None = None
     detected_commands: dict[str, list[list[str]]] = {}
     if src_path.exists():
-        stack, detected_commands, _ = _detect(src_path)
+        stack, detected_commands = _detect(src_path)
 
     prog = ProgramSpec(
         id=name,

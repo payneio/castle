@@ -170,7 +170,7 @@ def run_status(args: argparse.Namespace) -> int:
     # Services + jobs (deployment state); the gateway appears here as a service.
     _service_status(config)
 
-    # Programs (catalog activation: tools on PATH, static frontends served)
+    # Programs (catalog activation: tools on PATH, statics served by the gateway)
     catalog = {
         n: c
         for n, c in config.programs.items()

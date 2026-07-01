@@ -75,7 +75,8 @@ castle services start|stop            Start/stop everything
 ```
 
 Tools are deployments with `manager: path` (derived **kind: tool**) — list them
-with `castle list --kind tool`.
+with `castle tool list` (add `--json` for the machine-readable catalog with each
+tool's executable, description, and install state).
 
 ## Registry
 
