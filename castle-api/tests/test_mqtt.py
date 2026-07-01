@@ -20,7 +20,7 @@ def _make_registry() -> NodeRegistry:
                 stack="python-fastapi",
                 port=9001,
                 health_path="/health",
-                proxy_path="/my-svc",
+                subdomain="my-svc",
                 managed=True,
             ),
             "my-job": Deployment(
@@ -54,7 +54,7 @@ class TestRegistrySerialization:
         assert svc.runner == "python"
         assert svc.port == 9001
         assert svc.health_path == "/health"
-        assert svc.proxy_path == "/my-svc"
+        assert svc.subdomain == "my-svc"
         assert svc.managed is True
         assert svc.behavior == "daemon"
         assert svc.stack == "python-fastapi"
@@ -82,7 +82,7 @@ class TestRegistrySerialization:
         bare = restored.deployed["bare"]
         assert bare.port is None
         assert bare.health_path is None
-        assert bare.proxy_path is None
+        assert bare.subdomain is None
         assert bare.schedule is None
         assert bare.managed is False
 

@@ -121,7 +121,7 @@ def run_create(args: argparse.Namespace) -> int:
                     health_path="/health",
                 )
             ),
-            proxy=ProxySpec(caddy=CaddySpec(path_prefix=f"/{name}")),
+            proxy=ProxySpec(caddy=CaddySpec()),  # expose at <name>.<gateway.domain>
             manage=ManageSpec(systemd=SystemdSpec()),
             # python-fastapi scaffold reads env_prefix MY_SERVICE_ — map castle's
             # computed port/data dir to those vars (explicit, no hidden injection).

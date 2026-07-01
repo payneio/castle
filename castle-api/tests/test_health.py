@@ -32,7 +32,7 @@ class TestComponents:
         svc = next(c for c in data if c["id"] == "test-svc")
         assert svc["port"] == 19000
         assert svc["health_path"] == "/health"
-        assert svc["proxy_path"] == "/test-svc"
+        assert svc["subdomain"] == "test-svc"
         assert svc["managed"] is True
         assert svc["behavior"] == "daemon"
 
@@ -89,7 +89,7 @@ class TestServicesList:
         svc = next(s for s in data if s["id"] == "test-svc")
         assert svc["port"] == 19000
         assert svc["health_path"] == "/health"
-        assert svc["proxy_path"] == "/test-svc"
+        assert svc["subdomain"] == "test-svc"
         assert svc["managed"] is True
 
     def test_no_schedule_field(self, client: TestClient) -> None:
@@ -255,7 +255,8 @@ class TestGateway:
         """Returns the full route table, tagged with kind + target."""
         response = client.get("/gateway")
         data = response.json()
-        route = next(r for r in data["routes"] if r["address"] == "/test-svc")
+        # Address is the subdomain label (the service name), not a path.
+        route = next(r for r in data["routes"] if r["address"] == "test-svc")
         assert route["kind"] == "proxy"
         assert route["target"] == "localhost:19000"
         assert route["name"] == "test-svc"

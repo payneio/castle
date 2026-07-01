@@ -53,7 +53,7 @@ def _deployed_to_summaries(registry: object, hostname: str) -> list[DeploymentSu
                 runner=d.runner,
                 port=d.port,
                 health_path=d.health_path,
-                proxy_path=d.proxy_path,
+                subdomain=d.subdomain,
                 managed=d.managed,
                 schedule=d.schedule,
                 node=hostname,

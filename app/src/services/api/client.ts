@@ -1,4 +1,22 @@
-const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "/api"
+// Resolve the castle-api base URL. The gateway serves each service at its own
+// subdomain (<name>.<domain>), so when the dashboard runs at castle-app.<domain>
+// the API lives at castle-api.<domain> — a cross-origin call (castle-api allows
+// CORS *). When served at a bare host (dev, or the off-mode :9000 gateway), the
+// API is reachable same-origin at /api.
+function resolveApiBase(): string {
+  const configured = import.meta.env.VITE_API_BASE_URL
+  if (configured) return configured
+  if (typeof window !== "undefined") {
+    const { protocol, hostname } = window.location
+    const labels = hostname.split(".")
+    if (labels.length > 2) {
+      return `${protocol}//castle-api.${labels.slice(1).join(".")}`
+    }
+  }
+  return "/api"
+}
+
+const BASE_URL = resolveApiBase()
 
 class ApiError extends Error {
   status: number

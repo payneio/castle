@@ -46,45 +46,34 @@ class GatewayRoute:
         return not self.address.startswith("/")
 
 
-# (proxy_path, proxy_host, port, base_url) for a service's gateway route(s).
-ProxyTargets = tuple[str | None, str | None, int | None, str | None]
+# (expose?, port, base_url) — expose=True → route <service-name>.<domain> here.
+ProxyTargets = tuple[bool, int | None, str | None]
 
 
 def service_proxy_targets(name: str, svc: ServiceSpec) -> ProxyTargets:
-    """Derive a service's gateway routing fields from its spec.
+    """Derive a service's gateway exposure from its spec.
 
     The single source of truth shared by the registry build (``deploy``) and
-    route computation (``compute_routes``), so the deployed registry and a
-    freshly regenerated Caddyfile can never disagree about ports/paths/hosts.
+    route computation (``compute_routes``), so they never disagree. ``expose`` is
+    the checkbox (``proxy.caddy`` present and enabled); the subdomain is always the
+    service name, so there's nothing else to derive.
     """
     port = None
     if svc.expose and svc.expose.http:
         port = svc.expose.http.internal.port
-
-    proxy_path = None
-    proxy_host = None
-    if svc.proxy and svc.proxy.caddy and svc.proxy.caddy.enable:
-        caddy = svc.proxy.caddy
-        proxy_host = caddy.host
-        if caddy.path_prefix:
-            proxy_path = caddy.path_prefix
-        elif not caddy.host:
-            # No explicit path and no host → default to /<name>.
-            proxy_path = f"/{name}"
-
+    expose = bool(svc.proxy and svc.proxy.caddy and svc.proxy.caddy.enable)
     base_url = getattr(svc.run, "base_url", None)
-    return proxy_path, proxy_host, port, base_url
+    return expose, port, base_url
 
 
-def _local_proxy_targets(
+def _local_exposures(
     config: CastleConfig | None, registry: NodeRegistry
 ) -> list[tuple[str, ProxyTargets]]:
-    """Local services' routing fields, name-sorted for deterministic output.
+    """Each local service's (expose?, port, base_url), name-sorted.
 
     Prefers ``castle.yaml`` (``config.services``) as the source of truth so a
-    regenerated Caddyfile always reflects the current spec — this is what closes
-    the registry-staleness drift. Falls back to the deployed registry snapshot
-    only when config isn't available (load failed, or a pure-registry context).
+    regenerated Caddyfile always reflects the current spec; falls back to the
+    deployed registry snapshot when config isn't available.
     """
     services = getattr(config, "services", None)
     if services is not None:
@@ -92,7 +81,7 @@ def _local_proxy_targets(
             (name, service_proxy_targets(name, svc)) for name, svc in services.items()
         )
     return sorted(
-        (name, (d.proxy_path, d.proxy_host, d.port, d.base_url))
+        (name, (d.subdomain is not None, d.port, d.base_url))
         for name, d in registry.deployed.items()
     )
 
@@ -102,10 +91,11 @@ def compute_routes(
     config: CastleConfig | None = None,
     remote_registries: dict[str, NodeRegistry] | None = None,
 ) -> list[GatewayRoute]:
-    """Build the full ordered list of gateway routes (host, proxy, remote, static).
-
-    Order matters for Caddy precedence: host matchers first, then path proxies,
-    then cross-node, then static frontends (the root app last)."""
+    """Build the ordered list of gateway routes. Every route is a host route whose
+    address is the service/frontend **name** (published at ``<name>.<domain>``);
+    ``proxy`` routes reverse-proxy a local port, ``static`` routes file-serve a
+    frontend's dist. Path routes no longer exist. ``remote_registries`` is accepted
+    for signature compatibility but cross-node routing is out of scope here."""
     if config is None:
         try:
             from castle_core.config import load_config
@@ -116,38 +106,15 @@ def compute_routes(
 
     node = registry.node.hostname
     routes: list[GatewayRoute] = []
-    local_paths: set[str] = set()
 
-    # Local proxy routes, derived from castle.yaml when available (else the
-    # deployed registry) so a regenerated Caddyfile tracks the current spec.
-    local = _local_proxy_targets(config, registry)
-
-    # Host-based proxy routes (whole host → backend root).
-    for name, (proxy_path, proxy_host, port, base_url) in local:
-        if proxy_host and (port or base_url):
+    # Exposed services → a subdomain reverse-proxy (address = service name).
+    for name, (expose, port, base_url) in _local_exposures(config, registry):
+        if expose and (port or base_url):
             target = base_url or f"localhost:{port}"
-            routes.append(GatewayRoute(proxy_host, "proxy", target, name, node))
-
-    # Path-prefix proxy routes.
-    for name, (proxy_path, proxy_host, port, base_url) in local:
-        if proxy_path and (port or base_url):
-            local_paths.add(proxy_path)
-            target = base_url or f"localhost:{port}"
-            routes.append(GatewayRoute(proxy_path, "proxy", target, name, node))
-
-    # Cross-node routes — local paths take precedence.
-    if remote_registries:
-        for hostname, remote_reg in remote_registries.items():
-            for name, d in remote_reg.deployed.items():
-                if d.proxy_path and d.port and d.proxy_path not in local_paths:
-                    local_paths.add(d.proxy_path)
-                    routes.append(
-                        GatewayRoute(d.proxy_path, "remote", f"{hostname}:{d.port}", name, hostname)
-                    )
+            routes.append(GatewayRoute(name, "proxy", target, name, node))
 
     # Static frontends — a behavior=frontend program with build outputs and no
-    # service of its own; served in place from <source>/<dist>. castle-app is the
-    # root app (/), others mount at /<name>.
+    # service of its own; served in place from <source>/<dist> at <name>.<domain>.
     if config is not None:
         for name, prog in sorted(config.programs.items()):
             if prog.behavior != "frontend" or not prog.source:
@@ -157,10 +124,7 @@ def compute_routes(
             if name in config.services:  # self-serving frontend → already a proxy route
                 continue
             serve_dir = str(Path(prog.source) / prog.build.outputs[0])
-            address = "/" if name == "castle-app" else f"/{name}"
-            if address != "/" and address in local_paths:
-                continue
-            routes.append(GatewayRoute(address, "static", serve_dir, name, node))
+            routes.append(GatewayRoute(name, "static", serve_dir, name, node))
 
     return routes
 
@@ -180,33 +144,51 @@ def _host_matcher_block(label: str, host: str, target: str) -> list[str]:
     ]
 
 
+def _host_static_block(label: str, host: str, serve_dir: str) -> list[str]:
+    """A host matcher that file-serves a frontend's dist (with SPA fallback)."""
+    matcher = f"@host_{label.replace('-', '_').replace('.', '_')}"
+    return [
+        f"    {matcher} host {host}",
+        f"    handle {matcher} {{",
+        f"        root * {serve_dir}",
+        "        try_files {path} /index.html",
+        "        file_server",
+        "    }",
+        "",
+    ]
+
+
+# Castle's own control plane: the dashboard frontend and the API it calls. These
+# names are the subdomains they're published at in acme mode, and the pair served
+# on the :<port> site in off mode (no domain → no subdomains).
+_DASHBOARD = "castle-app"
+_API = "castle-api"
+
+
 def generate_caddyfile_from_registry(
     registry: NodeRegistry,
     remote_registries: dict[str, NodeRegistry] | None = None,
 ) -> str:
-    """Render the route list to a Caddyfile.
+    """Render the routes to a Caddyfile. Every exposed service/frontend is a
+    subdomain `<name>.<domain>`; there are no path routes.
 
     Two modes, set by `gateway.tls`:
 
-    - **off (default)** — HTTP-only. Everything (host matchers + path prefixes +
-      static) lives in one `:<port>` site with `auto_https off`, so a named host
-      can't pull the listener into TLS or try to bind :80/:443.
-    - **acme** — host routes are served under a single `*.<domain>` site with a
-      real Let's Encrypt **wildcard** cert obtained via a DNS-01 challenge (one
-      cert for all of them). Publicly trusted → no CA install on clients. Each
-      host route is published at `<label>.<domain>`, where `<label>` is the first
-      DNS label of the service's `proxy.caddy.host` (so a bare `claw`, or a legacy
-      `claw.civil.lan`, both yield `claw.<domain>`). Requires `gateway.domain`;
-      the DNS provider token reaches Caddy via `{env.<TOKEN>}`.
+    - **acme** — one `*.<domain>` site (a single DNS-01 wildcard cert) with a host
+      matcher per route: `reverse_proxy` for services, `file_server` for frontends.
+      The `:<port>` site just redirects to the dashboard subdomain (the "browse to
+      the box by IP" entry).
+    - **off / no domain** — no subdomains available, so the `:<port>` site serves
+      castle's control plane only: the dashboard at `/` + `reverse_proxy /api/*` →
+      castle-api (the one surviving path, for the dashboard's own backend). Other
+      services are reachable at their `host:port` directly.
     """
     routes = compute_routes(registry, None, remote_registries)
     node = registry.node
     gw_port = node.gateway_port
     mode = (node.gateway_tls or "").lower()
     domain = node.gateway_domain
-    tls_acme = mode == "acme" and bool(domain)  # acme without a domain → off-mode
-
-    host_routes = [r for r in routes if r.is_host]
+    tls_acme = mode == "acme" and bool(domain)
     lines: list[str] = []
 
     if tls_acme:
@@ -220,80 +202,48 @@ def generate_caddyfile_from_registry(
         if os.environ.get("CASTLE_ACME_STAGING") == "1":
             lines.append(f"    acme_ca {_ACME_STAGING_CA}")
         lines += ["}", ""]
-        # One wildcard site → a single DNS-01 cert covers every host route, so a
-        # new host-routed service needs no new cert or challenge. The published
-        # subdomain is the host's first label (a bare `claw` or `claw.civil.lan`
-        # both → `claw.<domain>`), keeping services domain-agnostic.
-        if host_routes:
+        # One wildcard site → a single cert covers every subdomain; a new service
+        # needs no new cert or challenge.
+        if routes:
             lines.append(f"*.{domain} {{")
-            for r in host_routes:
-                sub = (r.address.split(".")[0] if r.address else "") or r.name or ""
-                lines += _host_matcher_block(r.name or r.address, f"{sub}.{domain}", r.target)
+            for r in routes:
+                host = f"{r.address}.{domain}"
+                if r.kind == "static":
+                    lines += _host_static_block(r.name or r.address, host, r.target)
+                else:
+                    lines += _host_matcher_block(r.name or r.address, host, r.target)
             lines.append("}")
             lines.append("")
-    else:
-        # HTTP-only: keep auto-HTTPS off so the bare-port site stays plain HTTP
-        # and named hosts don't trigger cert provisioning.
-        if mode == "acme" and not domain:
-            lines.append("# gateway.tls=acme but gateway.domain is unset — host routes")
-            lines.append("# fall back to plain-HTTP matchers on the gateway port.")
-        lines += ["{", "    auto_https off", "}", ""]
-
-    lines.append(f":{gw_port} {{")
-
-    # Trailing-slash redirect: `handle_path /foo/*` doesn't match the bare `/foo`,
-    # so without this the no-slash form falls through to the root catch-all
-    # (serving the wrong app). Redirect /foo → /foo/ for each path-prefix route.
-    # (Caddy's bare path matcher is exact, so /foo/bar is unaffected.)
-    redirs = [r.address for r in routes if r.address.startswith("/") and r.address != "/"]
-    for prefix in redirs:
-        lines.append(f"    redir {prefix} {prefix}/")
-    if redirs:
-        lines.append("")
-
-    root_static: GatewayRoute | None = None
-    for r in routes:
-        if r.kind == "static" and r.address == "/":
-            root_static = r  # the root app is the catch-all, emitted last
-            continue
-        if r.kind == "static":
-            lines += [
-                f"    handle_path {r.address}/* {{",
-                f"        root * {r.target}",
-                "        try_files {path} /index.html",
-                "        file_server",
-                "    }",
-                "",
-            ]
-        elif r.is_host:  # host-based proxy
-            if tls_acme:
-                continue  # emitted in the *.<domain> wildcard site above
-            lines += _host_matcher_block(r.name or r.address, r.address, r.target)
-        else:  # path-prefix proxy (local or remote)
-            if r.kind == "remote":
-                lines.append(f"    # {r.name} on {r.node}")
-            lines += [
-                f"    handle_path {r.address}/* {{",
-                f"        reverse_proxy {r.target}",
-                "    }",
-                "",
-            ]
-
-    if root_static is not None:
+        # Redirect the bare gateway port to the dashboard subdomain.
         lines += [
-            "    handle {",
-            f"        root * {root_static.target}",
-            "        try_files {path} /index.html",
-            "        file_server",
-            "    }",
+            f":{gw_port} {{",
+            f"    redir https://{_DASHBOARD}.{domain}{{uri}}",
+            "}",
         ]
-    else:
-        lines += [
-            "    handle / {",
-            f"        root * {SPECS_DIR / 'app'}",
-            "        file_server",
-            "    }",
-        ]
+        return "\n".join(lines)
 
-    lines.append("}")
+    # off mode: HTTP-only control plane on :<port>.
+    if mode == "acme" and not domain:
+        lines.append("# gateway.tls=acme but gateway.domain is unset — serving the")
+        lines.append("# control plane on the gateway port; services are port-only.")
+    lines += ["{", "    auto_https off", "}", "", f":{gw_port} {{"]
+
+    api = next((r for r in routes if r.name == _API and r.kind == "proxy"), None)
+    if api is not None:
+        lines += [
+            "    handle_path /api/* {",
+            f"        reverse_proxy {api.target}",
+            "    }",
+            "",
+        ]
+    app = next((r for r in routes if r.name == _DASHBOARD and r.kind == "static"), None)
+    root = app.target if app is not None else str(SPECS_DIR / "app")
+    lines += [
+        "    handle {",
+        f"        root * {root}",
+        "        try_files {path} /index.html",
+        "        file_server",
+        "    }",
+        "}",
+    ]
     return "\n".join(lines)

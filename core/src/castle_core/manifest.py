@@ -146,12 +146,10 @@ class ExposeSpec(BaseModel):
 
 
 class CaddySpec(BaseModel):
+    # The "expose" checkbox: when present and enabled, the gateway routes
+    # <service-name>.<gateway.domain> to this service (whole host → backend root).
+    # The subdomain is always the service name — rename the service to change it.
     enable: bool = True
-    path_prefix: str | None = None
-    # Route by hostname instead of (or alongside) a path prefix. The whole host
-    # maps to the backend root, so an app built with base="/" works unchanged —
-    # the fix for proxying a root-based SPA the gateway can't rebuild.
-    host: str | None = None
     extra_snippets: list[str] = Field(default_factory=list)
 
 

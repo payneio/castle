@@ -267,10 +267,10 @@ def _build_deployed_service(
     if svc.manage and svc.manage.systemd and not svc.manage.systemd.enable:
         managed = False
 
-    # Routing fields (port/proxy_path/proxy_host/base_url) come from the shared
-    # deriver, so the registry written here and the Caddyfile computed from
-    # castle.yaml stay in lockstep.
-    proxy_path, proxy_host, port, base_url = service_proxy_targets(name, svc)
+    # Routing comes from the shared deriver, so the registry written here and the
+    # Caddyfile computed from castle.yaml stay in lockstep. `expose` is the
+    # checkbox; the subdomain is the service name.
+    expose, port, base_url = service_proxy_targets(name, svc)
     health_path = None
     if svc.expose and svc.expose.http:
         health_path = svc.expose.http.health_path
@@ -301,26 +301,10 @@ def _build_deployed_service(
     )
     stop_cmd = _build_stop_cmd(name, run, source_dir)
 
-    # Proxy: a path prefix (handle_path on the gateway) and/or a hostname (a
-    # dedicated host site block, so a root-based app serves unchanged).
-    proxy_path = None
-    proxy_host = None
-    if svc.proxy and svc.proxy.caddy and svc.proxy.caddy.enable:
-        caddy = svc.proxy.caddy
-        proxy_host = caddy.host
-        if caddy.path_prefix:
-            proxy_path = caddy.path_prefix
-        elif not caddy.host:
-            # No explicit path and no host → default to /<name>.
-            proxy_path = f"/{name}"
-
     # Resolve stack from referenced program
     stack = None
     if svc.program and svc.program in config.programs:
         stack = config.programs[svc.program].stack
-
-    # Remote services proxy to an external base_url
-    base_url = getattr(run, "base_url", None)
 
     return Deployment(
         runner=run.runner,
@@ -333,8 +317,7 @@ def _build_deployed_service(
         stack=stack,
         port=port,
         health_path=health_path,
-        proxy_path=proxy_path,
-        proxy_host=proxy_host,
+        subdomain=(name if expose else None),
         base_url=base_url,
         managed=managed,
     )
@@ -576,8 +559,8 @@ def _format_deployed(name: str, deployed: Deployment) -> str:
         parts.append(f"port={deployed.port}")
     if deployed.schedule:
         parts.append(f"schedule={deployed.schedule}")
-    if deployed.proxy_path:
-        parts.append(f"proxy={deployed.proxy_path}")
+    if deployed.subdomain:
+        parts.append(f"subdomain={deployed.subdomain}")
     return " ".join(parts)
 
 

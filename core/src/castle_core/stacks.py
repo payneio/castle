@@ -71,11 +71,10 @@ async def _run(
 def _vite_base(name: str) -> str:
     """The base path a castle-served static frontend builds against.
 
-    Matches the Caddyfile serve prefix: castle-app is the root app ('/'); every
-    other static frontend mounts at '/<name>/'. Exposed to the build as VITE_BASE
-    so the bundle's absolute asset URLs resolve at the gateway subpath (the
-    vite.config reads `base: process.env.VITE_BASE ?? '/'`)."""
-    return "/" if name == "castle-app" else f"/{name}/"
+    Every frontend now serves at the **root of its own subdomain**
+    (`<name>.<gateway.domain>`), so the base is always '/'. Exposed to the build
+    as VITE_BASE (the vite.config reads `base: process.env.VITE_BASE ?? '/'`)."""
+    return "/"
 
 
 def _source_dir(comp: ProgramSpec, root: Path) -> Path:

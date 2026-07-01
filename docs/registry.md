@@ -80,7 +80,7 @@ expose:
     internal: { port: 9001 }
     health_path: /health
 proxy:
-  caddy: { path_prefix: /my-service }
+  caddy: {}   # expose at my-service.<gateway.domain>
 manage:
   systemd: {}
 ```
@@ -270,58 +270,44 @@ expose:
     health_path: /health     # Used by health polling
 ```
 
-### `proxy` — How the gateway routes to it
+### `proxy` — Expose the service at a subdomain
+
+`proxy.caddy` is a **checkbox**: present (and `enable: true`, the default) means the
+gateway routes **`<service-name>.<gateway.domain>`** to this service; absent means
+the service is reachable only at its own `host:port`.
 
 ```yaml
 proxy:
-  caddy:
-    path_prefix: /my-service   # reachable at gateway:9000/my-service/
-    host: my-service.lan       # …or by hostname (whole host → backend root)
+  caddy: {}   # expose at <service-name>.<gateway.domain>
 ```
 
-Castle generates the Caddyfile from these entries. Only needed for services
-reachable through the gateway.
+The subdomain is always the service name — there's nothing to customize (rename the
+service to change it). There are **no path-prefix routes**: a whole subdomain maps
+to the backend root, so root-relative asset URLs and `window.location`-derived
+WebSocket URLs just work (the failure mode of the old prefix-stripping `handle_path`
+routes is gone). Caddy proxies WebSocket upgrades transparently.
 
-**Gateway routes — one concept, three target kinds.** The gateway (`:9000`) maps
-a public **address** (a path prefix `/foo`, or a host `foo.lan`) to a **target**:
+**Gateway routes — one concept, three target kinds.** The gateway maps a public
+**address** (always a subdomain host, `<name>.<domain>`) to a **target**:
 
 | Kind | Target | Declared by |
 |------|--------|-------------|
 | **proxy** | a local service on a port — Caddy `reverse_proxy localhost:PORT` | a service's `proxy.caddy` |
-| **remote** | a service on another node — `reverse_proxy host:PORT` | mesh discovery |
-| **static** | a built frontend's `dist/` — Caddy `file_server` (no process) | a `frontend` program with `build.outputs` and **no** service (implicit; served at `/<name>/`, `castle-app` at `/`) |
+| **static** | a built frontend's `dist/` — Caddy `file_server` (no process) | a `frontend` program with `build.outputs` and **no** service (auto-exposed at `<name>.<domain>`) |
+| **remote** | a service on another node | mesh discovery (out of scope of the single-node gateway) |
 
-"Serving a frontend" and "proxying a service" are the same thing — a route —
-differing only in whether the target is files on disk or a live process. The
-complete table (all kinds) is shown by `castle gateway status`, the dashboard
-Gateway panel, and `GET /gateway`; the Caddyfile is generated from it.
+"Serving a frontend" and "proxying a service" are the same thing — a subdomain
+route — differing only in whether the target is files on disk or a live process.
+The table is shown by `castle gateway status`, the dashboard Gateway panel, and
+`GET /gateway`; the Caddyfile is generated from it.
 
-#### Path prefix vs host route — pick by whether the app is prefix-aware
-
-A `path_prefix: /foo` route is generated as Caddy `handle_path /foo/*`, which
-**strips** the prefix before proxying — the backend sees requests at `/`. That's
-right for a service that doesn't care what path it's mounted under. It **breaks**
-apps that assume they sit at the origin root, because the public path (`/foo/…`)
-and the path the backend sees (`/…`) no longer agree. Tell-tale symptoms:
-
-- absolute asset URLs (`/assets/app.js`) 404 — they resolve at the gateway root,
-  not under `/foo/`, and fall through to the wrong handler;
-- a **WebSocket** fails to connect: a browser app that derives its WS URL from
-  `window.location` will aim at `ws://host/foo` (no trailing slash), which hits
-  the `redir /foo → /foo/` rule — and a WS handshake can't follow a redirect.
-
-For such an app, use a **host route** instead — `host: foo.lan`, no `path_prefix`:
-
-```yaml
-proxy:
-  caddy:
-    host: foo.lan        # whole host → backend root; nothing is stripped
-```
-
-This proxies the whole hostname to the backend's root, so the public path and the
-backend path match and root-relative assets/WS URLs just work. (Caddy proxies
-WebSocket upgrades transparently in both modes — stripping, not the upgrade, is
-what bites prefix-unaware apps.)
+**The dashboard and its API.** `castle-app` (the dashboard frontend) and
+`castle-api` are just two such subdomains (`castle-app.<domain>`,
+`castle-api.<domain>`); the dashboard calls the API **cross-origin** (castle-api
+allows CORS `*`). The bare gateway port (`:9000`) redirects to the dashboard
+subdomain. On a node with **no domain** (`gateway.tls: off`), there are no
+subdomains, so `:9000` serves just the control plane — the dashboard at `/` plus a
+`/api` reverse-proxy to castle-api — and other services stay port-only.
 
 #### Host routes need DNS, and the gateway is HTTP-only
 
@@ -332,7 +318,7 @@ dnsmasq wildcard routes every subdomain to the gateway, so each new host-routed
 service works with no further DNS edits:
 
 ```
-address=/<node>.lan/<node-ip>      # e.g. address=/civil.lan/192.168.8.222
+address=/<node>.lan/<node-ip>      # e.g. address=/node.lan/192.0.2.10
 ```
 
 Pin `<node-ip>` with a DHCP reservation — the wildcard hardcodes it.
@@ -376,7 +362,7 @@ every browser trusts it with **zero CA install** — while the services stay
 gateway:
   port: 9000
   tls: acme
-  domain: civil.payne.io          # wildcard cert *.civil.payne.io; host routes → <label>.civil.payne.io
+  domain: example.com          # wildcard cert *.example.com; services → <name>.example.com
   acme_email: you@example.com
   acme_dns_provider: cloudflare   # default
 ```
@@ -387,9 +373,9 @@ gateway:
     acme_dns cloudflare {env.CLOUDFLARE_API_TOKEN}
 }
 
-*.civil.payne.io {
-    @host_claw host claw.civil.payne.io
-    handle @host_claw {
+*.example.com {
+    @host_openclaw host openclaw.example.com
+    handle @host_openclaw {
         reverse_proxy localhost:18789
     }
 }
@@ -401,12 +387,10 @@ it needs **no inbound exposure and no public A records** for the services. Only 
 **LAN DNS** resolves `*.<domain>` to the gateway's private IP. (HTTP-01 can't
 validate a wildcard, so DNS-01 — and thus the provider token — is mandatory here.)
 
-Host-route subdomains come from the **first label of `proxy.caddy.host`**: a
-service declares `host: claw` (or a legacy `claw.civil.lan`) and is published at
-`claw.<domain>`. Only the label matters — the domain is the gateway's, so services
-stay domain-agnostic (switching `gateway.domain` needs no service edits). One
-`*.<domain>` site means a single cert covers every host route — adding a service
-needs no new cert.
+Every subdomain is the **service name**: a service checks the `proxy.caddy` box and
+is published at `<name>.<domain>`. Services stay domain-agnostic (switching
+`gateway.domain` needs no service edits). One `*.<domain>` site means a single cert
+covers every route — adding a service needs no new cert.
 
 Setup (the parts castle can't do for you):
 
@@ -422,10 +406,10 @@ Setup (the parts castle can't do for you):
       CLOUDFLARE_API_TOKEN: ${secret:CLOUDFLARE_API_TOKEN}
   ```
   `castle deploy` warns if the domain, this env var, or the secret is missing.
-- **LAN DNS.** Point `*.<domain>` at the gateway's private IP on your LAN
-  resolver. For a `*.payne.io` subdomain that's **wild-central's dnsmasq** (the
-  router already forwards `*.payne.io` there): `address=/civil.payne.io/<gateway-ip>`.
-  The public zone gets no A records, so services aren't externally reachable.
+- **LAN DNS.** Add a wildcard on your LAN's DNS server (usually the router)
+  pointing `*.<domain>` at the gateway's private IP — `address=/<domain>/<gateway-ip>`
+  (dnsmasq) or the equivalent A record. The public zone gets no A records, so
+  services aren't externally reachable.
 - **Staging first.** Set `CASTLE_ACME_STAGING=1` to use Let's Encrypt's staging CA
   (its rate limits are generous) while verifying issuance, then unset it and
   redeploy to get a browser-trusted production cert. Verify with
@@ -577,7 +561,7 @@ services:
         internal: { port: 9001 }
         health_path: /health
     proxy:
-      caddy: { path_prefix: /my-service }
+      caddy: {}   # expose at my-service.<gateway.domain>
     manage:
       systemd: {}
 ```

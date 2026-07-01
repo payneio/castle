@@ -92,9 +92,9 @@ class TestServiceSpec:
         s = ServiceSpec(
             id="svc",
             run=RunPython(runner="python", program="svc"),
-            proxy=ProxySpec(caddy=CaddySpec(path_prefix="/svc")),
+            proxy=ProxySpec(caddy=CaddySpec()),
         )
-        assert s.proxy.caddy.path_prefix == "/svc"
+        assert s.proxy.caddy.enable is True
 
     def test_service_with_manage(self) -> None:
         """Service with systemd management."""
@@ -185,10 +185,10 @@ class TestModelSerialization:
                     internal=HttpInternal(port=9001), health_path="/health"
                 )
             ),
-            proxy=ProxySpec(caddy=CaddySpec(path_prefix="/svc")),
+            proxy=ProxySpec(caddy=CaddySpec()),
             manage=ManageSpec(systemd=SystemdSpec()),
         )
         data = s.model_dump(exclude_none=True, exclude={"id"})
         assert data["run"]["runner"] == "python"
         assert data["expose"]["http"]["internal"]["port"] == 9001
-        assert data["proxy"]["caddy"]["path_prefix"] == "/svc"
+        assert data["proxy"]["caddy"]["enable"] is True

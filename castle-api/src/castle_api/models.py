@@ -22,7 +22,7 @@ class DeploymentSummary(BaseModel):
     runner: str | None = None
     port: int | None = None
     health_path: str | None = None
-    proxy_path: str | None = None
+    subdomain: str | None = None  # exposed at <subdomain>.<gateway.domain>, else None
     managed: bool = False
     systemd: SystemdInfo | None = None
     version: str | None = None
@@ -53,8 +53,7 @@ class ServiceSummary(BaseModel):
     run_target: str | None = None  # what it runs: program name, argv, image, …
     port: int | None = None
     health_path: str | None = None
-    proxy_path: str | None = None
-    proxy_host: str | None = None
+    subdomain: str | None = None  # exposed at <subdomain>.<gateway.domain>, else None
     managed: bool = False
     systemd: SystemdInfo | None = None
     program: str | None = None  # the program this deployment references, if any

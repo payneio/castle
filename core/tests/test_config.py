@@ -46,7 +46,7 @@ class TestLoadConfig:
         """Service has correct proxy spec."""
         config = load_config(castle_root)
         svc = config.services["test-svc"]
-        assert svc.proxy.caddy.path_prefix == "/test-svc"
+        assert svc.proxy.caddy.enable is True  # exposed at <name>.<gateway.domain>
 
     def test_service_run_spec(self, castle_root: Path) -> None:
         """Service has correct RunSpec."""

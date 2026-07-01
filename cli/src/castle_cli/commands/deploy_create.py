@@ -71,14 +71,8 @@ def run_service_create(args: argparse.Namespace) -> int:
             )
         )
         if not args.no_proxy:
-            path = args.path
-            if args.path:
-                path = args.path if args.path.startswith("/") else f"/{args.path}"
-            elif args.host:
-                path = None
-            else:
-                path = f"/{name}"
-            proxy = ProxySpec(caddy=CaddySpec(path_prefix=path, host=args.host))
+            # Expose at <name>.<gateway.domain> (the subdomain is the service name).
+            proxy = ProxySpec(caddy=CaddySpec())
 
     config.services[name] = ServiceSpec(
         id=name,
@@ -97,10 +91,7 @@ def run_service_create(args: argparse.Namespace) -> int:
     if expose:
         print(f"  port:   {args.port}")
     if proxy and proxy.caddy:
-        if proxy.caddy.path_prefix:
-            print(f"  proxy:  {proxy.caddy.path_prefix}")
-        if proxy.caddy.host:
-            print(f"  host:   {proxy.caddy.host}")
+        print(f"  subdomain: {name}.<gateway.domain>")
     print(f"\nNext: castle service deploy {name} && castle service start {name}")
     return 0
 

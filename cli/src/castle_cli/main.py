@@ -90,9 +90,11 @@ def _add_service_create(sub: argparse._SubParsersAction, kind: str) -> None:
     if kind == "service":
         p.add_argument("--port", type=int, help="HTTP port")
         p.add_argument("--health", default="/health", help="Health path (default: /health)")
-        p.add_argument("--path", help="Gateway proxy prefix (default: /<name>)")
-        p.add_argument("--host", help="Route by hostname instead of a path prefix")
-        p.add_argument("--no-proxy", action="store_true", help="Don't add a gateway route")
+        p.add_argument(
+            "--no-proxy",
+            action="store_true",
+            help="Port-only; don't expose at <name>.<gateway.domain>",
+        )
     else:
         p.add_argument("--schedule", default="0 2 * * *", help="Cron schedule (default: 0 2 * * *)")
 

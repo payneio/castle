@@ -119,10 +119,8 @@ def run_info(args: argparse.Namespace) -> int:
             print(f"  {BOLD}port{RESET}:        {http.internal.port}")
             if http.health_path:
                 print(f"  {BOLD}health{RESET}:      {http.health_path}")
-        if service.proxy and service.proxy.caddy:
-            caddy = service.proxy.caddy
-            if caddy.path_prefix:
-                print(f"  {BOLD}path{RESET}:        {caddy.path_prefix}")
+        if service.proxy and service.proxy.caddy and service.proxy.caddy.enable:
+            print(f"  {BOLD}subdomain{RESET}:   {name}.<gateway.domain>")
         if service.manage and service.manage.systemd:
             sd = service.manage.systemd
             print(f"  {BOLD}systemd{RESET}:     enabled={sd.enable}, restart={sd.restart.value}")

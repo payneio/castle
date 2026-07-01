@@ -118,7 +118,7 @@ def registry_path(tmp_path: Path, castle_root: Path) -> Generator[Path, None, No
                 behavior="daemon",
                 port=19000,
                 health_path="/health",
-                proxy_path="/test-svc",
+                subdomain="test-svc",
                 managed=True,
             ),
         },

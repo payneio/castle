@@ -86,7 +86,7 @@ def _summary_from_deployed(name: str, deployed: object) -> DeploymentSummary:
         runner=deployed.runner,
         port=deployed.port,
         health_path=deployed.health_path,
-        proxy_path=deployed.proxy_path,
+        subdomain=deployed.subdomain,
         managed=managed,
         systemd=systemd_info,
         schedule=deployed.schedule,
@@ -100,12 +100,10 @@ def _summary_from_service(
     """Build a DeploymentSummary from a ServiceSpec (non-deployed)."""
     port = None
     health_path = None
-    proxy_path = None
     if svc.expose and svc.expose.http:
         port = svc.expose.http.internal.port
         health_path = svc.expose.http.health_path
-    if svc.proxy and svc.proxy.caddy:
-        proxy_path = svc.proxy.caddy.path_prefix
+    subdomain = name if (svc.proxy and svc.proxy.caddy and svc.proxy.caddy.enable) else None
 
     managed = bool(svc.manage and svc.manage.systemd and svc.manage.systemd.enable)
 
@@ -138,7 +136,7 @@ def _summary_from_service(
         runner=runner,
         port=port,
         health_path=health_path,
-        proxy_path=proxy_path,
+        subdomain=subdomain,
         managed=managed,
         systemd=systemd_info,
         source=source,
@@ -266,8 +264,7 @@ def _service_from_deployed(name: str, deployed: object) -> ServiceSummary:
         run_target=run_target,
         port=deployed.port,
         health_path=deployed.health_path,
-        proxy_path=deployed.proxy_path,
-        proxy_host=deployed.proxy_host,
+        subdomain=deployed.subdomain,
         managed=deployed.managed,
         systemd=systemd_info,
     )
@@ -277,12 +274,11 @@ def _service_from_spec(name: str, svc: ServiceSpec, config: object) -> ServiceSu
     """Build a ServiceSummary from a ServiceSpec."""
     port = None
     health_path = None
-    proxy_path = None
     if svc.expose and svc.expose.http:
         port = svc.expose.http.internal.port
         health_path = svc.expose.http.health_path
-    if svc.proxy and svc.proxy.caddy:
-        proxy_path = svc.proxy.caddy.path_prefix
+    # Exposed at <name>.<domain> when the proxy checkbox is on.
+    subdomain = name if (svc.proxy and svc.proxy.caddy and svc.proxy.caddy.enable) else None
 
     managed = bool(svc.manage and svc.manage.systemd and svc.manage.systemd.enable)
     systemd_info = _make_systemd_info(name) if managed else None
@@ -297,7 +293,6 @@ def _service_from_spec(name: str, svc: ServiceSpec, config: object) -> ServiceSu
         source = comp.source
         stack = comp.stack
 
-    proxy_host = svc.proxy.caddy.host if (svc.proxy and svc.proxy.caddy) else None
     return ServiceSummary(
         id=name,
         description=description,
@@ -306,8 +301,7 @@ def _service_from_spec(name: str, svc: ServiceSpec, config: object) -> ServiceSu
         run_target=_run_target(svc.run),
         port=port,
         health_path=health_path,
-        proxy_path=proxy_path,
-        proxy_host=proxy_host,
+        subdomain=subdomain,
         managed=managed,
         systemd=systemd_info,
         program=svc.program,
@@ -512,7 +506,7 @@ def get_service(name: str) -> ServiceDetail:
             "secret_env_keys": deployed.secret_env_keys,
             "port": deployed.port,
             "health_path": deployed.health_path,
-            "proxy_path": deployed.proxy_path,
+            "subdomain": deployed.subdomain,
             "managed": deployed.managed,
             "behavior": deployed.behavior,
             "stack": deployed.stack,
@@ -762,7 +756,7 @@ def list_components(include_remote: bool = False) -> list[DeploymentSummary]:
                             runner=d.runner,
                             port=d.port,
                             health_path=d.health_path,
-                            proxy_path=d.proxy_path,
+                            subdomain=d.subdomain,
                             managed=d.managed,
                             schedule=d.schedule,
                             node=hostname,
@@ -809,7 +803,7 @@ def get_component(name: str) -> DeploymentDetail:
             "secret_env_keys": deployed.secret_env_keys,
             "port": deployed.port,
             "health_path": deployed.health_path,
-            "proxy_path": deployed.proxy_path,
+            "subdomain": deployed.subdomain,
             "managed": deployed.managed,
             "behavior": deployed.behavior,
             "stack": deployed.stack,

@@ -17,73 +17,40 @@ strategy, and any working combination is fine.
 
 ## The gateway is the single ingress
 
-Every reachable service goes through the Caddy **gateway** (`:9000` by default). A
-gateway route maps a public **address** to a **target**. Two address shapes matter
-for DNS and TLS:
+Every gateway-reachable service goes through the Caddy **gateway**. Exposure is a
+single **checkbox** (`proxy.caddy` on a service):
 
-- **path prefix** (`/foo`) — reached at `http://<node>:9000/foo/`. Shares the
-  node's own name/port; needs no per-service DNS. Caddy **strips** the prefix, so
-  this only suits apps that don't assume they live at the origin root.
-- **host route** (`foo.lan`, `foo.example.com`) — reached at `https://foo.…/`. A
-  whole hostname proxied to the backend root, nothing stripped. This is the shape
-  that gets its own DNS name and its own TLS cert.
+- **unchecked** — the service is reachable only at its own `host:port` (no gateway
+  route, no DNS name).
+- **checked** — the gateway routes the whole subdomain **`<service-name>.<domain>`**
+  to the backend root. The subdomain is always the service name.
 
-> **Rule of thumb:** a service that needs HTTPS, a real origin, WebSockets, or
-> root-relative asset URLs wants a **host route**. Path prefixes are for simple,
-> prefix-agnostic backends. See
-> [registry.md](registry.md#path-prefix-vs-host-route--pick-by-whether-the-app-is-prefix-aware)
-> for the failure modes of putting a root-based app under a stripped prefix.
-
-Only host routes are the subject of the rest of this document — they're what DNS
-and TLS act on.
+There are **no path-prefix routes**: a whole subdomain maps to the backend root, so
+root-relative asset URLs and `window.location`-derived WebSocket URLs just work
+(Caddy proxies WebSocket upgrades transparently). Each checked service gets its own
+DNS name and shares the gateway's TLS cert. The rest of this document is about
+making those subdomains **resolve** (DNS) and be **trusted** (TLS).
 
 ## DNS: making a name resolve to the node
 
-A host route does nothing until `foo.…` resolves **to this node** on the clients
-that will use it. Castle does **not** run DNS; it relies on whatever already serves
-your LAN. Two facts shape the approach:
+A subdomain does nothing until it resolves **to this node** on the clients that
+browse it. Castle does **not** run DNS; you add one record to your **LAN's DNS
+server** — usually the router. A single **wildcard** covers every subdomain, so new
+services need no further DNS edits:
 
-- **Resolve on the clients that matter.** A name only needs to resolve for the
-  devices that browse it. That's usually your LAN's DHCP/DNS authority — often the
-  router — not a central or mesh resolver.
-- **One wildcard beats many records.** A single wildcard entry routes every
-  subdomain of a zone to the node, so each new host-routed service works with no
-  further DNS edits.
+```
+address=/<sub>.<domain>/<node-ip>     # dnsmasq (e.g. on the router)
+```
+
+(or the equivalent wildcard `A` record in whatever your router's DNS uses). Pin
+`<node-ip>` with a **DHCP reservation** — the wildcard hardcodes it.
 
 ### Split-horizon: internal names, no public exposure
 
-The names Castle serves resolve **only inside the LAN**. For a private zone this is
-automatic; for a public domain you own, it's deliberate split-horizon — your LAN
-resolver answers with the node's private IP, and the **public** zone has no `A`
-records for the services, so nothing is reachable from the internet.
-
-### Two zone styles
-
-| Zone style | Example | Who's authoritative | Wildcard record |
-|------------|---------|---------------------|-----------------|
-| **private TLD** | `*.civil.lan` | the LAN router/DHCP server (owns `.lan`) | `address=/civil.lan/<node-ip>` |
-| **subdomain of a public domain** | `*.civil.payne.io` | your public DNS host (e.g. Cloudflare), but **answered internally** by a LAN resolver | `address=/civil.payne.io/<node-ip>` |
-
-Both give the same result — every `*.<zone>` name resolves to the node's LAN IP.
-The difference is which TLS modes each can use (below): a private TLD like `.lan`
-**cannot** get a publicly-trusted cert (it isn't a real domain), while a real
-subdomain can.
-
-### Worked topology (this network)
-
-- The **router** (`192.168.8.1`, a GL.iNet box) owns the `.lan` zone: it
-  auto-registers DHCP hostnames (`civil.lan`) and answers `*.lan`. Unknown `.lan`
-  names are **not** forwarded upstream — the router keeps that zone to itself. A
-  `*.civil.lan` wildcard therefore lives on the **router**.
-- The router **forwards everything else** (including `*.payne.io`) to
-  **wild-central**'s dnsmasq. So a `*.civil.payne.io` wildcard lives on
-  **wild-central** (`/etc/dnsmasq.d/civil-payne.conf`,
-  `address=/civil.payne.io/192.168.8.222`), which the router already routes to.
-  `payne.io`'s **public** authority is Cloudflare, which holds no `A` records for
-  these names — so `civil.payne.io` services resolve on the LAN and nowhere else.
-
-Pin the node's IP with a **DHCP reservation** — the wildcard hardcodes it, so a
-drifting dynamic lease would break every host route at once.
+The names resolve **only inside the LAN**. You own the domain publicly (needed so
+DNS-01 can issue a real cert — below), but the **public** zone has no `A` records
+for the services — only your LAN's wildcard points at the node. So the services are
+trusted (real cert) yet reachable only from the LAN, never the internet.
 
 ## TLS: two trust modes
 
@@ -126,11 +93,10 @@ How it stays internal:
   LAN resolver answers `*.<domain>` with the private IP. Public internet sees
   nothing.
 
-One `*.<domain>` site means a **single cert** covers every host route, and Caddy
+One `*.<domain>` site means a **single cert** covers every subdomain, and Caddy
 **auto-renews** it — adding a service needs no new cert and no DNS-01 round trip.
-Host-route subdomains come from the **first label of `proxy.caddy.host`**: a
-service declares `host: claw` and is published at `claw.<domain>`. Only the label
-matters (the domain is the gateway's), so services stay domain-agnostic.
+Every subdomain is the **service name** (`<name>.<domain>`), so services stay
+domain-agnostic — switching `gateway.domain` needs no service edits.
 
 This is the recommended mode when you own a domain and want to reach services from
 arbitrary devices.
@@ -150,11 +116,10 @@ origin — moving a service onto HTTPS changes its origin.
 
 ## Putting a service on trusted HTTPS — the recipe
 
-1. **Give it a host route.** In the service's `proxy.caddy`, set `host:` to the
-   subdomain **label** you want (`host: claw`), and drop any `path_prefix`. In
-   `acme` mode the published name is `<label>.<gateway.domain>`.
+1. **Check the box.** Add `proxy: { caddy: {} }` to the service — it's now exposed
+   at `<service-name>.<gateway.domain>` (rename the service to change the name).
 2. **Make the name resolve.** Add (or rely on) the LAN wildcard for the zone
-   (§DNS). Verify: `dig +short <label>.<domain>` → the node's IP.
+   (§DNS). Verify: `dig +short <name>.<domain>` → the node's IP.
 3. **Set `gateway.tls: acme`** (with `domain`/`acme_email`), plus the operational
    prerequisites (below).
 4. **Deploy & reload:** `castle deploy` regenerates the Caddyfile and reloads Caddy.
@@ -187,14 +152,14 @@ a DNS token.
 
 | You have… | Zone (DNS) | Trust (TLS) | Result |
 |-----------|-----------|-------------|--------|
-| a quick internal tool, HTTP is fine | path prefix, or a `.lan`/bare host | `off` | `http://node:9000/tool/` |
+| a quick internal tool, HTTP is fine | a `.lan` host, or none | `off` | `http://<node>:9000/` (dashboard) + services by port |
 | a node with no public domain, needs a secure context | — | `off` | reach it via `http://localhost` / direct port on the node |
-| a domain you own + any devices (phones) | `*.sub.domain` on the LAN resolver | `acme` | HTTPS, **no client setup**, internal-only |
+| a domain you own + any devices (phones) | `*.<sub>.<domain>` on the LAN resolver | `acme` | HTTPS, **no client setup**, internal-only |
 
-The last row is the sweet spot for a personal LAN, and what this node runs today:
-`*.civil.payne.io` (wild-central DNS) + a Let's Encrypt wildcard via Cloudflare
-DNS-01, so e.g. `https://claw.civil.payne.io/` is trusted on any device with
-nothing to install.
+The last row is the sweet spot for a personal LAN: a `*.<sub>.<domain>` wildcard on
+the LAN resolver + a Let's Encrypt wildcard via DNS-01, so e.g.
+`https://<service>.<sub>.<domain>/` is trusted on any device with nothing to
+install.
 
 ## See also
 

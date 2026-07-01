@@ -54,8 +54,8 @@ def _registry_to_json(registry: NodeRegistry) -> str:
             entry["port"] = comp.port
         if comp.health_path:
             entry["health_path"] = comp.health_path
-        if comp.proxy_path:
-            entry["proxy_path"] = comp.proxy_path
+        if comp.subdomain:
+            entry["subdomain"] = comp.subdomain
         if comp.schedule:
             entry["schedule"] = comp.schedule
         if comp.managed:
@@ -85,7 +85,7 @@ def _json_to_registry(payload: str) -> NodeRegistry:
             stack=comp_data.get("stack"),
             port=comp_data.get("port"),
             health_path=comp_data.get("health_path"),
-            proxy_path=comp_data.get("proxy_path"),
+            subdomain=comp_data.get("subdomain"),
             schedule=comp_data.get("schedule"),
             managed=comp_data.get("managed", False),
         )

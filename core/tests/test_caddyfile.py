@@ -1,7 +1,6 @@
-"""Tests for Caddyfile generation from registry."""
+"""Tests for Caddyfile generation — subdomain-only routing model."""
 
 from __future__ import annotations
-
 
 import pytest
 
@@ -11,10 +10,12 @@ from castle_core.generators.caddyfile import (
     generate_caddyfile_from_registry,
 )
 from castle_core.manifest import (
+    BuildSpec,
     CaddySpec,
     ExposeSpec,
     HttpExposeSpec,
     HttpInternal,
+    ProgramSpec,
     ProxySpec,
     RunPython,
     ServiceSpec,
@@ -40,9 +41,7 @@ def _make_registry(
     gateway_tls: str | None = None,
     gateway_domain: str | None = None,
     acme_email: str | None = None,
-    acme_dns_provider: str = "cloudflare",
 ) -> NodeRegistry:
-    """Create a test registry."""
     return NodeRegistry(
         node=NodeConfig(
             hostname="test",
@@ -50,363 +49,151 @@ def _make_registry(
             gateway_tls=gateway_tls,
             gateway_domain=gateway_domain,
             acme_email=acme_email,
-            acme_dns_provider=acme_dns_provider,
         ),
         deployed=deployed or {},
     )
 
 
-class TestCaddyfileFromRegistry:
-    """Tests for registry-based Caddyfile generation."""
-
-    def test_contains_gateway_port(self) -> None:
-        """Caddyfile uses the configured gateway port."""
-        registry = _make_registry(gateway_port=18000)
-        caddyfile = generate_caddyfile_from_registry(registry)
-        assert ":18000 {" in caddyfile
-
-    def test_contains_service_routes(self) -> None:
-        """Caddyfile has reverse proxy routes for deployed services."""
-        registry = _make_registry(
-            deployed={
-                "test-svc": Deployment(
-                    runner="python",
-                    run_cmd=["uv", "run", "test-svc"],
-                    port=19000,
-                    proxy_path="/test-svc",
-                ),
-            }
-        )
-        caddyfile = generate_caddyfile_from_registry(registry)
-        assert "handle_path /test-svc/*" in caddyfile
-        assert "reverse_proxy localhost:19000" in caddyfile
-
-    def test_disables_auto_https(self) -> None:
-        """The gateway is HTTP-only; auto_https must be off so named hosts don't
-        flip the listener to TLS or try to bind :80."""
-        caddyfile = generate_caddyfile_from_registry(_make_registry())
-        assert "auto_https off" in caddyfile
-
-    def test_host_route_uses_matcher_in_main_site(self) -> None:
-        """A proxy_host becomes a host matcher inside the :9000 site (not a
-        separate site block, which would split the listener into TLS)."""
-        registry = _make_registry(
-            deployed={
-                "lake": Deployment(
-                    runner="python",
-                    run_cmd=["lake"],
-                    port=8420,
-                    proxy_host="lake.example.lan",
-                ),
-            }
-        )
-        caddyfile = generate_caddyfile_from_registry(registry)
-        assert "@host_lake host lake.example.lan" in caddyfile
-        assert "handle @host_lake {" in caddyfile
-        assert "reverse_proxy localhost:8420" in caddyfile
-        # No separate hostname site block on the gateway port.
-        assert "lake.example.lan:9000 {" not in caddyfile
-
-    def test_skips_non_proxied(self) -> None:
-        """Components without proxy_path are not in Caddyfile."""
-        registry = _make_registry(
-            deployed={
-                "test-tool": Deployment(
-                    runner="command",
-                    run_cmd=["test-tool"],
-                ),
-            }
-        )
-        caddyfile = generate_caddyfile_from_registry(registry)
-        assert "test-tool" not in caddyfile
-
-    def test_fallback_when_no_static(self) -> None:
-        """Uses fallback dashboard path when static dir doesn't exist."""
-        registry = _make_registry()
-        caddyfile = generate_caddyfile_from_registry(registry)
-        assert "handle / {" in caddyfile
-        assert "file_server" in caddyfile
-
-    def test_proxy_routes_before_dashboard(self) -> None:
-        """Service proxy routes appear before the dashboard catch-all."""
-        registry = _make_registry(
-            deployed={
-                "test-svc": Deployment(
-                    runner="python",
-                    run_cmd=["uv", "run", "test-svc"],
-                    port=19000,
-                    proxy_path="/test-svc",
-                ),
-            }
-        )
-        caddyfile = generate_caddyfile_from_registry(registry)
-        proxy_pos = caddyfile.index("handle_path")
-        handle_pos = caddyfile.index("handle /")
-        assert proxy_pos < handle_pos
-
-    def test_multiple_services(self) -> None:
-        """Multiple services get separate proxy routes."""
-        registry = _make_registry(
-            deployed={
-                "svc-a": Deployment(
-                    runner="python",
-                    run_cmd=["uv", "run", "svc-a"],
-                    port=9001,
-                    proxy_path="/svc-a",
-                ),
-                "svc-b": Deployment(
-                    runner="python",
-                    run_cmd=["uv", "run", "svc-b"],
-                    port=9002,
-                    proxy_path="/svc-b",
-                ),
-            }
-        )
-        caddyfile = generate_caddyfile_from_registry(registry)
-        assert "handle_path /svc-a/*" in caddyfile
-        assert "reverse_proxy localhost:9001" in caddyfile
-        assert "handle_path /svc-b/*" in caddyfile
-        assert "reverse_proxy localhost:9002" in caddyfile
-
-
-def _service(port: int, path: str | None = None, host: str | None = None) -> ServiceSpec:
-    """A minimal python ServiceSpec with an HTTP port and a caddy proxy route."""
-    caddy = CaddySpec(path_prefix=path, host=host)
-    return ServiceSpec(
-        run=RunPython(runner="python", program="svc"),
-        expose=ExposeSpec(http=HttpExposeSpec(internal=HttpInternal(port=port))),
-        proxy=ProxySpec(caddy=caddy),
+def _dep(port: int, *, expose: bool, name: str | None = None, runner: str = "python") -> Deployment:
+    """A deployed service; exposed at <name>.<domain> when expose=True."""
+    return Deployment(
+        runner=runner, run_cmd=["x"], port=port, subdomain=(name if expose else None)
     )
 
 
-def _config(services: dict[str, ServiceSpec]) -> CastleConfig:
+def _acme(deployed: dict[str, Deployment], domain: str | None = "example.com") -> NodeRegistry:
+    return _make_registry(
+        gateway_tls="acme", gateway_domain=domain, acme_email="p@e.com", deployed=deployed
+    )
+
+
+class TestAcmeMode:
+    """gateway.tls=acme → one *.domain wildcard site; every service is a subdomain."""
+
+    def test_global_acme_block(self) -> None:
+        cf = generate_caddyfile_from_registry(_acme({"api": _dep(9020, expose=True, name="api")}))
+        assert "email p@e.com" in cf
+        assert "acme_dns cloudflare {env.CLOUDFLARE_API_TOKEN}" in cf
+
+    def test_service_is_a_subdomain_matcher(self) -> None:
+        cf = generate_caddyfile_from_registry(
+            _acme({"openclaw": _dep(18789, expose=True, name="openclaw")})
+        )
+        assert "*.example.com {" in cf
+        # Subdomain is the service name.
+        assert "@host_openclaw host openclaw.example.com" in cf
+        assert "reverse_proxy localhost:18789" in cf
+
+    def test_port_9000_redirects_to_dashboard(self) -> None:
+        cf = generate_caddyfile_from_registry(_acme({"api": _dep(9020, expose=True, name="api")}))
+        assert ":9000 {" in cf
+        assert "redir https://castle-app.example.com{uri}" in cf
+
+    def test_no_path_routes(self) -> None:
+        cf = generate_caddyfile_from_registry(_acme({"api": _dep(9020, expose=True, name="api")}))
+        assert "handle_path" not in cf
+        assert "redir /" not in cf  # no path-prefix trailing-slash redirects
+        assert "auto_https off" not in cf
+
+    def test_unexposed_service_not_routed(self) -> None:
+        cf = generate_caddyfile_from_registry(_acme({"pg": _dep(5432, expose=False, name="pg")}))
+        assert "pg.example.com" not in cf
+
+    def test_staging_toggle(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("CASTLE_ACME_STAGING", "1")
+        cf = generate_caddyfile_from_registry(_acme({"api": _dep(9020, expose=True, name="api")}))
+        assert "acme_ca https://acme-staging-v02.api.letsencrypt.org/directory" in cf
+
+    def test_static_frontend_is_a_file_server_subdomain(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Static frontends come from config.programs, so hand the generator a config.
+        import castle_core.config as config_mod
+
+        cfg = _config(
+            services={},
+            programs={
+                "castle-app": ProgramSpec(
+                    behavior="frontend", source="/data/repos/castle/app",
+                    build=BuildSpec(outputs=["dist"]),
+                )
+            },
+        )
+        monkeypatch.setattr(config_mod, "load_config", lambda *a, **k: cfg)
+        cf = generate_caddyfile_from_registry(_acme({}))
+        assert "@host_castle_app host castle-app.example.com" in cf
+        assert "root * /data/repos/castle/app/dist" in cf
+        assert "try_files {path} /index.html" in cf
+        assert "file_server" in cf
+
+
+class TestOffMode:
+    """No domain → HTTP-only control plane on :<port>: dashboard at / + /api → castle-api.
+    Other services are port-only (not routed)."""
+
+    def test_control_plane(self) -> None:
+        cf = generate_caddyfile_from_registry(
+            _make_registry(deployed={"castle-api": _dep(9020, expose=True, name="castle-api")})
+        )
+        assert "auto_https off" in cf
+        assert "handle_path /api/* {" in cf
+        assert "reverse_proxy localhost:9020" in cf
+        assert "handle {" in cf  # dashboard catch-all (SPA fallback)
+
+    def test_other_services_not_routed_in_off_mode(self) -> None:
+        cf = generate_caddyfile_from_registry(
+            _make_registry(deployed={"litellm": _dep(4000, expose=True, name="litellm")})
+        )
+        assert "litellm" not in cf  # no subdomains without a domain
+
+
+def _service(port: int, *, expose: bool) -> ServiceSpec:
+    return ServiceSpec(
+        run=RunPython(runner="python", program="svc"),
+        expose=ExposeSpec(http=HttpExposeSpec(internal=HttpInternal(port=port))),
+        proxy=ProxySpec(caddy=CaddySpec()) if expose else None,
+    )
+
+
+def _config(
+    services: dict[str, ServiceSpec], programs: dict[str, ProgramSpec] | None = None
+) -> CastleConfig:
     return CastleConfig(
         root=None,  # type: ignore[arg-type]
         gateway=GatewayConfig(port=9000),
         repo=None,
-        programs={},
+        programs=programs or {},
         services=services,
         jobs={},
     )
 
 
-class TestLocalRoutesFromConfig:
-    """castle.yaml is the source of truth for local routes — a regenerated
-    Caddyfile must track the spec even when the deployed registry is stale.
-    This is the regression guard for the service-edit drift."""
+class TestConfigSourceOfTruth:
+    """compute_routes derives exposure/port from castle.yaml (the checkbox), so a
+    regenerated Caddyfile tracks the spec, not a stale registry."""
+
+    def test_exposed_service_becomes_a_route(self) -> None:
+        routes = compute_routes(_make_registry(), _config({"claw": _service(18789, expose=True)}))
+        r = next(r for r in routes if r.name == "claw")
+        assert r.kind == "proxy"
+        assert r.address == "claw"  # subdomain label = name
+        assert r.target == "localhost:18789"
+
+    def test_unexposed_service_has_no_route(self) -> None:
+        routes = compute_routes(_make_registry(), _config({"pg": _service(5432, expose=False)}))
+        assert not [r for r in routes if r.name == "pg"]
 
     def test_config_port_overrides_stale_registry(self) -> None:
-        # Registry was deployed with the OLD port; castle.yaml now says 8002.
         registry = _make_registry(
-            deployed={
-                "app": Deployment(
-                    runner="python", run_cmd=["app"], port=8001, proxy_path="/app"
-                ),
-            }
+            deployed={"claw": _dep(8001, expose=True, name="claw")}
         )
-        config = _config({"app": _service(port=8002, path="/app")})
+        config = _config({"claw": _service(8002, expose=True)})
         routes = compute_routes(registry, config)
-        targets = {r.target for r in routes if r.address == "/app"}
-        assert targets == {"localhost:8002"}  # config wins, not the stale 8001
+        assert {r.target for r in routes if r.name == "claw"} == {"localhost:8002"}
 
-    def test_config_path_overrides_stale_registry(self) -> None:
-        registry = _make_registry(
-            deployed={
-                "app": Deployment(
-                    runner="python", run_cmd=["app"], port=8001, proxy_path="/old"
-                ),
-            }
+    def test_fallback_to_registry_without_config(self) -> None:
+        # load_config is isolated (raises) → generate uses the registry snapshot.
+        cf = generate_caddyfile_from_registry(
+            _acme({"claw": _dep(8001, expose=True, name="claw")})
         )
-        config = _config({"app": _service(port=8001, path="/new")})
-        addrs = {r.address for r in compute_routes(registry, config) if r.kind == "proxy"}
-        assert addrs == {"/new"}
-
-    def test_falls_back_to_registry_without_config(self) -> None:
-        # No config available (load_config is isolated to raise) → use registry.
-        registry = _make_registry(
-            deployed={
-                "app": Deployment(
-                    runner="python", run_cmd=["app"], port=8001, proxy_path="/app"
-                ),
-            }
-        )
-        caddyfile = generate_caddyfile_from_registry(registry)
-        assert "reverse_proxy localhost:8001" in caddyfile
-
-
-class TestCaddyfileOffMode:
-    """gateway.tls unset/off → HTTP-only: host matchers live on the :<port> site."""
-
-    def _host_registry(self) -> NodeRegistry:
-        return _make_registry(
-            deployed={
-                "claw": Deployment(
-                    runner="node", run_cmd=["claw"], port=18789, proxy_host="claw.civil.lan"
-                ),
-                "api": Deployment(
-                    runner="python", run_cmd=["api"], port=9020, proxy_path="/api"
-                ),
-            },
-        )
-
-    def test_host_matcher_and_auto_https_off(self) -> None:
-        caddyfile = generate_caddyfile_from_registry(self._host_registry())
-        assert "auto_https off" in caddyfile
-        assert "@host_claw host claw.civil.lan" in caddyfile
-        assert "tls internal" not in caddyfile  # internal mode is gone
-        assert "claw.civil.lan {" not in caddyfile  # not a standalone TLS site
-
-    def test_path_routes_on_http_port(self) -> None:
-        caddyfile = generate_caddyfile_from_registry(self._host_registry())
-        assert ":9000 {" in caddyfile
-        assert "handle_path /api/*" in caddyfile
-
-    def test_routing_is_runner_agnostic(self) -> None:
-        """A compose-runner service with a host route is matched like any other."""
-        registry = _make_registry(
-            deployed={
-                "supabase": Deployment(
-                    runner="compose",
-                    run_cmd=["docker", "compose", "-p", "castle-supabase", "up"],
-                    port=8000,
-                    proxy_host="supabase.lan",
-                ),
-            },
-        )
-        caddyfile = generate_caddyfile_from_registry(registry)
-        assert "@host_supabase host supabase.lan" in caddyfile
-        assert "reverse_proxy localhost:8000" in caddyfile
-
-
-class TestCaddyfileTlsAcme:
-    """gateway.tls=acme → host routes served under one *.domain wildcard site
-    with a Let's Encrypt cert via DNS-01."""
-
-    def _acme_registry(self, domain: str | None = "civil.payne.io") -> NodeRegistry:
-        return _make_registry(
-            gateway_tls="acme",
-            gateway_domain=domain,
-            acme_email="paul@example.com",
-            deployed={
-                "claw": Deployment(
-                    runner="node", run_cmd=["claw"], port=18789, proxy_host="claw.civil.lan"
-                ),
-                "api": Deployment(
-                    runner="python", run_cmd=["api"], port=9020, proxy_path="/api"
-                ),
-            },
-        )
-
-    def test_global_email_and_acme_dns(self) -> None:
-        caddyfile = generate_caddyfile_from_registry(self._acme_registry())
-        assert "email paul@example.com" in caddyfile
-        assert "acme_dns cloudflare {env.CLOUDFLARE_API_TOKEN}" in caddyfile
-
-    def test_wildcard_site_with_derived_host_matcher(self) -> None:
-        caddyfile = generate_caddyfile_from_registry(self._acme_registry())
-        assert "*.civil.payne.io {" in caddyfile
-        # Published name = the host's first label under the gateway domain.
-        assert "@host_claw host claw.civil.payne.io" in caddyfile
-        assert "reverse_proxy localhost:18789" in caddyfile
-
-    def test_subdomain_from_host_label_not_service_name(self) -> None:
-        # Service is named "openclaw" but declares host label "claw" → the label
-        # wins (published as claw.<domain>), so the declared name is authoritative.
-        registry = _make_registry(
-            gateway_tls="acme",
-            gateway_domain="civil.payne.io",
-            acme_email="paul@example.com",
-            deployed={
-                "openclaw": Deployment(
-                    runner="node", run_cmd=["c"], port=18789, proxy_host="claw"
-                ),
-            },
-        )
-        caddyfile = generate_caddyfile_from_registry(registry)
-        assert "host claw.civil.payne.io" in caddyfile
-        assert "openclaw.civil.payne.io" not in caddyfile
-
-    def test_path_routes_stay_on_http_port(self) -> None:
-        caddyfile = generate_caddyfile_from_registry(self._acme_registry())
-        assert ":9000 {" in caddyfile
-        assert "handle_path /api/*" in caddyfile
-
-    def test_no_auto_https_off_and_no_internal_ca(self) -> None:
-        caddyfile = generate_caddyfile_from_registry(self._acme_registry())
-        assert "auto_https off" not in caddyfile
-        assert "tls internal" not in caddyfile
-        # The .lan host must not leak into the :9000 site as a plain matcher.
-        assert "claw.civil.lan" not in caddyfile
-
-    def test_staging_toggle(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("CASTLE_ACME_STAGING", "1")
-        caddyfile = generate_caddyfile_from_registry(self._acme_registry())
-        assert "acme_ca https://acme-staging-v02.api.letsencrypt.org/directory" in caddyfile
-
-    def test_acme_without_domain_falls_back_to_http(self) -> None:
-        # No domain → no *.None site; host route degrades to an off-mode matcher.
-        caddyfile = generate_caddyfile_from_registry(self._acme_registry(domain=None))
-        assert "*." not in caddyfile
-        assert "auto_https off" in caddyfile
-        assert "@host_claw host claw.civil.lan" in caddyfile
-
-
-class TestCaddyfileRemoteRegistries:
-    """Tests for cross-node routing in Caddyfile."""
-
-    def test_remote_routes_included(self) -> None:
-        """Remote services get reverse_proxy entries to their hostname."""
-        local = _make_registry(
-            deployed={
-                "local-svc": Deployment(
-                    runner="python", run_cmd=["svc"], port=9001, proxy_path="/local"
-                ),
-            }
-        )
-        remote = _make_registry(
-            deployed={
-                "remote-svc": Deployment(
-                    runner="python", run_cmd=["svc"], port=9050, proxy_path="/remote"
-                ),
-            }
-        )
-        remote.node.hostname = "devbox"
-        caddyfile = generate_caddyfile_from_registry(local, remote_registries={"devbox": remote})
-        assert "reverse_proxy localhost:9001" in caddyfile
-        assert "reverse_proxy devbox:9050" in caddyfile
-        assert "handle_path /remote/*" in caddyfile
-
-    def test_local_takes_precedence(self) -> None:
-        """If local and remote use the same path, local wins."""
-        local = _make_registry(
-            deployed={
-                "svc": Deployment(
-                    runner="python", run_cmd=["svc"], port=9001, proxy_path="/api"
-                ),
-            }
-        )
-        remote = _make_registry(
-            deployed={
-                "svc": Deployment(
-                    runner="python", run_cmd=["svc"], port=9001, proxy_path="/api"
-                ),
-            }
-        )
-        remote.node.hostname = "devbox"
-        caddyfile = generate_caddyfile_from_registry(local, remote_registries={"devbox": remote})
-        assert "reverse_proxy localhost:9001" in caddyfile
-        assert "devbox" not in caddyfile
-
-    def test_no_remote_when_none(self) -> None:
-        """No remote routes when remote_registries is None."""
-        local = _make_registry(
-            deployed={
-                "svc": Deployment(
-                    runner="python", run_cmd=["svc"], port=9001, proxy_path="/api"
-                ),
-            }
-        )
-        caddyfile = generate_caddyfile_from_registry(local, remote_registries=None)
-        assert "reverse_proxy localhost:9001" in caddyfile
-        # Only one reverse_proxy line
-        assert caddyfile.count("reverse_proxy") == 1
+        assert "@host_claw host claw.example.com" in cf
