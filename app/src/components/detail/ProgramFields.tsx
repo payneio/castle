@@ -169,17 +169,22 @@ export function ProgramFields({ program, onSave, onDelete }: Props) {
 }
 
 /** Deleting a program cascades to its deployments (tear down + remove), so the
- * confirm names exactly what will go. Source on disk is always left untouched. */
+ * confirm enumerates exactly what will happen. Source on disk is always kept. */
 function deleteConfirm(program: ProgramDetail): string {
-  const deps = [...program.services, ...program.jobs]
-  const kind = program.kind
-  const own =
-    kind === "tool"
-      ? " This uninstalls it from PATH."
-      : kind === "static"
-        ? " This stops serving it."
-        : ""
-  const also =
-    deps.length > 0 ? ` Its deployments (${deps.join(", ")}) are torn down and removed too.` : ""
-  return `Delete "${program.id}"?${own}${also} (Source on disk is untouched.)`
+  const actions: string[] = []
+  // The program's own 1:1 deployment (tool/static) isn't listed in services/jobs.
+  if (program.kind === "tool") actions.push(`uninstall ${program.id} from your PATH`)
+  else if (program.kind === "static")
+    actions.push(`stop serving ${program.id} (drop its gateway route)`)
+  // Named service/job deployments that reference this program.
+  const named = [...program.services, ...program.jobs]
+  if (named.length) actions.push(`stop, disable, and remove: ${named.join(", ")}`)
+  // Always: the catalog entry itself.
+  actions.push(`remove "${program.id}" from the catalog`)
+
+  const lines = actions.map((a) => `  • ${a}`).join("\n")
+  return (
+    `Delete "${program.id}"? This will:\n\n${lines}\n\n` +
+    `The source code on disk is left untouched.`
+  )
 }
