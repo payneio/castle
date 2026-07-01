@@ -18,7 +18,13 @@ set -euo pipefail
 
 CASTLE_HOME="${HOME}/.castle"
 CASTLE_CONF="${CASTLE_HOME}/infra.conf"
-DATA_DIR="${CASTLE_HOME}/data"
+# Program data lives on a dedicated volume, decoupled from CASTLE_HOME — must match
+# castle_core.config._resolve_data_dir (default /data/castle, override CASTLE_DATA_DIR)
+# so the data dirs + container mounts created here line up with what castle deploy
+# generates for the mqtt/postgres/neo4j deployments.
+DATA_DIR="${CASTLE_DATA_DIR:-/data/castle}"
+# Program source repos (default /data/repos, override CASTLE_REPOS_DIR).
+REPOS_DIR="${CASTLE_REPOS_DIR:-/data/repos}"
 CASTLE_ROOT="$(cd "$(dirname "$0")" && pwd)"
 
 # Container defaults
@@ -219,8 +225,16 @@ create_directories() {
     mkdir -p "${CASTLE_HOME}/deployments"
     mkdir -p "${CASTLE_HOME}/artifacts/specs"
     mkdir -p "${CASTLE_HOME}/artifacts/content"
-    mkdir -p "${DATA_DIR}"
     mkdir -p "${CASTLE_HOME}/secrets" && chmod 700 "${CASTLE_HOME}/secrets"
+
+    # Program data volume (default /data/castle) lives outside $HOME, so on a fresh
+    # machine its parent may not be user-writable — fall back to sudo + chown so the
+    # later container mounts (and castle deploy) can write there.
+    if ! mkdir -p "${DATA_DIR}" 2>/dev/null; then
+        log_info "creating ${DATA_DIR} (needs sudo — outside \$HOME)"
+        sudo mkdir -p "${DATA_DIR}"
+        sudo chown "$(id -un):$(id -gn)" "${DATA_DIR}"
+    fi
 
     # Seed a minimal global castle.yaml — never clobber an existing one.
     if [[ -f "${CASTLE_HOME}/castle.yaml" ]]; then
@@ -423,16 +437,15 @@ print_summary() {
 
     printf "Directories:\n"
     printf "  %-20s %s\n" "Castle home" "$CASTLE_HOME"
-    printf "  %-20s %s\n" "Code" "${CASTLE_HOME}/code"
+    printf "  %-20s %s\n" "Repos" "$REPOS_DIR"
     printf "  %-20s %s\n" "Artifacts" "${CASTLE_HOME}/artifacts"
     printf "  %-20s %s\n" "Data" "$DATA_DIR"
     printf "  %-20s %s\n" "Secrets" "${CASTLE_HOME}/secrets"
     printf "\n"
 
     printf "Next steps:\n"
-    printf "  cd %s\n" "$CASTLE_ROOT"
     printf "  castle deploy            # Generate registry, systemd units, Caddyfile\n"
-    printf "  castle services start    # Start all application services\n"
+    printf "  castle start             # Start all deployments and the gateway\n"
 }
 
 # ---------------------------------------------------------------------------
