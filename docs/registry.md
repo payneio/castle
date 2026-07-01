@@ -340,70 +340,43 @@ Pin `<node-ip>` with a DHCP reservation — the wildcard hardcodes it.
 By default the gateway is **HTTP-only**: it generates `auto_https off` and listens
 on a bare `:<gateway-port>` (default `:9000`), so reach it at `http://<host>:9000/`,
 **not** `https://` (a TLS hello to the plain-HTTP listener fails with "wrong
-version number"). `gateway.tls` opts host routes into HTTPS:
+version number"). `gateway.tls` has two values:
 
 | `gateway.tls` | listener | host routes | cert / trust |
 |---------------|----------|-------------|--------------|
 | `off` (default/unset) | `:<port>` HTTP, `auto_https off` | host matcher on `:<port>` | none |
-| `internal` | per-host `:443` HTTPS | own `tls internal` site | Caddy **local CA** — must distribute root.crt to clients |
 | `acme` | one `*.<domain>` `:443` site | matcher inside the wildcard site | **real Let's Encrypt wildcard, no CA install** |
 
-`acme` and `internal` are mutually exclusive (one `gateway.tls` value); path-prefix
-and static routes always stay on the HTTP `:<port>` site. Both HTTPS modes need the
-443/80 bind below.
+Path-prefix and static routes always stay on the HTTP `:<port>` site — the way to
+put a service on HTTPS is to give it a `proxy.caddy.host`. A node with no public
+domain stays on `off` (plain HTTP; use `localhost`/direct ports for anything that
+needs a secure context).
 
-#### HTTPS for host routes — `gateway.tls: internal`
+HTTPS matters beyond encryption: only `https://` (and `http://localhost`) is a
+browser **secure context**, the prerequisite for WebCrypto/`crypto.subtle` — which
+apps doing device identity or end-to-end crypto require and browsers disable on
+plain-HTTP LAN hosts. That's the reason to move such a service to a host route with
+`acme`.
 
-Set `tls: internal` under `gateway:` in `castle.yaml` and each **host route**
-becomes its own HTTPS site served by Caddy's local CA:
-
-```yaml
-gateway:
-  port: 9000
-  tls: internal     # host routes (proxy.caddy.host) → HTTPS via Caddy's local CA
-```
-
-```caddyfile
-foo.lan {
-    tls internal
-    reverse_proxy localhost:9001
-}
-```
-
-This is what makes a remote browser treat the page as a **secure context** — the
-prerequisite for WebCrypto/`crypto.subtle`, which apps doing device-identity or
-end-to-end crypto require and which browsers disable on plain HTTP (except
-`localhost`). Path-prefix and static routes stay on the HTTP `:<gateway-port>`
-site, so the way to put a service on HTTPS is to give it a `proxy.caddy.host`.
-
-Two operational requirements:
-
-- **Bind 443/80.** Caddy serves these host sites on `:443` (and redirects `:80`).
-  A user-level gateway can't bind privileged ports under `NoNewPrivileges`, so
-  lower the floor once: `net.ipv4.ip_unprivileged_port_start=80` (persist in
-  `/etc/sysctl.d/`). This beats `setcap`, which `NoNewPrivileges=true` would void.
-- **Trust the local CA.** Run `caddy trust` on the gateway host, then distribute
-  the root CA to every other box's system/browser trust store — `.lan` can't get
-  a public cert, so clients trust Caddy's root instead. (Firefox uses its own
-  store; import it there too.) The dashboard's Gateway panel has a **CA cert**
-  download button (only shown when `tls: internal`), backed by
-  `GET /gateway/ca.crt` — the public root cert, sourced from Caddy's admin API,
-  with its SHA-256 shown for out-of-band verification. The on-disk copy is at
-  `~/.local/share/caddy/pki/authorities/local/root.crt`.
+**Bind 443/80.** The `acme` HTTPS site listens on `:443` (and redirects `:80`). A
+user-level gateway can't bind privileged ports under `NoNewPrivileges`, so lower
+the floor once: `net.ipv4.ip_unprivileged_port_start=80` (persist in
+`/etc/sysctl.d/`). This beats `setcap`, which `NoNewPrivileges=true` would void.
 
 #### Publicly-trusted HTTPS — `gateway.tls: acme`
 
-`internal` mode forces every client device to trust a private CA — which some
-platforms (e.g. Android browsers) make painful. `acme` mode avoids it entirely:
-Caddy obtains a **real Let's Encrypt wildcard cert** (`*.<domain>`) via a **DNS-01**
-challenge, so every browser trusts it with **zero CA install** — while the services
-stay **internal-only**.
+A private-CA approach (Caddy's `tls internal`) forces every client device to trust
+a custom root — which some platforms (e.g. Android browsers, and Firefox, which
+uses its own store) make painful. `acme` mode avoids it entirely: Caddy obtains a
+**real Let's Encrypt wildcard cert** (`*.<domain>`) via a **DNS-01** challenge, so
+every browser trusts it with **zero CA install** — while the services stay
+**internal-only**.
 
 ```yaml
 gateway:
   port: 9000
   tls: acme
-  domain: civil.payne.io          # wildcard cert *.civil.payne.io; host routes → <service>.civil.payne.io
+  domain: civil.payne.io          # wildcard cert *.civil.payne.io; host routes → <label>.civil.payne.io
   acme_email: you@example.com
   acme_dns_provider: cloudflare   # default
 ```
@@ -428,10 +401,12 @@ it needs **no inbound exposure and no public A records** for the services. Only 
 **LAN DNS** resolves `*.<domain>` to the gateway's private IP. (HTTP-01 can't
 validate a wildcard, so DNS-01 — and thus the provider token — is mandatory here.)
 
-Host-route subdomains are **derived from the service name**: a service opts into a
-host route with `proxy.caddy.host` (its literal value is ignored in acme mode), and
-the route is published at `<service-name>.<domain>`. One `*.<domain>` site means a
-single cert covers every host route — adding a service needs no new cert.
+Host-route subdomains come from the **first label of `proxy.caddy.host`**: a
+service declares `host: claw` (or a legacy `claw.civil.lan`) and is published at
+`claw.<domain>`. Only the label matters — the domain is the gateway's, so services
+stay domain-agnostic (switching `gateway.domain` needs no service edits). One
+`*.<domain>` site means a single cert covers every host route — adding a service
+needs no new cert.
 
 Setup (the parts castle can't do for you):
 
@@ -456,8 +431,8 @@ Setup (the parts castle can't do for you):
   redeploy to get a browser-trusted production cert. Verify with
   `openssl s_client -connect <ip>:443 -servername claw.<domain> | openssl x509 -noout -issuer`.
 
-The 443/80 bind requirement (above) applies to acme too. Unlike `internal`, there's
-no CA to distribute — the dashboard's CA-download button is `internal`-only.
+The 443/80 bind requirement (above) applies here. There's no CA to distribute —
+the wildcard is publicly trusted.
 
 Routing only moves bytes — it does **not** supply the proxied app's own auth.
 If a backend requires a token/credential (e.g. in the URL or a header), that

@@ -234,12 +234,11 @@ class TestLocalRoutesFromConfig:
         assert "reverse_proxy localhost:8001" in caddyfile
 
 
-class TestCaddyfileTlsInternal:
-    """gateway.tls=internal → host routes become their own HTTPS sites."""
+class TestCaddyfileOffMode:
+    """gateway.tls unset/off → HTTP-only: host matchers live on the :<port> site."""
 
-    def _host_registry(self, tls: str | None) -> NodeRegistry:
+    def _host_registry(self) -> NodeRegistry:
         return _make_registry(
-            gateway_tls=tls,
             deployed={
                 "claw": Deployment(
                     runner="node", run_cmd=["claw"], port=18789, proxy_host="claw.civil.lan"
@@ -250,17 +249,21 @@ class TestCaddyfileTlsInternal:
             },
         )
 
-    def test_host_route_becomes_tls_site(self) -> None:
-        caddyfile = generate_caddyfile_from_registry(self._host_registry("internal"))
-        assert "claw.civil.lan {" in caddyfile
-        assert "tls internal" in caddyfile
-        assert "reverse_proxy localhost:18789" in caddyfile
+    def test_host_matcher_and_auto_https_off(self) -> None:
+        caddyfile = generate_caddyfile_from_registry(self._host_registry())
+        assert "auto_https off" in caddyfile
+        assert "@host_claw host claw.civil.lan" in caddyfile
+        assert "tls internal" not in caddyfile  # internal mode is gone
+        assert "claw.civil.lan {" not in caddyfile  # not a standalone TLS site
 
-    def test_compose_substrate_host_route_is_tls_site(self) -> None:
-        """The Supabase substrate (compose runner + host route) becomes its own
-        HTTPS site under tls:internal — routing is runner-agnostic."""
+    def test_path_routes_on_http_port(self) -> None:
+        caddyfile = generate_caddyfile_from_registry(self._host_registry())
+        assert ":9000 {" in caddyfile
+        assert "handle_path /api/*" in caddyfile
+
+    def test_routing_is_runner_agnostic(self) -> None:
+        """A compose-runner service with a host route is matched like any other."""
         registry = _make_registry(
-            gateway_tls="internal",
             deployed={
                 "supabase": Deployment(
                     runner="compose",
@@ -271,28 +274,8 @@ class TestCaddyfileTlsInternal:
             },
         )
         caddyfile = generate_caddyfile_from_registry(registry)
-        assert "supabase.lan {" in caddyfile
-        assert "tls internal" in caddyfile
+        assert "@host_supabase host supabase.lan" in caddyfile
         assert "reverse_proxy localhost:8000" in caddyfile
-
-    def test_no_auto_https_off_in_tls_mode(self) -> None:
-        # auto_https off would suppress the internal-CA certs we now want.
-        caddyfile = generate_caddyfile_from_registry(self._host_registry("internal"))
-        assert "auto_https off" not in caddyfile
-        # Host matcher form must NOT be used when the host is its own TLS site.
-        assert "@host_claw" not in caddyfile
-
-    def test_path_routes_stay_on_http_port(self) -> None:
-        caddyfile = generate_caddyfile_from_registry(self._host_registry("internal"))
-        assert ":9000 {" in caddyfile
-        assert "handle_path /api/*" in caddyfile
-
-    def test_off_mode_keeps_host_matcher_and_auto_https_off(self) -> None:
-        caddyfile = generate_caddyfile_from_registry(self._host_registry(None))
-        assert "auto_https off" in caddyfile
-        assert "@host_claw host claw.civil.lan" in caddyfile
-        assert "tls internal" not in caddyfile
-        assert "claw.civil.lan {" not in caddyfile
 
 
 class TestCaddyfileTlsAcme:
@@ -322,9 +305,26 @@ class TestCaddyfileTlsAcme:
     def test_wildcard_site_with_derived_host_matcher(self) -> None:
         caddyfile = generate_caddyfile_from_registry(self._acme_registry())
         assert "*.civil.payne.io {" in caddyfile
-        # Subdomain derived from the SERVICE NAME (claw), not the declared .lan host.
+        # Published name = the host's first label under the gateway domain.
         assert "@host_claw host claw.civil.payne.io" in caddyfile
         assert "reverse_proxy localhost:18789" in caddyfile
+
+    def test_subdomain_from_host_label_not_service_name(self) -> None:
+        # Service is named "openclaw" but declares host label "claw" → the label
+        # wins (published as claw.<domain>), so the declared name is authoritative.
+        registry = _make_registry(
+            gateway_tls="acme",
+            gateway_domain="civil.payne.io",
+            acme_email="paul@example.com",
+            deployed={
+                "openclaw": Deployment(
+                    runner="node", run_cmd=["c"], port=18789, proxy_host="claw"
+                ),
+            },
+        )
+        caddyfile = generate_caddyfile_from_registry(registry)
+        assert "host claw.civil.payne.io" in caddyfile
+        assert "openclaw.civil.payne.io" not in caddyfile
 
     def test_path_routes_stay_on_http_port(self) -> None:
         caddyfile = generate_caddyfile_from_registry(self._acme_registry())

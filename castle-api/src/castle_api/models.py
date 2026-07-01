@@ -156,11 +156,9 @@ class GatewayInfo(BaseModel):
     service_count: int
     managed_count: int
     routes: list[GatewayRoute] = []
-    # TLS mode (None/"off" → HTTP-only; "internal" → Caddy local-CA HTTPS for host
-    # routes). When "internal", ca_fingerprint is the SHA-256 of the root CA the
-    # dashboard offers for download so clients can trust *.lan HTTPS.
+    # TLS mode: None/"off" → HTTP-only; "acme" → Let's Encrypt wildcard (publicly
+    # trusted, no client CA setup) for host routes.
     tls: str | None = None
-    ca_fingerprint: str | None = None
 
 
 class NodeSummary(BaseModel):

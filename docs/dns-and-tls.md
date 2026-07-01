@@ -85,37 +85,28 @@ subdomain can.
 Pin the node's IP with a **DHCP reservation** — the wildcard hardcodes it, so a
 drifting dynamic lease would break every host route at once.
 
-## TLS: three trust modes
+## TLS: two trust modes
 
 `gateway.tls` (in `castle.yaml`) picks how host routes are served. It's a per-node
-choice; the modes are mutually exclusive.
+choice.
 
 | `gateway.tls` | What the browser gets | Client setup | Use when |
 |---------------|-----------------------|--------------|----------|
-| `off` *(default)* | plain HTTP on `:9000` | none | you don't need HTTPS; localhost-only tools |
-| `internal` | HTTPS from Caddy's **local CA** | **install & trust the CA** on every device | LAN with a private `.lan` zone, few devices you control |
-| `acme` | HTTPS from a **real Let's Encrypt wildcard** | **nothing** | you own a domain; multiple devices (phones, etc.) |
+| `off` *(default)* | plain HTTP on `:9000` | none | you don't need HTTPS; a node with no public domain |
+| `acme` | HTTPS from a **real Let's Encrypt wildcard** | **nothing** | you own a domain; any/multiple devices (phones, etc.) |
 
 ### `off` — plain HTTP
 
 The gateway generates `auto_https off` and listens on a bare `:9000`. Reach it at
 `http://<node>:9000/`. Simple, but a non-`localhost` HTTP page is **not** a browser
-"secure context" (see below), and there's no encryption.
+"secure context" (see below), and there's no encryption. For a node with no public
+domain, this is the mode — reach secure-context apps via `http://localhost` /
+direct ports on the node itself.
 
-### `internal` — Caddy's local CA
-
-Each host route becomes its own `tls internal` HTTPS site, signed by a CA Caddy
-generates on the node. Browsers get a real secure context — but only if they
-**trust that private CA**, which means distributing the root cert to every device's
-system/browser trust store. That's the catch: some platforms (notably Android
-browsers, and Firefox everywhere, which uses its own store) make installing a
-custom CA painful or impossible. Castle helps by exposing the public root at
-`GET /gateway/ca.crt` with a dashboard download button — but the per-device trust
-step is unavoidable, and it's why `internal` doesn't scale past a handful of
-machines you fully control.
-
-Good fit: a `.lan` zone (which can't get a public cert anyway) with a couple of
-trusted laptops.
+> A private-CA option (Caddy's `tls internal`) existed but was removed: it required
+> installing a custom root CA on every device, which some platforms (Android
+> browsers; Firefox, which uses its own store) make painful — the exact problem
+> `acme` solves without any client setup.
 
 ### `acme` — real Let's Encrypt wildcard via DNS-01
 
@@ -137,8 +128,9 @@ How it stays internal:
 
 One `*.<domain>` site means a **single cert** covers every host route, and Caddy
 **auto-renews** it — adding a service needs no new cert and no DNS-01 round trip.
-Host-route subdomains are derived from the **service name**: a service opts into a
-host route with `proxy.caddy.host`, and it's published at `<service>.<domain>`.
+Host-route subdomains come from the **first label of `proxy.caddy.host`**: a
+service declares `host: claw` and is published at `claw.<domain>`. Only the label
+matters (the domain is the gateway's), so services stay domain-agnostic.
 
 This is the recommended mode when you own a domain and want to reach services from
 arbitrary devices.
@@ -150,28 +142,28 @@ Beyond eavesdropping protection, HTTPS unlocks browser capabilities gated to a
 built on them (device identity, end-to-end crypto). Browsers treat only `https://`
 and `http://localhost` as secure — a plain-HTTP page on a LAN hostname is **not**,
 so such apps break there. That's the concrete reason to move a host route to
-`internal` or `acme` rather than leaving it on `off`.
+`acme` rather than leaving it on `off`.
 
 Note: a host served over HTTPS has its own **origin** (`https://foo.example`, no
 port). An app that allowlists origins, or an OAuth/token flow, must include the new
-origin — moving a service between modes changes its origin.
+origin — moving a service onto HTTPS changes its origin.
 
 ## Putting a service on trusted HTTPS — the recipe
 
-1. **Give it a host route.** In the service's `proxy.caddy`, set `host:` (drop any
-   `path_prefix`). The literal host value is used as-is in `internal` mode; in
-   `acme` mode the published name is derived as `<service>.<domain>`.
+1. **Give it a host route.** In the service's `proxy.caddy`, set `host:` to the
+   subdomain **label** you want (`host: claw`), and drop any `path_prefix`. In
+   `acme` mode the published name is `<label>.<gateway.domain>`.
 2. **Make the name resolve.** Add (or rely on) the LAN wildcard for the zone
-   (§DNS). Verify: `dig +short <service>.<zone>` → the node's IP.
-3. **Pick a trust mode** on the gateway (`gateway.tls`), plus the operational
-   prerequisites for it (below).
+   (§DNS). Verify: `dig +short <label>.<domain>` → the node's IP.
+3. **Set `gateway.tls: acme`** (with `domain`/`acme_email`), plus the operational
+   prerequisites (below).
 4. **Deploy & reload:** `castle deploy` regenerates the Caddyfile and reloads Caddy.
 5. **Update the app's origin allowlist** if it has one (§secure context).
 
 ## Operational prerequisites
 
-Both HTTPS modes need the gateway to bind privileged ports; `acme` also needs a
-plugin-enabled Caddy and a DNS token.
+`acme` needs the gateway to bind privileged ports, plus a plugin-enabled Caddy and
+a DNS token.
 
 - **Bind `:443`/`:80`.** Caddy serves HTTPS on `:443` (and redirects `:80`). A
   user-level gateway can't bind privileged ports under `NoNewPrivileges`, so lower
@@ -195,16 +187,16 @@ plugin-enabled Caddy and a DNS token.
 
 | You have… | Zone (DNS) | Trust (TLS) | Result |
 |-----------|-----------|-------------|--------|
-| a quick internal tool, HTTP is fine | path prefix or `.lan` host | `off` | `http://node:9000/tool/` |
-| a `.lan` LAN, a couple of trusted machines | `*.node.lan` on the router | `internal` | HTTPS, install the CA per device |
-| a domain you own + many devices (phones) | `*.sub.domain` on the LAN resolver | `acme` | HTTPS, **no client setup**, internal-only |
+| a quick internal tool, HTTP is fine | path prefix, or a `.lan`/bare host | `off` | `http://node:9000/tool/` |
+| a node with no public domain, needs a secure context | — | `off` | reach it via `http://localhost` / direct port on the node |
+| a domain you own + any devices (phones) | `*.sub.domain` on the LAN resolver | `acme` | HTTPS, **no client setup**, internal-only |
 
-The last row is the sweet spot for a multi-device personal LAN, and what this node
-runs today: `*.civil.payne.io` (wild-central DNS) + a Let's Encrypt wildcard via
-Cloudflare DNS-01, so e.g. `https://openclaw.civil.payne.io/` is trusted on any
-device with nothing to install.
+The last row is the sweet spot for a personal LAN, and what this node runs today:
+`*.civil.payne.io` (wild-central DNS) + a Let's Encrypt wildcard via Cloudflare
+DNS-01, so e.g. `https://claw.civil.payne.io/` is trusted on any device with
+nothing to install.
 
 ## See also
 
 - [registry.md — `proxy`, gateway routes, and the `gateway.tls` modes](registry.md#proxy--how-the-gateway-routes-to-it)
-  — the field-level reference (Caddyfile shapes, exact config keys, the CA-download endpoint).
+  — the field-level reference (Caddyfile shapes, exact config keys, DNS-01 setup).

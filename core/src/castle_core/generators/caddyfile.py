@@ -186,27 +186,23 @@ def generate_caddyfile_from_registry(
 ) -> str:
     """Render the route list to a Caddyfile.
 
-    Three modes, set by `gateway.tls`:
+    Two modes, set by `gateway.tls`:
 
     - **off (default)** — HTTP-only. Everything (host matchers + path prefixes +
       static) lives in one `:<port>` site with `auto_https off`, so a named host
       can't pull the listener into TLS or try to bind :80/:443.
-    - **internal** — each host route becomes its own `<host> { tls internal … }`
-      site, served over HTTPS by Caddy's local CA (Caddy listens :443 and
-      redirects :80). This makes those hosts a browser "secure context". Path
-      prefixes, static frontends, and the dashboard stay on the HTTP `:<port>`
-      site — give a service a `proxy.caddy.host` to put it on HTTPS.
     - **acme** — host routes are served under a single `*.<domain>` site with a
       real Let's Encrypt **wildcard** cert obtained via a DNS-01 challenge (one
       cert for all of them). Publicly trusted → no CA install on clients. Each
-      host route maps to `<service-name>.<domain>`. Requires `gateway.domain`;
+      host route is published at `<label>.<domain>`, where `<label>` is the first
+      DNS label of the service's `proxy.caddy.host` (so a bare `claw`, or a legacy
+      `claw.civil.lan`, both yield `claw.<domain>`). Requires `gateway.domain`;
       the DNS provider token reaches Caddy via `{env.<TOKEN>}`.
     """
     routes = compute_routes(registry, None, remote_registries)
     node = registry.node
     gw_port = node.gateway_port
     mode = (node.gateway_tls or "").lower()
-    tls_internal = mode == "internal"
     domain = node.gateway_domain
     tls_acme = mode == "acme" and bool(domain)  # acme without a domain → off-mode
 
@@ -225,26 +221,16 @@ def generate_caddyfile_from_registry(
             lines.append(f"    acme_ca {_ACME_STAGING_CA}")
         lines += ["}", ""]
         # One wildcard site → a single DNS-01 cert covers every host route, so a
-        # new host-routed service needs no new cert or challenge.
+        # new host-routed service needs no new cert or challenge. The published
+        # subdomain is the host's first label (a bare `claw` or `claw.civil.lan`
+        # both → `claw.<domain>`), keeping services domain-agnostic.
         if host_routes:
             lines.append(f"*.{domain} {{")
             for r in host_routes:
-                sub = r.name or r.address.split(".")[0]
+                sub = (r.address.split(".")[0] if r.address else "") or r.name or ""
                 lines += _host_matcher_block(r.name or r.address, f"{sub}.{domain}", r.target)
             lines.append("}")
             lines.append("")
-    elif tls_internal:
-        # Per-host HTTPS sites via Caddy's internal CA. `tls internal` overrides
-        # ACME for that host, so no public cert is attempted; clients must trust
-        # the Caddy root CA (`caddy trust`, then distribute root.crt).
-        for r in host_routes:
-            lines += [
-                f"{r.address} {{",
-                "    tls internal",
-                f"    reverse_proxy {r.target}",
-                "}",
-                "",
-            ]
     else:
         # HTTP-only: keep auto-HTTPS off so the bare-port site stays plain HTTP
         # and named hosts don't trigger cert provisioning.
@@ -280,8 +266,8 @@ def generate_caddyfile_from_registry(
                 "",
             ]
         elif r.is_host:  # host-based proxy
-            if tls_internal or tls_acme:
-                continue  # emitted as its own HTTPS / wildcard site above
+            if tls_acme:
+                continue  # emitted in the *.<domain> wildcard site above
             lines += _host_matcher_block(r.name or r.address, r.address, r.target)
         else:  # path-prefix proxy (local or remote)
             if r.kind == "remote":
