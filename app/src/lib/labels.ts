@@ -50,7 +50,7 @@ export function stackLabel(stack: string): string {
 
 /**
  * Full URL for a service exposed at <subdomain>.<gateway.domain>. The domain is
- * derived from the dashboard's own host (it is served at castle-app.<domain>), so
+ * derived from the dashboard's own host (it is served at castle.<domain>), so
  * this returns null when the dashboard is on a bare host (off mode, no subdomains).
  */
 export function subdomainUrl(subdomain: string): string | null {

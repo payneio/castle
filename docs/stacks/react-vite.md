@@ -69,11 +69,10 @@ export default defineConfig({
 })
 ```
 
-> **Serving behind the gateway.** A static frontend mounts at `/<name>/` (the
-> root `castle-app` at `/`). Castle's `react-vite` build passes that prefix as
-> `VITE_BASE`, so a frontend that reads it (above) works at its subpath with no
-> manual `base`. Frontends that don't read `VITE_BASE` must hand-set `base` to
-> match, or they'll request assets from the wrong path.
+> **Serving behind the gateway.** A static frontend is served at its own subdomain
+> — `<name>.<gateway.domain>` — rooted at `/`, so `VITE_BASE` is always `/`. Castle's
+> `react-vite` build passes `VITE_BASE=/`, and a `vite.config` that reads it (above)
+> works unchanged. (Frontends are no longer mounted under a `/<name>/` path.)
 
 ## Project layout
 
@@ -159,7 +158,7 @@ services:
       http:
         internal: { port: 5173 }
     proxy:
-      caddy: { path_prefix: /app }
+      caddy: {}   # expose the dev server at my-frontend.<gateway.domain>
 ```
 
 See @docs/registry.md for the full registry reference.
@@ -170,18 +169,21 @@ For production, the static build output is served by Caddy rather than a Node
 process. You do **not** write this block by hand — `castle deploy` generates it.
 The flow:
 
-1. `castle deploy` runs the program's `build.commands` (so `dist/` is current).
+1. You build the frontend with `castle program build <name>` (deploy does **not**
+   build — it only points Caddy at `dist/`).
 2. The Caddyfile generator emits a route per `behavior: frontend` program that
    has `build.outputs`, rooted **in place** at `<source>/<build.outputs[0]>` —
-   no copy. A static frontend mounts at `/<name>/`; `castle-app` is
-   special-cased to serve at the root `/`.
+   no copy. Each frontend is served at its own subdomain `<name>.<gateway.domain>`
+   (the dashboard, `castle`, is also the target of the `:9000` redirect).
 
-The build is run with `VITE_BASE` set to that serve prefix, so a `vite.config`
-that reads it (see [Vite config](#vite-config)) emits asset URLs that resolve at
-the subpath. The generated block (in `~/.castle/artifacts/specs/Caddyfile`):
+The build is run with `VITE_BASE=/`, so a `vite.config` that reads it (see
+[Vite config](#vite-config)) emits root-relative asset URLs. The generated block
+(in `~/.castle/artifacts/specs/Caddyfile`) is a host matcher inside the
+`*.<domain>` site:
 
 ```caddyfile
-handle_path /my-frontend/* {
+@host_my_frontend host my-frontend.example.com
+handle @host_my_frontend {
     root * /data/repos/my-frontend/dist
     try_files {path} /index.html
     file_server
@@ -190,8 +192,8 @@ handle_path /my-frontend/* {
 
 The `try_files {path} /index.html` directive is essential for SPA routing —
 it falls back to `index.html` for any path that doesn't match a static file,
-letting React Router handle client-side routes. The serving prefix is derived
-from the program name, not hand-configured.
+letting React Router handle client-side routes. The subdomain is the program name,
+not hand-configured.
 
 ## API integration
 

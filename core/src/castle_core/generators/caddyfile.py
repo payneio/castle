@@ -161,7 +161,7 @@ def _host_static_block(label: str, host: str, serve_dir: str) -> list[str]:
 # Castle's own control plane: the dashboard frontend and the API it calls. These
 # names are the subdomains they're published at in acme mode, and the pair served
 # on the :<port> site in off mode (no domain → no subdomains).
-_DASHBOARD = "castle-app"
+_DASHBOARD = "castle"
 _API = "castle-api"
 
 

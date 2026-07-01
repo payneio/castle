@@ -301,13 +301,13 @@ route — differing only in whether the target is files on disk or a live proces
 The table is shown by `castle gateway status`, the dashboard Gateway panel, and
 `GET /gateway`; the Caddyfile is generated from it.
 
-**The dashboard and its API.** `castle-app` (the dashboard frontend) and
-`castle-api` are just two such subdomains (`castle-app.<domain>`,
-`castle-api.<domain>`); the dashboard calls the API **cross-origin** (castle-api
-allows CORS `*`). The bare gateway port (`:9000`) redirects to the dashboard
-subdomain. On a node with **no domain** (`gateway.tls: off`), there are no
-subdomains, so `:9000` serves just the control plane — the dashboard at `/` plus a
-`/api` reverse-proxy to castle-api — and other services stay port-only.
+**The dashboard and its API.** `castle` (the dashboard frontend) and `castle-api`
+are just two such subdomains (`castle.<domain>`, `castle-api.<domain>`); the
+dashboard calls the API **cross-origin** (castle-api allows CORS `*`). The bare
+gateway port (`:9000`) redirects to the dashboard subdomain. On a node with **no
+domain** (`gateway.tls: off`), there are no subdomains, so `:9000` serves just the
+control plane — the dashboard at `/` plus a `/api` reverse-proxy to castle-api —
+and other services stay port-only.
 
 #### Host routes need DNS, and the gateway is HTTP-only
 

@@ -1,5 +1,5 @@
 // Resolve the castle-api base URL. The gateway serves each service at its own
-// subdomain (<name>.<domain>), so when the dashboard runs at castle-app.<domain>
+// subdomain (<name>.<domain>), so when the dashboard runs at castle.<domain>
 // the API lives at castle-api.<domain> — a cross-origin call (castle-api allows
 // CORS *). When served at a bare host (dev, or the off-mode :9000 gateway), the
 // API is reachable same-origin at /api.

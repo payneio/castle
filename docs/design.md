@@ -242,7 +242,7 @@ Three interfaces expose the registry:
   and managing programs.
 - **API** (`castle-api`) — For programmatic access over HTTP. Used by
   the dashboard, other nodes, and remote agents.
-- **Dashboard** (`castle-app`) — For human discoverability. Visual
+- **Dashboard** (`castle`) — For human discoverability. Visual
   overview of what's running, health status, logs.
 
 ### Coordination Layer
@@ -307,7 +307,7 @@ Local paths always take precedence.
 
 ### Dashboard
 
-The web dashboard (`castle-app`) is a React SPA served by Caddy in place from
+The web dashboard (`castle`) is a React SPA served by Caddy in place from
 its repo build output (`<source>/dist/`) at the root `/`. It talks to
 `castle-api` via the gateway proxy at `/api`.
 
@@ -344,7 +344,7 @@ Components · Software catalog
   Name             Stack            Behavior  Schedule     Status
   pdf2md           Python / CLI     tool      —            installed
   protonmail       Python / CLI     tool      */5 * * * *  installed
-  castle-app       React / Vite     frontend  —            —
+  castle       React / Vite     frontend  —            —
   backup-collect   Python / CLI     tool      0 2 * * *    —
 ```
 
@@ -455,7 +455,7 @@ $CASTLE_HOME/                   ← Config & artifacts (default ~/.castle)
 │   │   ├── Caddyfile
 │   │   └── registry.yaml       ← Node config (what's deployed here)
 │   └── content/                ← Built frontend assets
-│       └── castle-app/         ← (index.html + assets, served at root)
+│       └── castle/         ← (index.html + assets, served at root)
 └── secrets/                    ← Secret files (NAME → value)
     └── PROTONMAIL_API_KEY
 
@@ -531,7 +531,7 @@ What exists today:
 - **Gateway** — Caddy on port 9000, Caddyfile generated from registry
 - **API** — `castle-api` on port 9020, reads from registry (optional
   castle.yaml fallback for non-deployed programs)
-- **Dashboard** — `castle-app` React/Vite frontend, static assets
+- **Dashboard** — `castle` React/Vite frontend, static assets
   served in place from its repo build output (`<source>/dist/`)
 - **Services** — central-context (content storage), notification-bridge
   (desktop notification forwarder)
@@ -576,7 +576,7 @@ What doesn't exist yet:
 | Node config | `$CASTLE_HOME/artifacts/specs/registry.yaml` | Active |
 | CLI | castle (Python, uv) | Active |
 | API | castle-api (FastAPI) | Active |
-| Dashboard | castle-app (React, Vite, shadcn/ui) | Active |
+| Dashboard | castle (React, Vite, shadcn/ui) | Active |
 | Python packaging | uv | Active |
 | Node packaging | pnpm | Active |
 | Linting | ruff (Python), ESLint (TS) | Active |

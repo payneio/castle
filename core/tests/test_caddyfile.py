@@ -87,7 +87,7 @@ class TestAcmeMode:
     def test_port_9000_redirects_to_dashboard(self) -> None:
         cf = generate_caddyfile_from_registry(_acme({"api": _dep(9020, expose=True, name="api")}))
         assert ":9000 {" in cf
-        assert "redir https://castle-app.example.com{uri}" in cf
+        assert "redir https://castle.example.com{uri}" in cf
 
     def test_no_path_routes(self) -> None:
         cf = generate_caddyfile_from_registry(_acme({"api": _dep(9020, expose=True, name="api")}))
@@ -113,7 +113,7 @@ class TestAcmeMode:
         cfg = _config(
             services={},
             programs={
-                "castle-app": ProgramSpec(
+                "castle": ProgramSpec(
                     behavior="frontend", source="/data/repos/castle/app",
                     build=BuildSpec(outputs=["dist"]),
                 )
@@ -121,7 +121,7 @@ class TestAcmeMode:
         )
         monkeypatch.setattr(config_mod, "load_config", lambda *a, **k: cfg)
         cf = generate_caddyfile_from_registry(_acme({}))
-        assert "@host_castle_app host castle-app.example.com" in cf
+        assert "@host_castle host castle.example.com" in cf
         assert "root * /data/repos/castle/app/dist" in cf
         assert "try_files {path} /index.html" in cf
         assert "file_server" in cf

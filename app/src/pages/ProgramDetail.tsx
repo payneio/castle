@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { useParams } from "react-router-dom"
 import { useProgram, useEventStream } from "@/services/api/hooks"
-import { runnerLabel } from "@/lib/labels"
+import { runnerLabel, subdomainUrl } from "@/lib/labels"
 import { DetailHeader } from "@/components/detail/DetailHeader"
 import { ConfigPanel } from "@/components/detail/ConfigPanel"
 import { DeploymentsSection } from "@/components/detail/DeploymentsSection"
@@ -28,14 +28,12 @@ export function ProgramDetailPage() {
     )
   }
 
-  // A static frontend (frontend behavior, build outputs, no service) is served
-  // by the gateway in place — show where.
+  // A static frontend (frontend behavior, build outputs, no service) is served by
+  // the gateway in place at its own subdomain — show where.
   const buildOutputs = (deployment.manifest.build as { outputs?: string[] } | undefined)?.outputs
   const servedAt =
     deployment.behavior === "frontend" && deployment.services.length === 0 && buildOutputs?.length
-      ? deployment.id === "castle-app"
-        ? "/"
-        : `/${deployment.id}/`
+      ? (subdomainUrl(deployment.id) ?? `${deployment.id}.<gateway.domain>`)
       : null
 
   return (
