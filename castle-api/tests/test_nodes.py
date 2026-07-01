@@ -28,8 +28,8 @@ class TestNodesList:
         response = client.get("/nodes")
         data = response.json()
         local = data[0]
-        assert local["deployed_count"] == 1  # test-svc
-        assert local["service_count"] == 1
+        assert local["deployed_count"] == 2  # test-svc + test-tool
+        assert local["service_count"] == 1  # only test-svc is a service
 
     def test_includes_remote_nodes(self, client: TestClient, registry_path: Path) -> None:
         """Remote nodes from mesh state are included."""
@@ -81,9 +81,9 @@ class TestNodeDetail:
         data = response.json()
         assert data["hostname"] == "test-node"
         assert data["is_local"] is True
-        assert len(data["deployed"]) == 1
-        assert data["deployed"][0]["id"] == "test-svc"
-        assert data["deployed"][0]["node"] == "test-node"
+        assert len(data["deployed"]) == 2  # test-svc + test-tool
+        svc = next(d for d in data["deployed"] if d["id"] == "test-svc")
+        assert svc["node"] == "test-node"
 
     def test_unknown_node_returns_404(self, client: TestClient) -> None:
         """Returns 404 for unknown hostname."""

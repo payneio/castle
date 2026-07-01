@@ -124,6 +124,13 @@ def registry_path(tmp_path: Path, castle_root: Path) -> Generator[Path, None, No
                 subdomain="test-svc",
                 managed=True,
             ),
+            # A deployed tool (path) — must NOT leak into the /services list.
+            "test-tool": Deployment(
+                manager="path",
+                run_cmd=[],
+                description="Test tool",
+                kind="tool",
+            ),
         },
     )
     save_registry(registry, reg_path)

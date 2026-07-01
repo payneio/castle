@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react"
 import { Trash2 } from "lucide-react"
 import { SecretsEditor } from "@/components/SecretsEditor"
+import { ConfirmModal } from "@/components/ConfirmModal"
 
 const INPUT =
   "bg-black/30 border border-[var(--border)] rounded px-3 py-1.5 text-sm focus:outline-none focus:border-[var(--primary)]"
@@ -185,15 +186,14 @@ export function FormFooter({
   /** When set, removal is disallowed and this reason is shown instead of the button. */
   deleteBlocked?: string
 }) {
+  const [confirmOpen, setConfirmOpen] = useState(false)
   return (
     <div className="flex items-center justify-between pt-3 border-t border-[var(--border)]">
       {deleteBlocked ? (
         <span className="text-xs text-amber-400">{deleteBlocked}</span>
       ) : onDelete ? (
         <button
-          onClick={() => {
-            if (window.confirm(confirmMessage ?? `${deleteLabel}?`)) onDelete()
-          }}
+          onClick={() => setConfirmOpen(true)}
           className="flex items-center gap-1.5 text-xs text-red-400 hover:text-red-300"
         >
           <Trash2 size={12} /> {deleteLabel}
@@ -208,6 +208,20 @@ export function FormFooter({
       >
         {saving ? "Saving…" : saved ? "Saved" : "Save"}
       </button>
+      {onDelete && (
+        <ConfirmModal
+          open={confirmOpen}
+          title={deleteLabel}
+          body={confirmMessage}
+          confirmLabel={deleteLabel}
+          danger
+          onConfirm={() => {
+            setConfirmOpen(false)
+            onDelete()
+          }}
+          onCancel={() => setConfirmOpen(false)}
+        />
+      )}
     </div>
   )
 }

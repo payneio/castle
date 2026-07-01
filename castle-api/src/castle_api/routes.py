@@ -405,9 +405,9 @@ def list_services(include_remote: bool = False) -> list[ServiceSummary]:
     summaries: list[ServiceSummary] = []
     seen: set[str] = set()
 
-    # Deployed services (non-scheduled)
+    # Deployed services only — not jobs, tools (path), statics (caddy), or remotes.
     for name, deployed in registry.deployed.items():
-        if deployed.schedule:
+        if deployed.kind != "service":
             continue
         s = _service_from_deployed(name, deployed)
         s.node = hostname

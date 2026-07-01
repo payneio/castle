@@ -113,6 +113,13 @@ class TestServicesList:
         names = [s["id"] for s in data]
         assert "test-job" not in names
 
+    def test_excludes_tools(self, client: TestClient) -> None:
+        """Tools (path deployments) are not in the services list."""
+        response = client.get("/services")
+        data = response.json()
+        names = [s["id"] for s in data]
+        assert "test-tool" not in names
+
 
 class TestServiceDetail:
     """GET /services/{name} endpoint tests."""
@@ -246,8 +253,9 @@ class TestGateway:
         data = response.json()
         assert data["port"] == 9000
         assert data["hostname"] == "test-node"
-        # Registry has 1 deployed component (test-svc)
-        assert data["deployment_count"] == 1
+        # Registry has 2 deployed components (test-svc + test-tool); only the
+        # service is a managed systemd deployment.
+        assert data["deployment_count"] == 2
         assert data["service_count"] == 1
         assert data["managed_count"] == 1
 
