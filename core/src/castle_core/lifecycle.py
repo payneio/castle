@@ -198,6 +198,8 @@ async def activate(name: str, config: CastleConfig, root: Path) -> ActionResult:
         prog, comp = _program_for(name, config)
         if comp is None:
             return ActionResult(name, "activate", "error", f"unknown program '{prog}'")
+        if _on_path(prog):  # already installed — skip the (slow) editable reinstall
+            return ActionResult(name, "activate", "ok", f"{name}: on PATH")
         return await run_action("install", prog, comp, root)
 
     if manager == "none":

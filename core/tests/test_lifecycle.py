@@ -34,6 +34,28 @@ class TestIsActive:
         config = load_config(castle_root)
         assert lifecycle.is_active("does-not-exist", config) is False
 
+    def test_path_service_checks_path(self, castle_root: Path) -> None:
+        # A `runner: path` service (a tool) is active when on PATH.
+        from castle_core.manifest import ProgramSpec, RunPath, ServiceSpec, manager_for
+
+        assert manager_for("path") == "path"
+        config = load_config(castle_root)
+        config.programs["mytool"] = ProgramSpec(id="mytool", source="/tmp/mytool")
+        config.services["mytool"] = ServiceSpec(program="mytool", run=RunPath(runner="path"))
+        with patch.object(lifecycle, "_on_path", return_value=True) as mock:
+            assert lifecycle.is_active("mytool", config) is True
+        mock.assert_called_once_with("mytool")
+
+    def test_remote_service_is_active(self, castle_root: Path) -> None:
+        # A remote service has no local process; the manager is `none` → available.
+        from castle_core.manifest import RunRemote, ServiceSpec
+
+        config = load_config(castle_root)
+        config.services["ext"] = ServiceSpec(
+            program="ext", run=RunRemote(runner="remote", base_url="http://x")
+        )
+        assert lifecycle.is_active("ext", config) is True
+
     def test_static_service_active_when_dist_built(self, castle_root: Path, tmp_path: Path) -> None:
         # A frontend is a `runner: static` service; active once its served dir exists.
         from castle_core.manifest import ProgramSpec, RunStatic, ServiceSpec

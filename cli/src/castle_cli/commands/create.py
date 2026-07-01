@@ -14,6 +14,7 @@ from castle_cli.manifest import (
     HttpInternal,
     ManageSpec,
     ProgramSpec,
+    RunPath,
     RunPython,
     RunStatic,
     ServiceSpec,
@@ -109,7 +110,12 @@ def run_create(args: argparse.Namespace) -> int:
         behavior=behavior,
         build=build,
     )
-    if behavior == "frontend":
+    if behavior == "tool":
+        # A PATH-managed deployment: installed via `uv tool install`, no unit/route.
+        config.services[name] = ServiceSpec(
+            id=name, program=name, run=RunPath(runner="path")
+        )
+    elif behavior == "frontend":
         # A caddy-managed static service: no systemd unit, served from the build dir.
         config.services[name] = ServiceSpec(
             id=name,

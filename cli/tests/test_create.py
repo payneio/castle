@@ -75,6 +75,8 @@ class TestCreateCommand:
         assert "my-tool2" in config.programs
         comp = config.programs["my-tool2"]
         assert comp.behavior == "tool"
+        # A tool is a PATH deployment: a `runner: path` service.
+        assert config.services["my-tool2"].run.runner == "path"
 
     def test_create_supabase_app(self, castle_root: Path, tmp_path: Path) -> None:
         """A supabase app scaffolds a Patch-shaped project registered as a static

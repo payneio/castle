@@ -614,6 +614,9 @@ def _build_run_cmd(
         case "static":
             # No process — the gateway file_servers this service's root.
             return []
+        case "path":
+            # No process — installed on PATH via `uv tool install` at enable time.
+            return []
         case _:
             raise ValueError(f"Unsupported runner: {run.runner}")  # type: ignore[union-attr]
 

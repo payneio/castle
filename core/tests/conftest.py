@@ -42,6 +42,10 @@ def castle_root(tmp_path: Path) -> Generator[Path, None, None]:
             },
         },
         "services": {
+            "test-tool": {
+                "program": "test-tool",
+                "run": {"runner": "path"},
+            },
             "test-svc": {
                 "program": "test-svc-comp",
                 "description": "Test service",

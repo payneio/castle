@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException, status
 
 from castle_core.config import SPECS_DIR
 from castle_core.generators.caddyfile import generate_caddyfile_from_registry
-from castle_core.manifest import ProgramSpec, JobSpec, ServiceSpec
+from castle_core.manifest import ProgramSpec, JobSpec, ServiceSpec, manager_for
 from castle_core.stacks import available_actions
 
 from castle_api.config import get_castle_root, get_registry
@@ -70,9 +70,9 @@ def _summary_from_deployed(name: str, deployed: object) -> DeploymentSummary:
             timer=has_timer,
         )
 
-    # Check if tool is installed on PATH
+    # A PATH-managed deployment (a tool) is "installed" when it's on PATH.
     installed: bool | None = None
-    if deployed.behavior == "tool":
+    if manager_for(deployed.runner) == "path":
         installed = shutil.which(name) is not None
 
     category = "job" if deployed.schedule else "service"

@@ -133,20 +133,13 @@ def _path_lifecycle(config: CastleConfig, name: str, action: str) -> int:
     """A `path` (tool) deployment's lifecycle is install/uninstall on PATH."""
     import asyncio
 
-    from castle_core.stacks import run_action
+    from castle_core.lifecycle import activate, deactivate
 
-    program = config.services[name].program or name
-    comp = config.programs.get(program)
-    if comp is None:
-        print(f"Error: path service '{name}' references unknown program '{program}'.")
-        return 1
-    verb = {"start": "install", "stop": "uninstall", "restart": "install"}[action]
-    res = asyncio.run(run_action(verb, program, comp, config.root))
-    ok = res.status == "ok"
-    print(f"  {name}: {verb + 'ed' if ok else verb + ' FAILED'}")
-    if not ok and res.output:
-        print(res.output)
-    return 0 if ok else 1
+    # stop → uninstall; start/restart → ensure installed (activate skips if on PATH).
+    coro = deactivate if action == "stop" else activate
+    res = asyncio.run(coro(name, config, config.root))
+    print(f"  {res.output}")
+    return 0 if res.status == "ok" else 1
 
 
 def _services_restart(config: CastleConfig) -> int:
@@ -218,30 +211,23 @@ def _service_disable(config: CastleConfig, name: str) -> int:
 
 
 def _service_status(config: CastleConfig) -> int:
-    """Show status of all managed services and jobs."""
+    """Show status of all services and jobs, dispatched by manager."""
+    from castle_core.lifecycle import is_active
+
     print("\nCastle Services")
     print("=" * 50)
 
     for name, svc in config.services.items():
-        svc_unit = unit_name(name)
-        result = subprocess.run(
-            ["systemctl", "--user", "is-active", svc_unit],
-            capture_output=True,
-            text=True,
-        )
-        status = result.stdout.strip()
-        if status == "active":
-            color = "\033[92m"
-        elif status == "inactive":
-            color = "\033[90m"
-        else:
-            color = "\033[91m"
+        active = is_active(name, config)  # manager-aware (systemd/caddy/path/none)
+        manager = manager_for(svc.run.runner)
+        color = "\033[92m" if active else "\033[90m"
         reset = "\033[0m"
+        label = "active" if active else "inactive"
 
         port_str = ""
         if svc.expose and svc.expose.http:
             port_str = f":{svc.expose.http.internal.port}"
-        print(f"  {color}{status:10s}{reset}  {name}{port_str}")
+        print(f"  {color}{label:10s}{reset}  {name}{port_str}  \033[90m[{manager}]{reset}")
 
     if config.jobs:
         print(f"\n{'─' * 50}")

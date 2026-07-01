@@ -89,9 +89,27 @@ class RunStatic(RunBase):
     root: str = "dist"  # served dir, relative to the program source
 
 
+class RunPath(RunBase):
+    """A CLI installed on the user's PATH via ``uv tool install`` — no process.
+
+    Like ``remote``/``static`` it has no systemd unit; its manager is **PATH**.
+    The referenced program is what gets installed; its lifecycle is
+    install/uninstall (which is what start/stop/enable/disable map to).
+    """
+
+    runner: Literal["path"]
+
+
 RunSpec = Annotated[
     Union[
-        RunCommand, RunPython, RunContainer, RunNode, RunCompose, RunRemote, RunStatic
+        RunCommand,
+        RunPython,
+        RunContainer,
+        RunNode,
+        RunCompose,
+        RunRemote,
+        RunStatic,
+        RunPath,
     ],
     Field(discriminator="runner"),
 ]

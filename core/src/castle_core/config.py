@@ -139,8 +139,12 @@ class CastleConfig:
 
     @property
     def tools(self) -> dict[str, ProgramSpec]:
-        """Return programs that are tools (behavior == 'tool')."""
-        return {k: v for k, v in self.programs.items() if v.behavior == "tool"}
+        """Programs deployed as a PATH tool (a `runner: path` service) — derived
+        from deployments, not the `behavior` label."""
+        tool_programs = {
+            s.program or n for n, s in self.services.items() if s.run.runner == "path"
+        }
+        return {k: v for k, v in self.programs.items() if k in tool_programs}
 
     @property
     def frontends(self) -> dict[str, ProgramSpec]:
