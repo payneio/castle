@@ -1,5 +1,11 @@
 import { createBrowserRouter } from "react-router-dom"
-import { Dashboard } from "@/pages/Dashboard"
+import { Layout } from "@/components/Layout"
+import { Overview } from "@/pages/Overview"
+import { Services } from "@/pages/Services"
+import { Scheduled } from "@/pages/Scheduled"
+import { Programs } from "@/pages/Programs"
+import { GatewayPage } from "@/pages/GatewayPage"
+import { MeshPage } from "@/pages/MeshPage"
 import { ServiceDetailPage } from "@/pages/ServiceDetail"
 import { ScheduledDetailPage } from "@/pages/ScheduledDetail"
 import { ProgramDetailPage } from "@/pages/ProgramDetail"
@@ -9,26 +15,19 @@ import { NodeDetailPage } from "@/pages/NodeDetail"
 export const router = createBrowserRouter([
   {
     path: "/",
-    element: <Dashboard />,
-  },
-  {
-    path: "/services/:name",
-    element: <ServiceDetailPage />,
-  },
-  {
-    path: "/jobs/:name",
-    element: <ScheduledDetailPage />,
-  },
-  {
-    path: "/programs/:name",
-    element: <ProgramDetailPage />,
-  },
-  {
-    path: "/deployment/:name",
-    element: <ProgramRedirect />,
-  },
-  {
-    path: "/node/:hostname",
-    element: <NodeDetailPage />,
+    element: <Layout />,
+    children: [
+      { index: true, element: <Overview /> },
+      { path: "services", element: <Services /> },
+      { path: "scheduled", element: <Scheduled /> },
+      { path: "programs", element: <Programs /> },
+      { path: "gateway", element: <GatewayPage /> },
+      { path: "mesh", element: <MeshPage /> },
+      { path: "services/:name", element: <ServiceDetailPage /> },
+      { path: "jobs/:name", element: <ScheduledDetailPage /> },
+      { path: "programs/:name", element: <ProgramDetailPage /> },
+      { path: "deployment/:name", element: <ProgramRedirect /> },
+      { path: "node/:hostname", element: <NodeDetailPage /> },
+    ],
   },
 ])

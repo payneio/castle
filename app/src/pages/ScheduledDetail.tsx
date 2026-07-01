@@ -1,6 +1,6 @@
 import { useParams } from "react-router-dom"
 import { Clock } from "lucide-react"
-import { useJob, useStatus, useEventStream } from "@/services/api/hooks"
+import { useJob, useStatus } from "@/services/api/hooks"
 import { LogViewer } from "@/components/LogViewer"
 import { DetailHeader } from "@/components/detail/DetailHeader"
 import { ServiceControls } from "@/components/detail/ServiceControls"
@@ -8,7 +8,6 @@ import { SystemdPanel } from "@/components/detail/SystemdPanel"
 import { ConfigPanel } from "@/components/detail/ConfigPanel"
 
 export function ScheduledDetailPage() {
-  useEventStream()
   const { name } = useParams<{ name: string }>()
   const { data: deployment, isLoading, error, refetch } = useJob(name ?? "")
   const { data: statusResp } = useStatus()
@@ -32,7 +31,7 @@ export function ScheduledDetailPage() {
   return (
     <div className="max-w-3xl mx-auto px-6 py-8">
       <DetailHeader
-        backTo="/"
+        backTo="/scheduled"
         backLabel="Back to Jobs"
         name={deployment.id}
         stack={deployment.stack}

@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { useParams } from "react-router-dom"
-import { useProgram, useEventStream } from "@/services/api/hooks"
+import { useProgram } from "@/services/api/hooks"
 import { runnerLabel, subdomainUrl } from "@/lib/labels"
 import { DetailHeader } from "@/components/detail/DetailHeader"
 import { ConfigPanel } from "@/components/detail/ConfigPanel"
@@ -8,7 +8,6 @@ import { DeploymentsSection } from "@/components/detail/DeploymentsSection"
 import { ProgramActions, ActionOutputPanel, type ActionOutput } from "@/components/ProgramActions"
 
 export function ProgramDetailPage() {
-  useEventStream()
   const { name } = useParams<{ name: string }>()
   const { data: deployment, isLoading, error, refetch } = useProgram(name ?? "")
   const [actionOutput, setActionOutput] = useState<ActionOutput | null>(null)
@@ -39,7 +38,7 @@ export function ProgramDetailPage() {
   return (
     <div className="max-w-3xl mx-auto px-6 py-8">
       <DetailHeader
-        backTo="/"
+        backTo="/programs"
         backLabel="Back to Programs"
         name={deployment.id}
         behavior={deployment.behavior}

@@ -31,12 +31,6 @@ export const STACK_LABELS: Record<string, string> = {
   remote: "Remote",
 }
 
-export const SECTION_HEADERS: Record<string, { title: string; subtitle: string }> = {
-  service: { title: "Services", subtitle: "Long-running processes" },
-  scheduled: { title: "Scheduled Jobs", subtitle: "Systemd timers" },
-  program: { title: "Programs", subtitle: "Software catalog" },
-}
-
 export function runnerLabel(runner: string): string {
   return RUNNER_LABELS[runner] ?? runner
 }

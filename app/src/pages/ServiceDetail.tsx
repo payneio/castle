@@ -1,6 +1,6 @@
 import { useParams, Link } from "react-router-dom"
 import { Server, ExternalLink, Terminal } from "lucide-react"
-import { useService, useStatus, useEventStream, useCaddyfile } from "@/services/api/hooks"
+import { useService, useStatus, useCaddyfile } from "@/services/api/hooks"
 import { runnerLabel, subdomainUrl } from "@/lib/labels"
 import { HealthBadge } from "@/components/HealthBadge"
 import { LogViewer } from "@/components/LogViewer"
@@ -10,7 +10,6 @@ import { SystemdPanel } from "@/components/detail/SystemdPanel"
 import { ConfigPanel } from "@/components/detail/ConfigPanel"
 
 export function ServiceDetailPage() {
-  useEventStream()
   const { name } = useParams<{ name: string }>()
   const { data: deployment, isLoading, error, refetch } = useService(name ?? "")
   const { data: statusResp } = useStatus()
@@ -36,7 +35,7 @@ export function ServiceDetailPage() {
   return (
     <div className="max-w-3xl mx-auto px-6 py-8">
       <DetailHeader
-        backTo="/"
+        backTo="/services"
         backLabel="Back to Services"
         name={deployment.id}
         behavior="daemon"
