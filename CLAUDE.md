@@ -41,6 +41,7 @@ verb commands and scaffold, but a program stands on its own via its declared
 Stack guides (for writing *new* code, AI-facing):
 
 - @docs/registry.md — Registry architecture, castle.yaml structure, lifecycle
+- @docs/dns-and-tls.md — DNS + TLS approach: gateway routing, LAN name resolution, the three `gateway.tls` modes (off/internal/acme)
 - @docs/stacks/python-fastapi.md — FastAPI service patterns (config, routes, models, testing)
 - @docs/stacks/python-cli.md — CLI tool patterns (argparse, stdin/stdout, piping, testing)
 - @docs/stacks/react-vite.md — React/Vite/TypeScript frontend patterns
