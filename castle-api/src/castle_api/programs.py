@@ -4,11 +4,18 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, status
 
-from castle_core.stacks import available_actions, run_action
+from castle_core.stacks import available_actions, available_stacks, run_action
 
 from castle_api.config import get_config
 
 programs_router = APIRouter(tags=["programs"])
+
+
+@programs_router.get("/stacks")
+def list_stacks() -> list[str]:
+    """Stack names castle has handlers for — populates the dashboard's stack select
+    and keeps it in sync with the backend (no hardcoded frontend list)."""
+    return available_stacks()
 
 # ---------------------------------------------------------------------------
 # Unified program action endpoint

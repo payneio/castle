@@ -520,6 +520,13 @@ def get_handler(stack: str | None) -> StackHandler | None:
     return HANDLERS.get(stack)
 
 
+def available_stacks() -> list[str]:
+    """The stack names castle has handlers for — the single source of truth for the
+    CLI ``--stack`` choices, the ``GET /stacks`` endpoint, and the dashboard select.
+    """
+    return sorted(HANDLERS)
+
+
 def _declared_commands(comp: ProgramSpec, verb: str) -> list[list[str]] | None:
     """Declared argv-lists for a verb, or None.
 

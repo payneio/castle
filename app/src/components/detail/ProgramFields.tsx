@@ -1,5 +1,6 @@
 import { useState } from "react"
 import type { ProgramDetail } from "@/types"
+import { useStacks } from "@/services/api/hooks"
 import { Field, TextField, FormFooter } from "./fields"
 
 const SELECT =
@@ -21,6 +22,7 @@ type Obj = Record<string, unknown>
 /** Edit a program's catalog config (its source identity), not how it's deployed. */
 export function ProgramFields({ program, onSave, onDelete }: Props) {
   const m = program.manifest
+  const { data: stacks = [] } = useStacks()
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
 
@@ -114,9 +116,13 @@ export function ProgramFields({ program, onSave, onDelete }: Props) {
       >
         <select value={stack} onChange={(e) => setStack(e.target.value)} className={`w-48 ${SELECT}`}>
           <option value="">(none)</option>
-          <option value="python-cli">python-cli</option>
-          <option value="python-fastapi">python-fastapi</option>
-          <option value="react-vite">react-vite</option>
+          {/* Options come from the backend (GET /stacks); include the current
+              value even if unknown so it never silently blanks. */}
+          {Array.from(new Set([...stacks, ...(stack ? [stack] : [])])).map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ))}
         </select>
       </Field>
       <TextField label="Version" value={version} onChange={setVersion} width="w-32" hint="Optional metadata." />

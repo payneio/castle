@@ -22,6 +22,7 @@ export const STACK_LABELS: Record<string, string> = {
   "python-fastapi": "Python / FastAPI",
   "python-cli": "Python / CLI",
   "react-vite": "React / Vite",
+  supabase: "Supabase",
   rust: "Rust",
   go: "Go",
   bash: "Bash",

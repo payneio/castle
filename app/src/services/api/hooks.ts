@@ -49,6 +49,16 @@ export function useJobs() {
   })
 }
 
+// The stacks castle has handlers for — authoritative source for the program
+// stack select, so a new backend stack appears without a frontend change.
+export function useStacks() {
+  return useQuery({
+    queryKey: ["stacks"],
+    queryFn: () => apiClient.get<string[]>("/stacks"),
+    staleTime: Infinity,
+  })
+}
+
 export function useJob(name: string) {
   return useQuery({
     queryKey: ["jobs", name],
