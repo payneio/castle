@@ -48,8 +48,6 @@ export function ProgramDetailPage() {
         <ProgramActions
           name={deployment.id}
           actions={deployment.actions}
-          active={deployment.active}
-          kind={deployment.kind}
           onOutput={setActionOutput}
         />
       </DetailHeader>

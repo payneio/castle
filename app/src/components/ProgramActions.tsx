@@ -4,10 +4,8 @@ import {
   FlaskConical,
   Hammer,
   Loader2,
-  Plug,
   ShieldCheck,
   Sparkles,
-  Unplug,
   type LucideIcon,
 } from "lucide-react"
 import { useProgramAction } from "@/services/api/hooks"
@@ -20,14 +18,15 @@ interface ActionConfig {
   borderColor: string
 }
 
+// Dev verbs only — operations on the program's *source*. Deployment lifecycle
+// (install/uninstall a tool, start/stop a service, …) belongs to the deployment,
+// not the program, so it lives in the Deployment section, never here.
 const ACTION_CONFIG: Record<string, ActionConfig> = {
   build:        { icon: Hammer,       label: "Build",      color: "text-blue-400",   hoverBg: "hover:bg-blue-800/30",   borderColor: "border-blue-800" },
   test:         { icon: FlaskConical, label: "Test",       color: "text-purple-400", hoverBg: "hover:bg-purple-800/30", borderColor: "border-purple-800" },
   lint:         { icon: Sparkles,     label: "Lint",       color: "text-amber-400",  hoverBg: "hover:bg-amber-800/30",  borderColor: "border-amber-800" },
   "type-check": { icon: FileCheck,    label: "Type Check", color: "text-cyan-400",   hoverBg: "hover:bg-cyan-800/30",   borderColor: "border-cyan-800" },
   check:        { icon: ShieldCheck,  label: "Check All",  color: "text-green-400",  hoverBg: "hover:bg-green-800/30",  borderColor: "border-green-800" },
-  install:      { icon: Plug,         label: "Install",    color: "text-green-400",  hoverBg: "hover:bg-green-800/30",  borderColor: "border-green-800" },
-  uninstall:    { icon: Unplug,       label: "Uninstall",  color: "text-red-400",    hoverBg: "hover:bg-red-800/30",    borderColor: "border-red-800" },
 }
 
 const DEV_ACTIONS = ["build", "test", "lint", "type-check", "check"]
@@ -41,67 +40,20 @@ export interface ActionOutput {
 interface ProgramActionsProps {
   name: string
   actions: string[]
-  active?: boolean | null
-  kind?: string | null
   compact?: boolean
   onOutput?: (output: ActionOutput) => void
-}
-
-/** install/uninstall (activate) is meaningful only for a tool (a PATH deployment).
- * Services, jobs, and static (caddy) deployments are managed through their
- * deployment — never install/uninstall here. */
-function showsActivation(kind: string | null | undefined): boolean {
-  return kind === "tool"
-}
-
-function visibleActions(
-  actions: string[],
-  active: boolean | null | undefined,
-  compact: boolean,
-): string[] {
-  // `active` is the uniform lifecycle state (on PATH / running / served), not a
-  // PATH lookup — so it's correct for tools, services, jobs, and static frontends.
-  if (compact) {
-    // Table: only the activate/deactivate toggle based on state
-    if (active === true) return actions.includes("uninstall") ? ["uninstall"] : []
-    if (active === false) return actions.includes("install") ? ["install"] : []
-    // null — show install if available
-    return actions.includes("install") ? ["install"] : []
-  }
-
-  // Detail page: dev actions always, activate/deactivate based on state
-  const visible: string[] = []
-  for (const a of DEV_ACTIONS) {
-    if (actions.includes(a)) visible.push(a)
-  }
-  if (active === true) {
-    if (actions.includes("uninstall")) visible.push("uninstall")
-  } else if (active === false) {
-    if (actions.includes("install")) visible.push("install")
-  } else {
-    // null — show both if available
-    if (actions.includes("install")) visible.push("install")
-    if (actions.includes("uninstall")) visible.push("uninstall")
-  }
-  return visible
 }
 
 export function ProgramActions({
   name,
   actions,
-  active,
-  kind,
   compact,
   onOutput,
 }: ProgramActionsProps) {
   const { mutate, isPending } = useProgramAction()
   const [runningAction, setRunningAction] = useState<string | null>(null)
 
-  // Drop install/uninstall for kinds that activate via a deployment.
-  const allowed = showsActivation(kind)
-    ? actions
-    : actions.filter((a) => a !== "install" && a !== "uninstall")
-  const visible = visibleActions(allowed, active, !!compact)
+  const visible = DEV_ACTIONS.filter((a) => actions.includes(a))
 
   const handleAction = (action: string) => {
     setRunningAction(action)
@@ -111,13 +63,13 @@ export function ProgramActions({
       {
         onSuccess: (data) => {
           setRunningAction(null)
-          if (!compact && DEV_ACTIONS.includes(action) && data.output) {
+          if (!compact && data.output) {
             onOutput?.({ action, text: data.output, ok: true })
           }
         },
         onError: (err) => {
           setRunningAction(null)
-          if (!compact && DEV_ACTIONS.includes(action)) {
+          if (!compact) {
             let text = String(err)
             try {
               const parsed = JSON.parse((err as Error).message)
