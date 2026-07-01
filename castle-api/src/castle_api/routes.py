@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import shutil
+import subprocess
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, status
@@ -19,6 +20,7 @@ from castle_api.health import check_all_health
 from castle_api.models import (
     DeploymentDetail,
     DeploymentSummary,
+    GatewayConfigRequest,
     GatewayInfo,
     GatewayRoute,
     JobDetail,
@@ -874,6 +876,13 @@ def get_gateway() -> GatewayInfo:
         except FileNotFoundError:
             pass
 
+    # Which local services are public → their public URL (<name>.<public_domain>).
+    public_domain = registry.node.public_domain
+    public_names = {
+        name for name, svc in (config.services.items() if config else [])
+        if getattr(svc, "public", False)
+    }
+
     remote = {h: r.registry for h, r in mesh_state.all_nodes().items()}
     routes = [
         GatewayRoute(
@@ -882,11 +891,24 @@ def get_gateway() -> GatewayInfo:
             target=r.target,
             name=r.name,
             node=r.node or registry.node.hostname,
+            public_url=(
+                f"https://{r.name}.{public_domain}"
+                if public_domain and r.name in public_names
+                else None
+            ),
         )
         for r in compute_routes(registry, config, remote or None)
     ]
     # Caddyfile order is precedence-sensitive; the displayed table is alphabetical.
     routes.sort(key=lambda r: r.address)
+
+    tunnel_connected = (
+        subprocess.run(
+            ["systemctl", "--user", "is-active", "castle-castle-tunnel.service"],
+            capture_output=True, text=True,
+        ).stdout.strip()
+        == "active"
+    )
 
     return GatewayInfo(
         port=registry.node.gateway_port,
@@ -896,7 +918,33 @@ def get_gateway() -> GatewayInfo:
         managed_count=managed_count,
         routes=routes,
         tls=registry.node.gateway_tls,
+        domain=registry.node.gateway_domain,
+        public_domain=public_domain,
+        tunnel_id=registry.node.tunnel_id,
+        tunnel_connected=tunnel_connected,
     )
+
+
+@router.put("/gateway/config")
+def save_gateway_config(request: GatewayConfigRequest) -> dict[str, str]:
+    """Update the gateway's routing/exposure settings in castle.yaml.
+
+    Saves only; the caller runs deploy to regenerate the Caddyfile + tunnel config.
+    An empty string clears a field.
+    """
+    root = get_castle_root()
+    if root is None:
+        raise HTTPException(status_code=404, detail="No castle root found.")
+    from castle_core.config import load_config, save_config
+
+    config = load_config(root)
+    norm = lambda v: (v or None)  # noqa: E731 — empty string clears
+    config.gateway.tls = norm(request.tls)
+    config.gateway.domain = norm(request.domain)
+    config.gateway.public_domain = norm(request.public_domain)
+    config.gateway.tunnel_id = norm(request.tunnel_id)
+    save_config(config)
+    return {"status": "saved", "message": "Saved. Run deploy to apply."}
 
 
 @router.get("/gateway/caddyfile")

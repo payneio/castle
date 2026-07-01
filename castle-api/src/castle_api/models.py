@@ -144,6 +144,9 @@ class GatewayRoute(BaseModel):
     target: str
     name: str | None = None
     node: str
+    # Public exposure via the tunnel: the public URL, or None if this route is
+    # LAN-only. Set when the backing service has `public: true`.
+    public_url: str | None = None
 
 
 class GatewayInfo(BaseModel):
@@ -158,6 +161,20 @@ class GatewayInfo(BaseModel):
     # TLS mode: None/"off" → HTTP-only; "acme" → Let's Encrypt wildcard (publicly
     # trusted, no client CA setup) for host routes.
     tls: str | None = None
+    # Routing/exposure config (editable from the dashboard).
+    domain: str | None = None  # acme zone → <service>.<domain>
+    public_domain: str | None = None  # tunnel zone → <service>.<public_domain>
+    tunnel_id: str | None = None
+    tunnel_connected: bool = False  # cloudflared service active
+
+
+class GatewayConfigRequest(BaseModel):
+    """Editable gateway settings (saved to castle.yaml; deploy to apply)."""
+
+    tls: str | None = None
+    domain: str | None = None
+    public_domain: str | None = None
+    tunnel_id: str | None = None
 
 
 class NodeSummary(BaseModel):

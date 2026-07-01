@@ -1,10 +1,11 @@
 import { useMemo, useState } from "react"
 import { Link } from "react-router-dom"
-import { Globe, RefreshCw, FileText, ExternalLink } from "lucide-react"
+import { Globe, RefreshCw, FileText, ExternalLink, Cable } from "lucide-react"
 import type { GatewayInfo, HealthStatus } from "@/types"
 import { useGatewayReload, useCaddyfile } from "@/services/api/hooks"
 import { subdomainUrl } from "@/lib/labels"
 import { HealthBadge } from "./HealthBadge"
+import { GatewaySettings } from "./GatewaySettings"
 
 interface GatewayPanelProps {
   gateway: GatewayInfo
@@ -58,6 +59,9 @@ export function GatewayPanel({ gateway, statuses }: GatewayPanelProps) {
         </div>
       </div>
 
+      {/* Routing + public-exposure settings (editable) */}
+      <GatewaySettings gateway={gateway} />
+
       {/* Route table — every gateway route, of every kind */}
       {gateway.routes.length > 0 && (
         <table className="w-full text-sm">
@@ -97,6 +101,17 @@ export function GatewayPanel({ gateway, statuses }: GatewayPanelProps) {
                       </a>
                     ) : (
                       route.address
+                    )}
+                    {route.public_url && (
+                      <a
+                        href={route.public_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title={route.public_url}
+                        className="ml-2 inline-flex items-center gap-1 text-[0.65rem] px-1.5 py-0.5 rounded bg-green-500/15 text-green-500 hover:bg-green-500/25"
+                      >
+                        <Cable size={10} /> public
+                      </a>
                     )}
                   </td>
                   <td className="px-4 py-2">

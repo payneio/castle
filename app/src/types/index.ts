@@ -114,6 +114,7 @@ export interface GatewayRoute {
   target: string // serve dir, "localhost:PORT", or "host:PORT"
   name: string | null
   node: string
+  public_url?: string | null // set when the service is public (via the tunnel)
 }
 
 export interface GatewayInfo {
@@ -124,6 +125,17 @@ export interface GatewayInfo {
   managed_count: number
   routes: GatewayRoute[]
   tls?: string | null // "acme" → host routes served over HTTPS with a Let's Encrypt wildcard
+  domain?: string | null // acme zone → <service>.<domain>
+  public_domain?: string | null // tunnel zone → <service>.<public_domain>
+  tunnel_id?: string | null
+  tunnel_connected?: boolean
+}
+
+export interface GatewayConfigRequest {
+  tls?: string | null
+  domain?: string | null
+  public_domain?: string | null
+  tunnel_id?: string | null
 }
 
 export interface ServiceActionResponse {

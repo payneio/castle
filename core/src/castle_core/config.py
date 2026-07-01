@@ -427,6 +427,10 @@ def save_config(config: CastleConfig) -> None:
     # Only persist the provider when non-default, to keep castle.yaml minimal.
     if config.gateway.acme_dns_provider and config.gateway.acme_dns_provider != "cloudflare":
         gateway_data["acme_dns_provider"] = config.gateway.acme_dns_provider
+    if config.gateway.public_domain:
+        gateway_data["public_domain"] = config.gateway.public_domain
+    if config.gateway.tunnel_id:
+        gateway_data["tunnel_id"] = config.gateway.tunnel_id
     data: dict = {"gateway": gateway_data}
     if config.repo:
         data["repo"] = str(config.repo)
