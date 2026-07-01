@@ -10,11 +10,11 @@ interface ProgramCardProps {
 
 export function ProgramCard({ program }: ProgramCardProps) {
   return (
-    <div className="bg-[var(--card)] border border-[var(--border)] rounded-lg p-5">
+    <div className="relative bg-[var(--card)] border border-[var(--border)] rounded-lg p-5 hover:border-[var(--primary)] transition-colors">
       <div className="flex items-start justify-between mb-2">
         <Link
           to={`/programs/${program.id}`}
-          className="text-base font-semibold hover:text-[var(--primary)] transition-colors"
+          className="text-base font-semibold hover:text-[var(--primary)] transition-colors after:absolute after:inset-0"
         >
           {program.id}
         </Link>
@@ -29,14 +29,16 @@ export function ProgramCard({ program }: ProgramCardProps) {
         <p className="text-sm text-[var(--muted)] mb-3">{program.description}</p>
       )}
 
-      <ProgramActions
-        name={program.id}
-        actions={program.actions}
-        active={program.active}
-        behavior={program.behavior}
-        deployedAs={[...program.services, ...program.jobs]}
-        compact
-      />
+      <div className="relative z-10">
+        <ProgramActions
+          name={program.id}
+          actions={program.actions}
+          active={program.active}
+          behavior={program.behavior}
+          deployedAs={[...program.services, ...program.jobs]}
+          compact
+        />
+      </div>
     </div>
   )
 }

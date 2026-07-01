@@ -22,11 +22,11 @@ export function ServiceCard({ service, health }: ServiceCardProps) {
   const isDown = health?.status === "down"
 
   return (
-    <div className="bg-[var(--card)] border border-[var(--border)] rounded-lg p-5">
+    <div className="relative bg-[var(--card)] border border-[var(--border)] rounded-lg p-5 hover:border-[var(--primary)] transition-colors">
       <div className="flex items-start justify-between mb-2">
         <Link
           to={`/services/${service.id}`}
-          className="text-base font-semibold hover:text-[var(--primary)] transition-colors"
+          className="text-base font-semibold hover:text-[var(--primary)] transition-colors after:absolute after:inset-0"
         >
           {service.id}
         </Link>
@@ -61,7 +61,7 @@ export function ServiceCard({ service, health }: ServiceCardProps) {
           {service.subdomain && (
             <a
               href={subdomainUrl(service.subdomain) ?? undefined}
-              className="flex items-center gap-1 text-[var(--primary)] hover:underline"
+              className="relative z-10 flex items-center gap-1 text-[var(--primary)] hover:underline"
             >
               <ExternalLink size={12} />
               {service.subdomain}
@@ -70,7 +70,7 @@ export function ServiceCard({ service, health }: ServiceCardProps) {
           {service.port && (
             <a
               href={`http://localhost:${service.port}/docs`}
-              className="text-[var(--primary)] hover:underline"
+              className="relative z-10 text-[var(--primary)] hover:underline"
             >
               Docs
             </a>
@@ -78,7 +78,7 @@ export function ServiceCard({ service, health }: ServiceCardProps) {
         </div>
 
         {service.managed && (
-          <div className="flex items-center gap-1">
+          <div className="relative z-10 flex items-center gap-1">
             {isDown && (
               <button
                 onClick={() => doAction("start")}

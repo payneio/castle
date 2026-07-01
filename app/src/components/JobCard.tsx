@@ -19,11 +19,11 @@ export function JobCard({ job, health }: JobCardProps) {
   }
 
   return (
-    <div className="bg-[var(--card)] border border-[var(--border)] rounded-lg p-5">
+    <div className="relative bg-[var(--card)] border border-[var(--border)] rounded-lg p-5 hover:border-[var(--primary)] transition-colors">
       <div className="flex items-start justify-between mb-2">
         <Link
           to={`/jobs/${job.id}`}
-          className="text-base font-semibold hover:text-[var(--primary)] transition-colors"
+          className="text-base font-semibold hover:text-[var(--primary)] transition-colors after:absolute after:inset-0"
         >
           {job.id}
         </Link>
@@ -59,7 +59,7 @@ export function JobCard({ job, health }: JobCardProps) {
         </div>
 
         {job.managed && (
-          <div className="flex items-center gap-1">
+          <div className="relative z-10 flex items-center gap-1">
             {isDown && (
               <button
                 onClick={() => doAction("start")}
