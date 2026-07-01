@@ -22,7 +22,6 @@ export const LogViewer = forwardRef<LogViewerHandle, LogViewerProps>(function Lo
   // When true, new log lines scroll the view to the bottom. Scrolling up to read
   // pauses it; scrolling back to the bottom (or the play button) resumes.
   const [autoScroll, setAutoScroll] = useState(true)
-  const bottomRef = useRef<HTMLDivElement>(null)
   const preRef = useRef<HTMLPreElement>(null)
 
   useEffect(() => {
@@ -57,10 +56,13 @@ export const LogViewer = forwardRef<LogViewerHandle, LogViewerProps>(function Lo
     return () => window.removeEventListener("keydown", onKey)
   }, [maximized])
 
-  // Jump to the newest line only while auto-scroll is on. Instant (not smooth) so
-  // the scroll-position check below never sees a mid-animation false "scrolled up".
+  // Jump to the newest line only while auto-scroll is on. Scroll the <pre>
+  // container directly (not scrollIntoView, which would walk up to the window
+  // and jump the whole page). Instant, so the scroll-position check below never
+  // sees a mid-animation false "scrolled up".
   useEffect(() => {
-    if (autoScroll) bottomRef.current?.scrollIntoView()
+    const el = preRef.current
+    if (autoScroll && el) el.scrollTop = el.scrollHeight
   }, [logs, autoScroll])
 
   // Keep auto-scroll in sync with where the user is: away from the bottom pauses,
@@ -129,7 +131,6 @@ export const LogViewer = forwardRef<LogViewerHandle, LogViewerProps>(function Lo
             </div>
           ))
         )}
-        <div ref={bottomRef} />
       </pre>
     </div>
   )
