@@ -12,7 +12,7 @@ export function Programs() {
       {isLoading ? (
         <p className="text-[var(--muted)]">Loading...</p>
       ) : programs && programs.length > 0 ? (
-        <ProgramList programs={programs} />
+        <ProgramList programs={programs} filterable />
       ) : (
         <p className="text-[var(--muted)]">No programs yet.</p>
       )}
