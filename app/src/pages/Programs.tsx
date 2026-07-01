@@ -1,5 +1,5 @@
 import { usePrograms } from "@/services/api/hooks"
-import { ProgramTable } from "@/components/ProgramTable"
+import { ProgramList } from "@/components/ProgramList"
 import { PageHeader } from "@/components/PageHeader"
 
 export function Programs() {
@@ -12,7 +12,7 @@ export function Programs() {
       {isLoading ? (
         <p className="text-[var(--muted)]">Loading...</p>
       ) : programs && programs.length > 0 ? (
-        <ProgramTable programs={programs} />
+        <ProgramList programs={programs} />
       ) : (
         <p className="text-[var(--muted)]">No programs yet.</p>
       )}

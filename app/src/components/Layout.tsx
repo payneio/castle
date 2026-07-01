@@ -17,10 +17,10 @@ import { useEventStream } from "@/services/api/hooks"
 
 const NAV = [
   { to: "/", label: "Overview", icon: LayoutDashboard, end: true },
+  { to: "/gateway", label: "Gateway", icon: Globe, end: false },
   { to: "/services", label: "Services", icon: Server, end: false },
   { to: "/scheduled", label: "Scheduled", icon: Clock, end: false },
   { to: "/programs", label: "Programs", icon: Package, end: false },
-  { to: "/gateway", label: "Gateway", icon: Globe, end: false },
   { to: "/mesh", label: "Mesh", icon: Share2, end: false },
 ]
 
