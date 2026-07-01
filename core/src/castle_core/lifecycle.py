@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import time
 from pathlib import Path
 
 from castle_core.config import CastleConfig
@@ -37,15 +38,53 @@ def _systemctl_active(unit: str) -> bool:
     return result.stdout.strip() in ("active", "waiting")
 
 
-def _on_path(name: str) -> bool:
-    """Whether a tool's console script is installed (PATH-independent).
+_UV_TOOLS_CACHE: tuple[float, set[str]] | None = None
 
-    uv tool install places scripts in ~/.local/bin; checking it directly avoids
-    depending on the caller's PATH (the API/CLI may not have it exported).
+
+def _uv_tool_packages() -> set[str]:
+    """Package names uv has installed as tools (`uv tool list`), briefly cached.
+
+    Authoritative for install detection: a program's *package* name can differ
+    from the console script it exposes (e.g. `litellm-intent-router` installs the
+    `intent-router` executable), so a `which(<program>)` check misses it.
+    """
+    global _UV_TOOLS_CACHE
+    now = time.monotonic()
+    if _UV_TOOLS_CACHE is not None and now - _UV_TOOLS_CACHE[0] < 2.0:
+        return _UV_TOOLS_CACHE[1]
+    pkgs: set[str] = set()
+    try:
+        out = subprocess.run(
+            ["uv", "tool", "list"], capture_output=True, text=True, timeout=5
+        )
+        for line in out.stdout.splitlines():
+            # Package lines start at column 0 ("<name> vX.Y"); executables are
+            # indented "- <exe>".
+            if line and not line[0].isspace() and not line.startswith("-"):
+                pkgs.add(line.split()[0])
+    except Exception:
+        pass
+    _UV_TOOLS_CACHE = (now, pkgs)
+    return pkgs
+
+
+def _on_path(name: str) -> bool:
+    """Whether a tool is installed, PATH-independent and script-name-independent.
+
+    Checks, in order: the console script on PATH, the script in ~/.local/bin
+    (uv's install dir), and finally `uv tool list` by *package* name — the last
+    catches tools whose executable is named differently from the program.
     """
     if shutil.which(name) is not None:
         return True
-    return (Path.home() / ".local" / "bin" / name).exists()
+    if (Path.home() / ".local" / "bin" / name).exists():
+        return True
+    return name in _uv_tool_packages()
+
+
+def tool_installed(name: str) -> bool:
+    """Public: whether a tool (by program/package name) is installed on PATH."""
+    return _on_path(name)
 
 
 def _svc_manager(name: str, config: CastleConfig) -> str | None:

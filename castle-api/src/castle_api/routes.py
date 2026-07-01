@@ -16,6 +16,7 @@ from castle_core.manifest import (
     SystemdDeployment,
     kind_for,
 )
+from castle_core.lifecycle import tool_installed
 from castle_core.stacks import available_actions
 
 from castle_api.config import get_castle_root, get_registry
@@ -82,7 +83,7 @@ def _summary_from_deployed(name: str, deployed: object) -> DeploymentSummary:
     installed: bool | None = None
     active: bool | None = None
     if deployed.manager == "path":
-        installed = shutil.which(name) is not None
+        installed = tool_installed(name)
         active = installed
 
     category = "job" if deployed.schedule else "service"
@@ -201,7 +202,7 @@ def _summary_from_program(
 
     installed: bool | None = None
     if comp.source and (comp.stack or comp.commands):
-        installed = shutil.which(name) is not None
+        installed = tool_installed(name)
 
     return DeploymentSummary(
         id=name,
@@ -372,7 +373,7 @@ def _program_from_spec(
 
     installed: bool | None = None
     if comp.source and (comp.stack or comp.commands):
-        installed = shutil.which(name) is not None
+        installed = tool_installed(name)
 
     # Uniform lifecycle state (on PATH / running / served) — needs full config.
     active: bool | None = None
