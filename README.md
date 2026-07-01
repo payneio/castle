@@ -105,12 +105,8 @@ block set, a sensible default set (`claude`, `opencode`, `amplifier`, …) is of
 # Install the CLI (editable, onto your PATH)
 uv tool install --editable cli/
 
-# Bootstrap infrastructure (Docker, Caddy, directories, containers)
+# Bootstrap infrastructure + the ~/.castle tree and a default castle.yaml
 ./install.sh
-
-# Minimal global config
-mkdir -p ~/.castle/programs ~/.castle/deployments
-printf 'gateway:\n  port: 9000\n' > ~/.castle/castle.yaml
 
 castle list                     # what's registered
 castle deploy && castle start   # apply config to the runtime, then bring it up
@@ -263,4 +259,3 @@ and `CASTLE_API_MDNS_ENABLED`.
 - [docs/dns-and-tls.md](docs/dns-and-tls.md) — gateway routing, DNS, the `off` / `acme` TLS modes
 - [docs/stacks/](docs/stacks/) — per-stack guides (python-fastapi, python-cli, react-vite, supabase)
 - [AGENTS.md](AGENTS.md) — the canonical, assistant-agnostic operator guide (recipes, gateway, tunnel, mesh)
-- [CLAUDE.md](CLAUDE.md) — notes for developing Castle's own code, and the full API reference

@@ -214,14 +214,21 @@ ensure_caddy_dns_plugin() {
 create_directories() {
     log_step "Creating directory structure"
 
-    # ~/.castle tree
-    mkdir -p "${CASTLE_HOME}/code"
+    # ~/.castle tree — globals (castle.yaml) plus one file per program/deployment.
+    mkdir -p "${CASTLE_HOME}/programs"
+    mkdir -p "${CASTLE_HOME}/deployments"
     mkdir -p "${CASTLE_HOME}/artifacts/specs"
     mkdir -p "${CASTLE_HOME}/artifacts/content"
     mkdir -p "${DATA_DIR}"
     mkdir -p "${CASTLE_HOME}/secrets" && chmod 700 "${CASTLE_HOME}/secrets"
 
-    log_ok
+    # Seed a minimal global castle.yaml — never clobber an existing one.
+    if [[ -f "${CASTLE_HOME}/castle.yaml" ]]; then
+        log_ok
+    else
+        printf 'gateway:\n  port: 9000\n' > "${CASTLE_HOME}/castle.yaml"
+        log_ok "seeded ~/.castle/castle.yaml"
+    fi
 }
 
 # ---------------------------------------------------------------------------
