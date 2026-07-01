@@ -16,8 +16,8 @@ export function ScheduledSection({ jobs, statuses }: ScheduledSectionProps) {
   return (
     <section>
       <SectionHeader section="scheduled" />
-      <div className="border border-[var(--border)] rounded-lg overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="border border-[var(--border)] rounded-lg overflow-x-auto">
+        <table className="w-full min-w-[36rem] text-sm">
           <thead>
             <tr className="bg-[var(--card)] border-b border-[var(--border)] text-left">
               <th className="px-3 py-2 font-medium text-[var(--muted)]">Name</th>

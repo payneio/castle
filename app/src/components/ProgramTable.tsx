@@ -64,8 +64,8 @@ export function ProgramTable({ programs }: ProgramTableProps) {
         />
       </div>
 
-      <div className="border border-[var(--border)] rounded-lg overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="border border-[var(--border)] rounded-lg overflow-x-auto">
+        <table className="w-full min-w-[36rem] text-sm">
           <thead>
             <tr className="bg-[var(--card)] border-b border-[var(--border)] text-left">
               <SortHeader label="Name" sortKey="id" current={sortKey} dir={sortDir} onSort={toggleSort} />
