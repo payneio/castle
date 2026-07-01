@@ -1,4 +1,5 @@
-"""castle list - show all registered programs, services, and jobs."""
+"""castle list - the program catalog plus every deployment view (services, jobs,
+tools, static)."""
 
 from __future__ import annotations
 
@@ -6,9 +7,16 @@ import argparse
 import json
 import logging
 
+from castle_core.manifest import kind_for
+
 from castle_cli.config import load_config
 
 log = logging.getLogger(__name__)
+
+
+def _deployments_of_kind(config: object, kind: str) -> dict:
+    """The deployments whose derived kind matches (a lens over config.deployments)."""
+    return {n: d for n, d in config.deployments.items() if kind_for(d) == kind}
 
 # Terminal colors
 BOLD = "\033[1m"
@@ -142,6 +150,31 @@ def run_list(args: argparse.Namespace) -> int:
                 desc = f"  {DIM}{job.description}{RESET}" if job.description else ""
                 print(f"  {dot(name)} {BOLD}{name}{RESET}{sched}{desc}")
 
+    if not filter_kind and resource in (None, "tool"):
+        tools = _filter_by_stack(_deployments_of_kind(config, "tool"), config, filter_stack)
+        if tools:
+            any_output = True
+            color = KIND_COLORS["tool"]
+            print(f"\n{BOLD}{color}Tools{RESET}")
+            print(f"{color}{'─' * 40}{RESET}")
+            for name, d in tools.items():
+                stack = _resolve_stack(config, name)
+                stack_str = f"  {DIM}{stack}{RESET}" if stack else ""
+                desc = f"  {DIM}{d.description}{RESET}" if d.description else ""
+                print(f"  {dot(name)} {BOLD}{name}{RESET}{stack_str}{desc}")
+
+    if not filter_kind and resource in (None, "static"):
+        statics = _filter_by_stack(_deployments_of_kind(config, "static"), config, filter_stack)
+        if statics:
+            any_output = True
+            color = KIND_COLORS["static"]
+            print(f"\n{BOLD}{color}Static{RESET}")
+            print(f"{color}{'─' * 40}{RESET}")
+            for name, d in statics.items():
+                sub = f"  {DIM}{name}.<domain>{RESET}"
+                desc = f"  {DIM}{d.description}{RESET}" if d.description else ""
+                print(f"  {dot(name)} {BOLD}{name}{RESET}{sub}{desc}")
+
     if not any_output:
         print(f"No {resource or 'program'}s found.")
 
@@ -222,6 +255,18 @@ def _list_json(
             if job.description:
                 entry["description"] = job.description
             output.append(entry)
+
+        for kind in ("tool", "static"):
+            for name, d in _deployments_of_kind(config, kind).items():
+                stack = _resolve_stack(config, name)
+                if filter_stack and stack != filter_stack:
+                    continue
+                entry = {"name": name, "kind": kind, "active": is_active(name, config)}
+                if stack:
+                    entry["stack"] = stack
+                if d.description:
+                    entry["description"] = d.description
+                output.append(entry)
 
     print(json.dumps(output, indent=2))
     return 0
