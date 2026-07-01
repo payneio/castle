@@ -55,9 +55,7 @@ def castle_root(tmp_path: Path) -> Generator[Path, None, None]:
                         "health_path": "/health",
                     }
                 },
-                "proxy": {
-                    "caddy": {"path_prefix": "/test-svc"},
-                },
+                "proxy": True,
                 "manage": {
                     "systemd": {},
                 },

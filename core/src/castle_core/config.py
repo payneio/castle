@@ -158,10 +158,12 @@ def resolve_env_split(
     (routing them through a mode-0600 env file) while inlining the rest.
 
     - ``${secret:NAME}`` reads `~/.castle/secrets/NAME`.
-    - ``${port}`` / ``${data_dir}`` / ``${name}`` (and anything else in
-      ``context``) expand to castle's computed values, so a service maps them to
-      whatever env var its program reads (e.g. ``MY_PORT: ${port}``) without
-      hardcoding or castle silently injecting a guessed var name.
+    - ``${port}`` / ``${data_dir}`` / ``${name}`` / ``${public_url}`` (and
+      anything else in ``context``) expand to castle's computed values, so a
+      service maps them to whatever env var its program reads (e.g.
+      ``MY_PORT: ${port}``) without hardcoding or castle silently injecting a
+      guessed var name. ``${public_url}`` is the service's gateway-facing base
+      URL (``https://<name>.<domain>`` under acme) — the origin an app allowlists.
     """
     context = context or {}
     plain: dict[str, str] = {}
@@ -329,7 +331,6 @@ _STRUCTURAL_KEYS = {
     "systemd",
     "expose",
     "proxy",
-    "caddy",
 }
 
 

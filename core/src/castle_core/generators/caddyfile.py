@@ -55,8 +55,8 @@ def service_proxy_targets(name: str, svc: ServiceSpec) -> ProxyTargets:
 
     The single source of truth shared by the registry build (``deploy``) and
     route computation (``compute_routes``), so they never disagree. ``expose`` is
-    the checkbox (``proxy.caddy`` present and enabled); the subdomain is always the
-    service name, so there's nothing else to derive.
+    the checkbox (``proxy: true``); the subdomain is always the service name, so
+    there's nothing else to derive.
     """
     port = None
     if svc.expose and svc.expose.http:
