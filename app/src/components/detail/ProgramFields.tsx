@@ -161,14 +161,25 @@ export function ProgramFields({ program, onSave, onDelete }: Props) {
         saved={saved}
         onSave={handleSave}
         onDelete={onDelete ? () => onDelete(program.id) : undefined}
-        deleteLabel="Remove program"
-        confirmMessage={`Remove program "${program.id}" from castle.yaml? (Source on disk is untouched.)`}
-        deleteBlocked={
-          program.services.length + program.jobs.length > 0
-            ? "Programs with active jobs or services cannot be removed — delete those first."
-            : undefined
-        }
+        deleteLabel="Delete program"
+        confirmMessage={deleteConfirm(program)}
       />
     </div>
   )
+}
+
+/** Deleting a program cascades to its deployments (tear down + remove), so the
+ * confirm names exactly what will go. Source on disk is always left untouched. */
+function deleteConfirm(program: ProgramDetail): string {
+  const deps = [...program.services, ...program.jobs]
+  const kind = program.kind
+  const own =
+    kind === "tool"
+      ? " This uninstalls it from PATH."
+      : kind === "static"
+        ? " This stops serving it."
+        : ""
+  const also =
+    deps.length > 0 ? ` Its deployments (${deps.join(", ")}) are torn down and removed too.` : ""
+  return `Delete "${program.id}"?${own}${also} (Source on disk is untouched.)`
 }

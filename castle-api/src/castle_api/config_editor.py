@@ -214,11 +214,15 @@ def save_program(name: str, request: ProgramConfigRequest) -> dict:
 
 
 @router.delete("/programs/{name}")
-def delete_program(name: str) -> dict:
+async def delete_program(name: str, cascade: bool = False) -> dict:
     """Remove a program from castle.yaml.
 
-    Refuses if any service or job still references the program — those
-    deployments must be removed first so no dangling `program:` ref is left.
+    Without ``cascade``, refuses (409) if any deployment still references the
+    program. With ``cascade=true`` it first tears down and removes those
+    deployments — dispatched by manager: uninstall a tool from PATH, stop+disable
+    a service or job, drop a static route — so nothing is left running, installed,
+    or served, then removes the program. A program and its 1:1 tool/static
+    deployment are one thing to the user, so this makes "Delete" just work.
     """
     config = get_config()
     if name not in config.programs:
@@ -227,17 +231,43 @@ def delete_program(name: str) -> dict:
             detail=f"Program '{name}' not found",
         )
     refs = [d for d, spec in config.deployments.items() if spec.program == name]
-    if refs:
+    if refs and not cascade:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
-                "Programs with active jobs or services cannot be removed. "
-                f"Delete these first: {', '.join(refs)}"
+                f"'{name}' still has deployments ({', '.join(refs)}). "
+                "Delete them first, or pass cascade=true to remove them too."
             ),
         )
+
+    removed: list[str] = []
+    if refs:
+        from castle_core.lifecycle import deactivate
+
+        for ref in refs:
+            # Best-effort teardown (uninstall/stop/disable); still remove the config
+            # even if the runtime is already gone.
+            try:
+                await deactivate(ref, config, config.root)
+            except Exception:
+                pass
+            del config.deployments[ref]
+            removed.append(ref)
+
     del config.programs[name]
     save_config(config)
-    return {"ok": True, "program": name, "action": "deleted"}
+
+    if removed:
+        # Converge the runtime: prune any orphan units and regenerate the Caddyfile
+        # (dropping static routes), then reload the gateway.
+        from castle_core.deploy import deploy
+
+        try:
+            deploy()
+        except Exception:
+            pass
+
+    return {"ok": True, "program": name, "action": "deleted", "removed_deployments": removed}
 
 
 def _save_deployment(name: str, config_dict: dict) -> dict:

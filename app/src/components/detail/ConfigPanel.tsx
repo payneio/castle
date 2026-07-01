@@ -73,9 +73,17 @@ export function ConfigPanel({ deployment, configSection, onRefetch }: ConfigPane
   }
 
   const handleDelete = async (compName: string) => {
+    // Deleting a program cascades: its deployments are torn down and removed too
+    // (a program and its 1:1 tool/static deployment are one thing). Deleting a
+    // service/job deployment is a plain removal (keeps the program).
+    const url =
+      configSection === "programs"
+        ? `/config/programs/${compName}?cascade=true`
+        : `/config/${writeSection}/${compName}`
     try {
-      await apiClient.delete(`/config/${writeSection}/${compName}`)
+      await apiClient.delete(url)
       qc.invalidateQueries({ queryKey: [configSection] })
+      qc.invalidateQueries({ queryKey: ["programs"] })
       navigate("/")
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e)
