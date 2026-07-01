@@ -4,9 +4,10 @@ import { ProgramCard } from "./ProgramCard"
 
 interface ProgramListProps {
   programs: ProgramSummary[]
+  linkBase?: string // where each card links (default "/programs")
 }
 
-export function ProgramList({ programs }: ProgramListProps) {
+export function ProgramList({ programs, linkBase }: ProgramListProps) {
   const [search, setSearch] = useState("")
 
   const filtered = useMemo(() => {
@@ -38,7 +39,7 @@ export function ProgramList({ programs }: ProgramListProps) {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map((program) => (
-            <ProgramCard key={program.id} program={program} />
+            <ProgramCard key={program.id} program={program} linkBase={linkBase} />
           ))}
         </div>
       )}

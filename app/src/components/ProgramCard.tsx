@@ -5,9 +5,13 @@ import { StackBadge } from "./StackBadge"
 
 interface ProgramCardProps {
   program: ProgramSummary
+  // Where the card links. Defaults to the program page; the Tools page passes
+  // "/tools" so a tool card opens its tool detail page (a tool is 1:1 with its
+  // program, same name).
+  linkBase?: string
 }
 
-export function ProgramCard({ program }: ProgramCardProps) {
+export function ProgramCard({ program, linkBase = "/programs" }: ProgramCardProps) {
   // The dot reflects the uniform lifecycle state (a tool on PATH, a service
   // running, a static site served). Lifecycle controls live on the detail page's
   // Deployment section, not here — a card just shows state and links through.
@@ -26,7 +30,7 @@ export function ProgramCard({ program }: ProgramCardProps) {
           title={program.active === true ? "active" : program.active === false ? "inactive" : "no deployment"}
         />
         <Link
-          to={`/programs/${program.id}`}
+          to={`${linkBase}/${program.id}`}
           className="text-base font-semibold hover:text-[var(--primary)] transition-colors after:absolute after:inset-0"
         >
           {program.id}

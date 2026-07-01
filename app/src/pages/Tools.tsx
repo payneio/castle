@@ -14,7 +14,7 @@ export function Tools() {
       {isLoading ? (
         <p className="text-[var(--muted)]">Loading...</p>
       ) : programs && programs.length > 0 ? (
-        <ProgramList programs={programs} />
+        <ProgramList programs={programs} linkBase="/tools" />
       ) : (
         <p className="text-[var(--muted)]">No tools yet.</p>
       )}
