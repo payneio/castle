@@ -12,6 +12,7 @@ from castle_core.generators.systemd import (
     timer_name,
     unit_name,
 )
+from castle_core.manifest import manager_for
 from castle_core.registry import REGISTRY_PATH, load_registry
 
 from castle_cli.config import (
@@ -52,7 +53,7 @@ def run_service_cmd(args: argparse.Namespace) -> int:
             return _service_dry_run(config, args.name)
         return _service_enable(config, args.name)
     if sub == "disable":
-        return _service_disable(args.name)
+        return _service_disable(config, args.name)
     if sub in ("start", "stop", "restart"):
         return _unit_action(config, args.name, sub, is_job=False)
     return 1
@@ -65,7 +66,7 @@ def run_job_cmd(args: argparse.Namespace) -> int:
     if sub == "enable":
         return _service_enable(config, args.name)  # enable_service handles timers
     if sub == "disable":
-        return _service_disable(args.name)
+        return _service_disable(config, args.name)
     if sub in ("start", "stop", "restart"):
         return _unit_action(config, args.name, sub, is_job=True)
     return 1
@@ -84,12 +85,22 @@ def run_platform(args: argparse.Namespace) -> int:
     return 1
 
 
+_GATEWAY_NAME = "castle-gateway"
+
+
 def _unit_action(config: CastleConfig, name: str, action: str, is_job: bool) -> int:
-    """systemctl start/stop/restart one service (unit) or job (timer)."""
+    """start/stop/restart one service or job, dispatched by its manager.
+
+    systemd (a process/timer) → `systemctl`; caddy (static) → reload the gateway;
+    path (a tool) → install/uninstall; none (remote) → nothing to do.
+    """
     section = config.jobs if is_job else config.services
     if name not in section:
         print(f"Error: no {'job' if is_job else 'service'} '{name}'.")
         return 1
+    manager = "systemd" if is_job else manager_for(section[name].run.runner)
+    if manager != "systemd":
+        return _managed_lifecycle(config, name, action, manager)
     unit = timer_name(name) if is_job else unit_name(name)
     result = subprocess.run(["systemctl", "--user", action, unit], check=False)
     if result.returncode != 0:
@@ -99,12 +110,57 @@ def _unit_action(config: CastleConfig, name: str, action: str, is_job: bool) -> 
     return 0
 
 
+def _managed_lifecycle(config: CastleConfig, name: str, action: str, manager: str) -> int:
+    """Lifecycle for non-systemd managers (no unit to systemctl)."""
+    if manager == "caddy":
+        if action == "stop":
+            print(f"  {name}: gateway-served — disable or remove it to drop the route.")
+            return 0
+        # start/restart → reload the gateway so current routes take effect.
+        subprocess.run(
+            ["systemctl", "--user", "reload", unit_name(_GATEWAY_NAME)], check=False
+        )
+        print(f"  {name}: gateway reloaded ({_PAST[action]}).")
+        return 0
+    if manager == "path":
+        return _path_lifecycle(config, name, action)
+    # none (remote): external, nothing local to act on.
+    print(f"  {name}: external ({manager}) — nothing to {action}.")
+    return 0
+
+
+def _path_lifecycle(config: CastleConfig, name: str, action: str) -> int:
+    """A `path` (tool) deployment's lifecycle is install/uninstall on PATH."""
+    import asyncio
+
+    from castle_core.stacks import run_action
+
+    program = config.services[name].program or name
+    comp = config.programs.get(program)
+    if comp is None:
+        print(f"Error: path service '{name}' references unknown program '{program}'.")
+        return 1
+    verb = {"start": "install", "stop": "uninstall", "restart": "install"}[action]
+    res = asyncio.run(run_action(verb, program, comp, config.root))
+    ok = res.status == "ok"
+    print(f"  {name}: {verb + 'ed' if ok else verb + ' FAILED'}")
+    if not ok and res.output:
+        print(res.output)
+    return 0 if ok else 1
+
+
 def _services_restart(config: CastleConfig) -> int:
-    """Restart every managed service and job unit."""
+    """Restart every systemd-managed service and job unit.
+
+    caddy/path/none runners have no unit — they ride along with the gateway
+    restart (static) or are stateless (remote), so we don't systemctl them here.
+    """
     for name in config.jobs:
         subprocess.run(["systemctl", "--user", "restart", timer_name(name)], check=False)
         print(f"  {name}: restarted (timer)")
-    for name in config.services:
+    for name, svc in config.services.items():
+        if manager_for(svc.run.runner) != "systemd":
+            continue
         subprocess.run(["systemctl", "--user", "restart", unit_name(name)], check=False)
         print(f"  {name}: restarted")
     return 0
@@ -138,21 +194,25 @@ def run_status(args: argparse.Namespace) -> int:
 
 
 def _service_enable(config: CastleConfig, name: str) -> int:
-    """Enable and start a single service (or timer for scheduled jobs)."""
-    from castle_core.lifecycle import enable_service
+    """Enable a service in its mode (systemd unit / gateway route / PATH install)."""
+    import asyncio
+
+    from castle_core.lifecycle import activate
 
     ensure_dirs()
-    result = enable_service(name, config)
+    result = asyncio.run(activate(name, config, config.root))
     print(result.output)
     return 0 if result.status == "ok" else 1
 
 
-def _service_disable(name: str) -> int:
-    """Stop and disable a service (and timer if present)."""
-    from castle_core.lifecycle import disable_service
+def _service_disable(config: CastleConfig, name: str) -> int:
+    """Disable a service in its mode (stop unit / drop route / uninstall)."""
+    import asyncio
+
+    from castle_core.lifecycle import deactivate
 
     print(f"Disabling {name}...")
-    result = disable_service(name)
+    result = asyncio.run(deactivate(name, config, config.root))
     print(f"  {result.output}")
     return 0
 

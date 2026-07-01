@@ -15,6 +15,7 @@ from castle_cli.manifest import (
     ManageSpec,
     ProgramSpec,
     RunPython,
+    RunStatic,
     ServiceSpec,
     SystemdSpec,
 )
@@ -93,11 +94,12 @@ def run_create(args: argparse.Namespace) -> int:
     # Initialize a git repo for the new source.
     subprocess.run(["git", "init", "-q", str(project_dir)], check=False)
 
-    # Frontend stacks with a static output get a build spec so the gateway emits
-    # an in-place static route at /<name>/ (no service, no process).
+    # Frontend stacks declare a build output; the program builds it, a `static`
+    # service serves it in place at <name>.<gateway.domain>.
     build = None
-    if stack in STACK_BUILD_OUTPUTS:
-        build = BuildSpec(outputs=[STACK_BUILD_OUTPUTS[stack]])
+    static_root = STACK_BUILD_OUTPUTS.get(stack)
+    if static_root:
+        build = BuildSpec(outputs=[static_root])
 
     config.programs[name] = ProgramSpec(
         id=name,
@@ -107,7 +109,14 @@ def run_create(args: argparse.Namespace) -> int:
         behavior=behavior,
         build=build,
     )
-    if behavior == "daemon":
+    if behavior == "frontend":
+        # A caddy-managed static service: no systemd unit, served from the build dir.
+        config.services[name] = ServiceSpec(
+            id=name,
+            program=name,
+            run=RunStatic(runner="static", root=static_root or "dist"),
+        )
+    elif behavior == "daemon":
         prefix = name.replace("-", "_").upper()
         config.services[name] = ServiceSpec(
             id=name,

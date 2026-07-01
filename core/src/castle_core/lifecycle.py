@@ -25,6 +25,7 @@ from castle_core.generators.systemd import (
     unit_env_file,
     unit_name,
 )
+from castle_core.manifest import manager_for
 from castle_core.registry import REGISTRY_PATH, load_registry
 from castle_core.stacks import ActionResult, run_action
 
@@ -47,15 +48,23 @@ def _on_path(name: str) -> bool:
     return (Path.home() / ".local" / "bin" / name).exists()
 
 
-def _is_static_frontend(name: str, config: CastleConfig) -> bool:
-    """A frontend with no service/job of its own — served as static assets."""
-    comp = config.programs.get(name)
-    return (
-        comp is not None
-        and comp.behavior == "frontend"
-        and name not in config.services
-        and name not in config.jobs
-    )
+def _svc_manager(name: str, config: CastleConfig) -> str | None:
+    """The manager for a deployed name (service/job), or None if not deployed."""
+    if name in config.services:
+        return manager_for(config.services[name].run.runner)
+    if name in config.jobs:
+        return "systemd"
+    return None
+
+
+def _static_built(name: str, config: CastleConfig) -> bool:
+    """Whether a static service's served dir exists (assets are built)."""
+    svc = config.services.get(name)
+    if svc is None:
+        return False
+    comp = config.programs.get(svc.program or name)
+    root = getattr(svc.run, "root", "dist")
+    return bool(comp and comp.source and (Path(comp.source) / root).is_dir())
 
 
 # ---------------------------------------------------------------------------
@@ -64,16 +73,18 @@ def _is_static_frontend(name: str, config: CastleConfig) -> bool:
 
 
 def is_active(name: str, config: CastleConfig) -> bool:
-    """Whether a program is reachable in its mode (uniform across behaviors)."""
-    if name in config.services:
-        return _systemctl_active(unit_name(name))
-    if name in config.jobs:
-        return _systemctl_active(timer_name(name))
-    if _is_static_frontend(name, config):
-        comp = config.programs[name]
-        if comp.source and comp.build and comp.build.outputs:
-            return (Path(comp.source) / comp.build.outputs[0]).is_dir()
-        return False
+    """Whether a deployment is available in its mode, dispatched by its manager."""
+    manager = _svc_manager(name, config)
+    if manager == "systemd":
+        unit = timer_name(name) if name in config.jobs else unit_name(name)
+        return _systemctl_active(unit)
+    if manager == "caddy":
+        return _static_built(name, config)  # served once its assets exist
+    if manager == "path":
+        return _on_path(name)
+    if manager == "none":
+        return True  # remote: external, treated as available
+    # No deployment — a bare program (e.g. a tool not yet given a path service).
     comp = config.programs.get(name)
     if comp is not None and comp.source:
         return _on_path(name)
@@ -153,47 +164,72 @@ def disable_service(name: str) -> ActionResult:
 # ---------------------------------------------------------------------------
 
 
-async def activate(name: str, config: CastleConfig, root: Path) -> ActionResult:
-    """Make a program reachable in its mode."""
-    comp = config.programs.get(name)
+def _program_for(name: str, config: CastleConfig):
+    """The program a deployment runs (its `program` ref, defaulting to the name)."""
+    prog = name
+    if name in config.services:
+        prog = config.services[name].program or name
+    return prog, config.programs.get(prog)
 
-    # Process-backed: daemon, self-serving frontend, or job.
-    if name in config.services or name in config.jobs:
-        # Ensure the program's binary is on PATH first (python programs). Skip the
-        # editable reinstall if it's already there — `castle deploy` installs it,
-        # so re-running it on every activate is wasted work.
+
+async def activate(name: str, config: CastleConfig, root: Path) -> ActionResult:
+    """Make a deployment available in its mode, dispatched by its manager."""
+    manager = _svc_manager(name, config)
+
+    if manager == "systemd":
+        # Ensure the program's binary is on PATH first (python), then enable the
+        # unit. Skip the editable reinstall if it's already there.
+        comp = config.programs.get(name)
         if comp is not None and (comp.stack or comp.commands) and not _on_path(name):
             res = await run_action("install", name, comp, root)
             if res.status != "ok":
                 return res
         return enable_service(name, config)
 
-    # Static frontend: build the assets (publish handled by the build/serve path).
-    if comp is not None and comp.behavior == "frontend":
-        return await run_action("install", name, comp, root)
-
-    # A daemon with no service can't be "activated" — installing its binary to
-    # PATH doesn't run it. Direct the user to declare a service instead.
-    if comp is not None and comp.behavior == "daemon":
-        return ActionResult(
-            name,
-            "activate",
-            "error",
-            f"'{name}' is a daemon with no service. Run "
-            f"'castle service create {name} --program {name} --port <PORT>' to deploy it.",
+    if manager == "caddy":
+        # Served by the gateway — reload it so the route is live. Building the
+        # assets is `castle program build` (the program's concern), not activation.
+        subprocess.run(
+            ["systemctl", "--user", "reload", unit_name("castle-gateway")], check=False
         )
+        return ActionResult(name, "activate", "ok", f"{name}: served via gateway")
 
-    # Tool: install to PATH.
+    if manager == "path":
+        prog, comp = _program_for(name, config)
+        if comp is None:
+            return ActionResult(name, "activate", "error", f"unknown program '{prog}'")
+        return await run_action("install", prog, comp, root)
+
+    if manager == "none":
+        return ActionResult(name, "activate", "ok", f"{name}: external")
+
+    # No deployment — a bare tool program: install to PATH.
+    comp = config.programs.get(name)
     if comp is not None:
         return await run_action("install", name, comp, root)
     return ActionResult(name, "activate", "error", f"'{name}' not found")
 
 
 async def deactivate(name: str, config: CastleConfig, root: Path) -> ActionResult:
-    """Take a program offline in its mode."""
-    comp = config.programs.get(name)
-    if name in config.services or name in config.jobs:
+    """Take a deployment offline in its mode, dispatched by its manager."""
+    manager = _svc_manager(name, config)
+
+    if manager == "systemd":
         return disable_service(name)
+    if manager == "caddy":
+        return ActionResult(
+            name, "deactivate", "ok",
+            f"{name}: gateway-served — remove/disable the service to drop the route.",
+        )
+    if manager == "path":
+        prog, comp = _program_for(name, config)
+        if comp is None:
+            return ActionResult(name, "deactivate", "error", f"unknown program '{prog}'")
+        return await run_action("uninstall", prog, comp, root)
+    if manager == "none":
+        return ActionResult(name, "deactivate", "ok", f"{name}: external")
+
+    comp = config.programs.get(name)
     if comp is not None:
         return await run_action("uninstall", name, comp, root)
     return ActionResult(name, "deactivate", "error", f"'{name}' not found")

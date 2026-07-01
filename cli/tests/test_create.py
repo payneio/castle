@@ -102,12 +102,14 @@ class TestCreateCommand:
         assert (project_dir / "public" / "index.html").exists()
         assert (project_dir / "supabase.app.yaml").exists()
 
-        # Registered as a static frontend, no service, build output = public/
+        # Registered as a program + a `static` service serving public/
         comp = config.programs["guestbook"]
         assert comp.behavior == "frontend"
         assert comp.stack == "supabase"
         assert comp.build is not None and comp.build.outputs == ["public"]
-        assert "guestbook" not in config.services
+        svc = config.services["guestbook"]
+        assert svc.run.runner == "static"
+        assert svc.run.root == "public"
 
     def test_create_duplicate_fails(self, castle_root: Path, capsys: object) -> None:
         """Creating a project with existing name fails."""

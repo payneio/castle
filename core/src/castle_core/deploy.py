@@ -41,7 +41,7 @@ from castle_core.generators.systemd import (
     unit_env_file,
     unit_name,
 )
-from castle_core.manifest import JobSpec, ServiceSpec
+from castle_core.manifest import JobSpec, ServiceSpec, manager_for
 from castle_core.registry import (
     REGISTRY_PATH,
     Deployment,
@@ -336,9 +336,10 @@ def _build_deployed_service(
     # /data/castle/protonmail). Falls back to the service name.
     config_key = svc.program or name
 
-    # `remote` and `static` are caddy-managed (or unmanaged) — no local process, no
-    # systemd unit. The gateway is their runtime.
-    managed = run.runner not in ("remote", "static")
+    # Only systemd-managed runners get a unit. caddy (static), path (tools), and
+    # none (remote) have no local process — the manager mapping is the single
+    # source of truth, so there's no runner special-casing here.
+    managed = manager_for(run.runner) == "systemd"
     if svc.manage and svc.manage.systemd and not svc.manage.systemd.enable:
         managed = False
 

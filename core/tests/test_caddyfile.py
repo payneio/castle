@@ -10,7 +10,6 @@ from castle_core.generators.caddyfile import (
     generate_caddyfile_from_registry,
 )
 from castle_core.manifest import (
-    BuildSpec,
     ExposeSpec,
     HttpExposeSpec,
     HttpInternal,

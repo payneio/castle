@@ -97,6 +97,30 @@ RunSpec = Annotated[
 ]
 
 
+# A deployment's *manager* — who makes the program available and supervises it —
+# is determined by its runner. This is the single source of truth; lifecycle,
+# deploy, and status all dispatch on it rather than special-casing runners.
+#   systemd — a long-running process (or a timer, for jobs)
+#   caddy   — a gateway route (file_server for static; reverse_proxy for a port)
+#   path    — an installed CLI on PATH (via `uv tool install`)
+#   none    — external; we only reference/route it (remote)
+_RUNNER_MANAGER: dict[str, str] = {
+    "python": "systemd",
+    "command": "systemd",
+    "container": "systemd",
+    "compose": "systemd",
+    "node": "systemd",
+    "static": "caddy",
+    "path": "path",
+    "remote": "none",
+}
+
+
+def manager_for(runner: str) -> str:
+    """The manager (`systemd`|`caddy`|`path`|`none`) that supervises a runner."""
+    return _RUNNER_MANAGER.get(runner, "systemd")
+
+
 # ---------------------
 # Systemd management
 # ---------------------

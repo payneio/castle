@@ -34,20 +34,17 @@ class TestIsActive:
         config = load_config(castle_root)
         assert lifecycle.is_active("does-not-exist", config) is False
 
-    def test_static_frontend_active_when_dist_built(self, castle_root: Path, tmp_path: Path) -> None:
-        from castle_core.manifest import BuildSpec
+    def test_static_service_active_when_dist_built(self, castle_root: Path, tmp_path: Path) -> None:
+        # A frontend is a `runner: static` service; active once its served dir exists.
+        from castle_core.manifest import ProgramSpec, RunStatic, ServiceSpec
 
         config = load_config(castle_root)
         repo = tmp_path / "fe"
-        config.programs["fe"] = config.programs["test-tool"].model_copy(
-            update={
-                "id": "fe",
-                "behavior": "frontend",
-                "source": str(repo),
-                "build": BuildSpec(commands=[["pnpm", "build"]], outputs=["dist"]),
-            }
+        config.programs["fe"] = ProgramSpec(id="fe", source=str(repo))
+        config.services["fe"] = ServiceSpec(
+            program="fe", run=RunStatic(runner="static", root="dist")
         )
-        # No dist yet → inactive
+        # No dist yet → inactive (caddy manager checks the served dir)
         assert lifecycle.is_active("fe", config) is False
         # Built dist → served in place → active
         (repo / "dist").mkdir(parents=True)
