@@ -190,7 +190,8 @@ def _acme_preflight(config: CastleConfig, messages: list[str]) -> None:
         )
 
 
-_TUNNEL_NAME = "tunnel"  # the cloudflared service is castle-tunnel
+# Tunnel service name in the registry → its systemd unit (castle-castle-tunnel).
+_TUNNEL_NAME = "castle-tunnel"
 
 
 def _write_tunnel_config(registry: NodeRegistry, messages: list[str]) -> None:
