@@ -16,12 +16,6 @@ class RestartPolicy(str, Enum):
     ALWAYS = "always"
 
 
-class TLSMode(str, Enum):
-    OFF = "off"
-    INTERNAL = "internal"
-    LETSENCRYPT = "letsencrypt"
-
-
 # ---------------------
 # Run specs (discriminated union)
 # ---------------------
@@ -129,15 +123,8 @@ class HttpInternal(BaseModel):
     unix_socket: str | None = None
 
 
-class HttpPublic(BaseModel):
-    hostnames: list[str] = Field(min_length=1)
-    path_prefix: str = "/"
-    tls: TLSMode = TLSMode.INTERNAL
-
-
 class HttpExposeSpec(BaseModel):
     internal: HttpInternal
-    public: HttpPublic | None = None
     health_path: str | None = None
 
 

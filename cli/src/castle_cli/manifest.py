@@ -10,7 +10,6 @@ from castle_core.manifest import (  # noqa: F401 — explicit re-exports for typ
     ExposeSpec,
     HttpExposeSpec,
     HttpInternal,
-    HttpPublic,
     JobSpec,
     ManageSpec,
     ProgramSpec,
@@ -26,5 +25,4 @@ from castle_core.manifest import (  # noqa: F401 — explicit re-exports for typ
     RunSpec,
     ServiceSpec,
     SystemdSpec,
-    TLSMode,
 )
