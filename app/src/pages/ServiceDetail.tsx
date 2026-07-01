@@ -101,7 +101,9 @@ export function ServiceDetailPage() {
               <span className="font-mono break-all">{deployment.health_path}</span>
             </>
           )}
-          {deployment.subdomain && (
+          {/* A static already shows its gateway URL as "Served at" above; only a
+              proxied (systemd) service surfaces the same thing as "Subdomain". */}
+          {!isStatic && deployment.subdomain && (
             <>
               <span className="text-[var(--muted)]">Subdomain</span>
               <a
