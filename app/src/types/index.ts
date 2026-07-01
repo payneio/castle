@@ -48,7 +48,6 @@ export interface ProgramSummary {
   description: string | null
   kind: string | null // derived: service | job | tool | static | reference
   stack: string | null
-  runner: string | null // inferred launch hint (python | command)
   version: string | null
   source: string | null
   repo: string | null

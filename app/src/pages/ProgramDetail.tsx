@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { useParams } from "react-router-dom"
 import { useProgram } from "@/services/api/hooks"
-import { launcherLabel, subdomainUrl } from "@/lib/labels"
+import { subdomainUrl } from "@/lib/labels"
 import { DetailHeader } from "@/components/detail/DetailHeader"
 import { ConfigPanel } from "@/components/detail/ConfigPanel"
 import { DeploymentsSection } from "@/components/detail/DeploymentsSection"
@@ -91,12 +91,6 @@ export function ProgramDetailPage() {
             <>
               <span className="text-[var(--muted)]">Version</span>
               <span>{deployment.version}</span>
-            </>
-          )}
-          {deployment.runner && (
-            <>
-              <span className="text-[var(--muted)]">Launcher</span>
-              <span>{launcherLabel(deployment.runner)}</span>
             </>
           )}
           {deployment.active !== null && (
