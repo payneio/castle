@@ -139,6 +139,17 @@ def manager_for(runner: str) -> str:
     return _RUNNER_MANAGER.get(runner, "systemd")
 
 
+# `behavior` (tool/daemon/frontend) is a *derived* descriptive label, computed
+# from how a program is deployed — never stored/edited. A static service → a
+# frontend; a path install → a tool; anything else running a process → a daemon.
+_RUNNER_BEHAVIOR: dict[str, str] = {"static": "frontend", "path": "tool"}
+
+
+def behavior_for_runner(runner: str) -> str:
+    """The display behavior implied by a service's runner."""
+    return _RUNNER_BEHAVIOR.get(runner, "daemon")
+
+
 # ---------------------
 # Systemd management
 # ---------------------

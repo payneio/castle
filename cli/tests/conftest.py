@@ -31,14 +31,25 @@ def castle_root(tmp_path: Path) -> Generator[Path, None, None]:
         "programs": {
             "test-tool": {
                 "description": "Test tool",
-                "behavior": "tool",
             },
             "test-daemon": {
                 "description": "Test daemon program",
-                "behavior": "daemon",
             },
         },
         "services": {
+            # A path deployment — its `path` runner makes test-tool's behavior
+            # derive as "tool" (behavior is derived from deployments, not stored).
+            "test-tool": {
+                "program": "test-tool",
+                "run": {"runner": "path"},
+            },
+            # A process deployment — its systemd-managed runner makes test-daemon's
+            # behavior derive as "daemon".
+            "test-daemon": {
+                "program": "test-daemon",
+                "run": {"runner": "python", "program": "test-daemon"},
+                "manage": {"systemd": {}},
+            },
             "test-svc": {
                 "program": "test-svc-comp",
                 "description": "Test service",

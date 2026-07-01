@@ -41,7 +41,7 @@ from castle_core.generators.systemd import (
     unit_env_file,
     unit_name,
 )
-from castle_core.manifest import JobSpec, ServiceSpec, manager_for
+from castle_core.manifest import JobSpec, ServiceSpec, behavior_for_runner, manager_for
 from castle_core.registry import (
     REGISTRY_PATH,
     Deployment,
@@ -401,7 +401,7 @@ def _build_deployed_service(
         env=env,
         secret_env_keys=sorted(secret_env),
         description=_resolve_description(config, svc),
-        behavior="daemon",
+        behavior=behavior_for_runner(run.runner),
         stack=stack,
         port=port,
         health_path=health_path,

@@ -137,14 +137,24 @@ class CastleConfig:
     services: dict[str, ServiceSpec]
     jobs: dict[str, JobSpec]
 
+    def behavior_of(self, name: str) -> str | None:
+        """A program's *derived* behavior label, from how it's deployed:
+        static service → frontend, path service → tool, process service → daemon,
+        job-only → tool, no deployment → None. Never a stored value."""
+        from castle_core.manifest import behavior_for_runner
+
+        for svc_name, svc in self.services.items():
+            if svc_name == name or svc.program == name:
+                return behavior_for_runner(svc.run.runner)
+        for job_name, job in self.jobs.items():
+            if job_name == name or job.program == name:
+                return "tool"  # a program a timer invokes is a tool
+        return None
+
     @property
     def tools(self) -> dict[str, ProgramSpec]:
-        """Programs deployed as a PATH tool (a `runner: path` service) — derived
-        from deployments, not the `behavior` label."""
-        tool_programs = {
-            s.program or n for n, s in self.services.items() if s.run.runner == "path"
-        }
-        return {k: v for k, v in self.programs.items() if k in tool_programs}
+        """Programs deployed as a PATH tool — derived, not a stored label."""
+        return {k: v for k, v in self.programs.items() if self.behavior_of(k) == "tool"}
 
     @property
     def frontends(self) -> dict[str, ProgramSpec]:
@@ -304,7 +314,7 @@ def load_config(root: Path | None = None) -> CastleConfig:
     for name, job_data in _load_resource_dir(root / "jobs").items():
         jobs[name] = _parse_job(name, job_data)
 
-    return CastleConfig(
+    config = CastleConfig(
         root=root,
         repo=repo_path,
         gateway=gateway,
@@ -312,6 +322,11 @@ def load_config(root: Path | None = None) -> CastleConfig:
         services=services,
         jobs=jobs,
     )
+    # `behavior` is derived from deployments, never stored — populate it so every
+    # reader of `program.behavior` gets the live, accurate label.
+    for pname, prog in config.programs.items():
+        prog.behavior = config.behavior_of(pname)
+    return config
 
 
 def _clean_for_yaml(data: object, preserve_keys: set[str] | None = None) -> object:
@@ -348,7 +363,8 @@ _STRUCTURAL_KEYS = {
 
 def _spec_to_yaml_dict(spec: ProgramSpec | ServiceSpec | JobSpec) -> dict:
     """Serialize a spec to a YAML-friendly dict, preserving structural presence."""
-    exclude_fields = {"id"}
+    # `behavior` is derived at load time from deployments — never persisted.
+    exclude_fields = {"id", "behavior"} if isinstance(spec, ProgramSpec) else {"id"}
     full = spec.model_dump(mode="json", exclude_none=True, exclude=exclude_fields)
     minimal = spec.model_dump(
         mode="json", exclude_none=True, exclude=exclude_fields, exclude_defaults=True
@@ -380,7 +396,8 @@ def _spec_to_yaml_dict(spec: ProgramSpec | ServiceSpec | JobSpec) -> dict:
             return None
 
     result = merge(full, minimal)
-    return _clean_for_yaml(result)
+    cleaned = _clean_for_yaml(result)
+    return cleaned if isinstance(cleaned, dict) else {}
 
 
 def _program_to_yaml_dict(spec: ProgramSpec, config: CastleConfig) -> dict:

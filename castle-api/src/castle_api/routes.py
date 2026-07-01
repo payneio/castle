@@ -11,7 +11,13 @@ from fastapi import APIRouter, HTTPException, status
 
 from castle_core.config import SPECS_DIR
 from castle_core.generators.caddyfile import generate_caddyfile_from_registry
-from castle_core.manifest import ProgramSpec, JobSpec, ServiceSpec, manager_for
+from castle_core.manifest import (
+    ProgramSpec,
+    JobSpec,
+    ServiceSpec,
+    behavior_for_runner,
+    manager_for,
+)
 from castle_core.stacks import available_actions
 
 from castle_api.config import get_castle_root, get_registry
@@ -133,7 +139,7 @@ def _summary_from_service(
         id=name,
         category="service",
         description=description,
-        behavior="daemon",
+        behavior=behavior_for_runner(runner),
         stack=stack,
         runner=runner,
         port=port,

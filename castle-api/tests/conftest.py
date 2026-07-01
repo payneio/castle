@@ -42,19 +42,16 @@ def castle_root(tmp_path: Path) -> Generator[Path, None, None]:
             "test-tool": {
                 "description": "Test tool",
                 "source": "test-tool",
-                "behavior": "tool",
                 "system_dependencies": ["pandoc"],
             },
             "test-tool-2": {
                 "description": "Another test tool",
                 "source": "test-tool-2",
-                "behavior": "tool",
                 "version": "2.0.0",
             },
             "wired-in": {
                 "description": "Adopted repo, no stack",
                 "source": "wired-in",
-                "behavior": "tool",
                 "repo": "https://github.com/someone/wired-in.git",
                 "commands": {
                     "lint": [["make", "lint"]],
@@ -64,6 +61,11 @@ def castle_root(tmp_path: Path) -> Generator[Path, None, None]:
             },
         },
         "services": {
+            # Path deployments — behavior "tool" derives from the `path` runner
+            # (behavior is derived from deployments, never stored).
+            "test-tool": {"program": "test-tool", "run": {"runner": "path"}},
+            "test-tool-2": {"program": "test-tool-2", "run": {"runner": "path"}},
+            "wired-in": {"program": "wired-in", "run": {"runner": "path"}},
             "test-svc": {
                 "program": "test-svc-comp",
                 "description": "Test service",
