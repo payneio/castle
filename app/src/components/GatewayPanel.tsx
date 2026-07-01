@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react"
 import { Link } from "react-router-dom"
-import { Globe, RefreshCw, FileText } from "lucide-react"
+import { Globe, RefreshCw, FileText, ExternalLink } from "lucide-react"
 import type { GatewayInfo, HealthStatus } from "@/types"
 import { useGatewayReload, useCaddyfile } from "@/services/api/hooks"
+import { subdomainUrl } from "@/lib/labels"
 import { HealthBadge } from "./HealthBadge"
 
 interface GatewayPanelProps {
@@ -76,12 +77,28 @@ export function GatewayPanel({ gateway, statuses }: GatewayPanelProps) {
               // Health applies to proxy/remote targets (a running service);
               // static targets are files on disk.
               const health = route.kind !== "static" && route.name ? statusMap.get(route.name) : undefined
+              // The address is a subdomain label — link to its full https URL.
+              const url = subdomainUrl(route.address)
               return (
                 <tr
                   key={`${route.address}-${route.node}`}
                   className="border-b border-[var(--border)] last:border-b-0 hover:bg-black/20 transition-colors"
                 >
-                  <td className="px-4 py-2 font-mono text-[var(--primary)]">{route.address}</td>
+                  <td className="px-4 py-2 font-mono text-[var(--primary)]">
+                    {url ? (
+                      <a
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 hover:underline"
+                      >
+                        {route.address}
+                        <ExternalLink size={11} className="opacity-60 shrink-0" />
+                      </a>
+                    ) : (
+                      route.address
+                    )}
+                  </td>
                   <td className="px-4 py-2">
                     <KindBadge kind={route.kind} />
                   </td>
