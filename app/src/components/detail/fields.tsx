@@ -101,7 +101,8 @@ export function useEnvSecrets(initial: Record<string, string>) {
           <p className="text-xs text-[var(--muted)]">
             Use <code className="font-mono">${"{port}"}</code>,{" "}
             <code className="font-mono">${"{data_dir}"}</code>,{" "}
-            <code className="font-mono">${"{name}"}</code> for castle's computed values,
+            <code className="font-mono">${"{name}"}</code>,{" "}
+            <code className="font-mono">${"{public_url}"}</code> for castle's computed values,
             and <code className="font-mono">${"{secret:NAME}"}</code> for secrets.
           </p>
           {Object.entries(env).map(([key, val]) => (
