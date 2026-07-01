@@ -1,0 +1,3 @@
+program: castle
+description: Castle web app
+manager: caddy

@@ -1,0 +1,6 @@
+description: Castle web app
+source: repo:app
+stack: react-vite
+build:
+  outputs:
+  - dist/

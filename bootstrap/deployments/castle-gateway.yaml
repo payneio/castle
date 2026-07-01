@@ -1,0 +1,22 @@
+# The Caddy gateway. `__SPECS_DIR__` is substituted with $CASTLE_HOME/artifacts/specs
+# at install time (install.sh seed_control_plane). For acme TLS, add a
+# CLOUDFLARE_API_TOKEN to defaults.env later — see docs/dns-and-tls.md.
+description: Caddy reverse proxy gateway
+manager: systemd
+run:
+  launcher: command
+  argv:
+  - caddy
+  - run
+  - --config
+  - __SPECS_DIR__/Caddyfile
+  - --adapter
+  - caddyfile
+expose:
+  http:
+    internal:
+      port: 9000
+    health_path: /
+manage:
+  systemd:
+    exec_reload: caddy reload --config __SPECS_DIR__/Caddyfile --adapter caddyfile

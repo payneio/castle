@@ -1,0 +1,18 @@
+program: castle-api
+description: Castle API
+manager: systemd
+run:
+  launcher: python
+  program: castle-api
+expose:
+  http:
+    internal:
+      port: 9020
+    health_path: /health
+proxy: true
+manage:
+  systemd: {}
+defaults:
+  env:
+    CASTLE_API_PORT: ${port}
+    CASTLE_API_DATA_DIR: ${data_dir}

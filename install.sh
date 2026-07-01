@@ -216,6 +216,34 @@ ensure_caddy_dns_plugin() {
 }
 
 # ---------------------------------------------------------------------------
+# Castle CLI
+# ---------------------------------------------------------------------------
+
+ensure_uv() {
+    log_step "Ensuring uv (Python package manager)"
+    if cmd_exists uv; then
+        log_skip "already installed"
+        return
+    fi
+    curl -LsSf https://astral.sh/uv/install.sh | sh >/dev/null 2>&1 || log_fail "uv install failed"
+    # The installer drops uv in ~/.local/bin — make it visible for the rest of this run.
+    export PATH="${HOME}/.local/bin:${PATH}"
+    cmd_exists uv || log_fail "uv installed but not on PATH (expected ~/.local/bin)"
+    log_ok
+}
+
+# Install the `castle` CLI from this repo as an editable uv tool, so a fresh
+# clone becomes a working `castle` command. Idempotent — reinstall is cheap and
+# keeps the entry point pointed at the current checkout.
+install_cli() {
+    log_step "Installing the castle CLI"
+    ( cd "$CASTLE_ROOT" && uv tool install --editable ./cli >/dev/null 2>&1 ) \
+        || log_fail "uv tool install of ./cli failed"
+    cmd_exists castle || log_info "NOTE: ensure ~/.local/bin is on your PATH to use 'castle'"
+    log_ok
+}
+
+# ---------------------------------------------------------------------------
 # Directory structure
 # ---------------------------------------------------------------------------
 
@@ -244,6 +272,41 @@ create_directories() {
     else
         printf 'gateway:\n  port: 9000\n' > "${CASTLE_HOME}/castle.yaml"
         log_ok "seeded ~/.castle/castle.yaml"
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# Control plane (Castle's own gateway + API + dashboard)
+# ---------------------------------------------------------------------------
+
+# Register Castle's own control-plane programs/deployments from bootstrap/ so a
+# fresh registry is not empty. Without this, `castle deploy && castle start`
+# would bring up nothing. Never clobbers existing entries (idempotent). The
+# gateway deployment carries a `__SPECS_DIR__` placeholder (the source repo has
+# no machine-specific paths) that we substitute with this machine's specs dir.
+seed_control_plane() {
+    log_step "Registering Castle's control plane"
+    local specs="${CASTLE_HOME}/artifacts/specs"
+
+    # The `repo:` field lets `source: repo:<name>` resolve castle's own programs.
+    if ! grep -q "^repo:" "${CASTLE_HOME}/castle.yaml" 2>/dev/null; then
+        printf 'repo: %s\n' "$CASTLE_ROOT" >> "${CASTLE_HOME}/castle.yaml"
+    fi
+
+    local seeded=0 f dst
+    for f in "${CASTLE_ROOT}"/bootstrap/programs/*.yaml; do
+        dst="${CASTLE_HOME}/programs/$(basename "$f")"
+        [ -f "$dst" ] || { cp "$f" "$dst"; seeded=1; }
+    done
+    for f in "${CASTLE_ROOT}"/bootstrap/deployments/*.yaml; do
+        dst="${CASTLE_HOME}/deployments/$(basename "$f")"
+        [ -f "$dst" ] || { sed "s#__SPECS_DIR__#${specs}#g" "$f" > "$dst"; seeded=1; }
+    done
+
+    if [ "$seeded" = "1" ]; then
+        log_ok "castle-gateway, castle-api, castle (dashboard)"
+    else
+        log_skip "already registered"
     fi
 }
 
@@ -436,6 +499,28 @@ maybe_setup_neo4j() {
 }
 
 # ---------------------------------------------------------------------------
+# Dashboard build
+# ---------------------------------------------------------------------------
+
+# Build the dashboard SPA so the gateway has something to serve at :9000. The
+# `castle` program serves `app/dist/` in place; without a build there's no UI.
+# Best-effort: a missing pnpm is a warning (the CLI/API still work), not a failure.
+build_dashboard() {
+    log_step "Building the dashboard"
+    if [ ! -d "${CASTLE_ROOT}/app" ]; then
+        log_skip "no app/ directory"
+        return
+    fi
+    if ! cmd_exists pnpm; then
+        log_skip "pnpm not found — build later with 'castle program build castle'"
+        return
+    fi
+    ( cd "${CASTLE_ROOT}/app" && pnpm install --silent >/dev/null 2>&1 && pnpm build >/dev/null 2>&1 ) \
+        || { log_skip "build failed — retry later with 'castle program build castle'"; return; }
+    log_ok "app/dist/"
+}
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 
@@ -468,8 +553,9 @@ print_summary() {
     printf "\n"
 
     printf "Next steps:\n"
-    printf "  castle deploy            # Generate registry, systemd units, Caddyfile\n"
-    printf "  castle start             # Start all deployments and the gateway\n"
+    printf "  castle deploy                 # Generate registry, systemd units, Caddyfile\n"
+    printf "  castle start                  # Start the gateway, API, and all deployments\n"
+    printf "  open http://localhost:9000    # the dashboard\n"
 }
 
 # ---------------------------------------------------------------------------
@@ -500,13 +586,17 @@ main() {
     ensure_docker
     ensure_caddy
     [ -n "$WITH_DNS_PLUGIN" ] && ensure_caddy_dns_plugin "$WITH_DNS_PLUGIN"
+    ensure_uv
+    install_cli
     create_directories
+    seed_control_plane
     enable_lingering
     seed_caddyfile
     migrate_old_containers
     setup_mqtt
     setup_postgres
     maybe_setup_neo4j
+    build_dashboard
     print_summary
 }
 

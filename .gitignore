@@ -5,4 +5,5 @@ __pycache__
 .claude
 node_modules
 castle.yaml
+!bootstrap/**/castle.yaml
 .working
