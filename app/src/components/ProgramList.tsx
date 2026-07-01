@@ -5,9 +5,10 @@ import { ProgramCard } from "./ProgramCard"
 interface ProgramListProps {
   programs: ProgramSummary[]
   linkBase?: string // where each card links (default "/programs")
+  showDeployments?: boolean // list each program's deployments on the card (default true)
 }
 
-export function ProgramList({ programs, linkBase }: ProgramListProps) {
+export function ProgramList({ programs, linkBase, showDeployments }: ProgramListProps) {
   const [search, setSearch] = useState("")
 
   const filtered = useMemo(() => {
@@ -39,7 +40,12 @@ export function ProgramList({ programs, linkBase }: ProgramListProps) {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map((program) => (
-            <ProgramCard key={program.id} program={program} linkBase={linkBase} />
+            <ProgramCard
+              key={program.id}
+              program={program}
+              linkBase={linkBase}
+              showDeployments={showDeployments}
+            />
           ))}
         </div>
       )}

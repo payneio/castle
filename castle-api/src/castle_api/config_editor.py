@@ -273,18 +273,27 @@ async def delete_program(name: str, cascade: bool = False) -> dict:
 def _save_deployment(name: str, config_dict: dict) -> dict:
     """Validate a deployment (any manager) and persist it to config.deployments."""
     _require_repo()
+    config = get_config()
+    config_dict = dict(config_dict)
+
+    # On CREATE (a new deployment) with no description of its own, inherit the
+    # referenced program's description — a deployment reads as its program by
+    # default. Edits keep whatever the user set (including a cleared field).
+    if name not in config.deployments and not config_dict.get("description"):
+        prog = config_dict.get("program")
+        if prog and prog in config.programs and config.programs[prog].description:
+            config_dict["description"] = config.programs[prog].description
+
     try:
-        dep_data = _normalize_deployment_dict({**config_dict, "id": name})
-        _DEPLOYMENT_ADAPTER.validate_python(dep_data)
+        dep = _DEPLOYMENT_ADAPTER.validate_python(
+            _normalize_deployment_dict({**config_dict, "id": name})
+        )
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"Invalid deployment config: {e}",
         )
-    config = get_config()
-    config.deployments[name] = _DEPLOYMENT_ADAPTER.validate_python(
-        _normalize_deployment_dict({**config_dict, "id": name})
-    )
+    config.deployments[name] = dep
     save_config(config)
     return {"ok": True, "deployment": name}
 

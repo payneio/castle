@@ -77,10 +77,13 @@ def _summary_from_deployed(name: str, deployed: object) -> DeploymentSummary:
             timer=has_timer,
         )
 
-    # A PATH-managed deployment (a tool) is "installed" when it's on PATH.
+    # A PATH-managed deployment (a tool) is "installed" — and thus active — when
+    # it's on PATH. (systemd/caddy liveness comes from the health/status stream.)
     installed: bool | None = None
+    active: bool | None = None
     if deployed.manager == "path":
         installed = shutil.which(name) is not None
+        active = installed
 
     category = "job" if deployed.schedule else "service"
 
@@ -99,6 +102,7 @@ def _summary_from_deployed(name: str, deployed: object) -> DeploymentSummary:
         systemd=systemd_info,
         schedule=deployed.schedule,
         installed=installed,
+        active=active,
     )
 
 

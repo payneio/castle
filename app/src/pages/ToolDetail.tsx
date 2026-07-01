@@ -38,8 +38,9 @@ export function ToolDetailPage() {
         <p className="text-sm text-[var(--muted)] -mt-4 mb-6">{deployment.description}</p>
       )}
 
-      {/* A tool's PATH deployment: install/uninstall is its start/stop. */}
-      <PathLifecycle name={deployment.id} active={deployment.active} onDone={refetch} />
+      {/* A tool's PATH deployment: install/uninstall is its start/stop. Its
+          live state is `installed` (on PATH), which the endpoint sets directly. */}
+      <PathLifecycle name={deployment.id} installed={deployment.installed} onDone={refetch} />
 
       <div className="bg-[var(--card)] border border-[var(--border)] rounded-lg p-5 mb-6">
         <h2 className="text-sm font-semibold text-[var(--muted)] uppercase tracking-wider mb-3">
@@ -65,19 +66,19 @@ export function ToolDetailPage() {
 /** Install/uninstall a tool on PATH — the path deployment's lifecycle. */
 function PathLifecycle({
   name,
-  active,
+  installed: installedState,
   onDone,
 }: {
   name: string
-  active: boolean | null
+  installed: boolean | null
   onDone: () => void
 }) {
   const { mutate, isPending } = useProgramAction()
-  const installed = active === true
+  const installed = installedState === true
   const dot =
-    active === true
+    installedState === true
       ? "bg-green-500"
-      : active === false
+      : installedState === false
         ? "bg-[var(--muted)]"
         : "bg-transparent border border-[var(--muted)]"
   return (

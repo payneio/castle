@@ -115,12 +115,13 @@ def run_create(args: argparse.Namespace) -> int:
     if kind == "tool":
         # A PATH-managed deployment: installed via `uv tool install`, no unit/route.
         config.deployments[name] = PathDeployment(
-            id=name, manager="path", program=name
+            id=name, manager="path", program=name, description=description
         )
     elif kind == "static":
         # A caddy-managed static deployment: no systemd unit, served from the build dir.
         config.deployments[name] = CaddyDeployment(
-            id=name, manager="caddy", program=name, root=static_root or "dist"
+            id=name, manager="caddy", program=name, root=static_root or "dist",
+            description=description,
         )
     elif kind == "service":
         prefix = name.replace("-", "_").upper()
@@ -128,6 +129,7 @@ def run_create(args: argparse.Namespace) -> int:
             id=name,
             manager="systemd",
             program=name,
+            description=description,
             run=RunPython(launcher="python", program=name),
             expose=ExposeSpec(
                 http=HttpExposeSpec(
