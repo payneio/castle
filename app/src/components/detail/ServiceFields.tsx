@@ -18,7 +18,6 @@ export function ServiceFields({ service, onSave, onDelete }: Props) {
   const run = obj(m.run)
   const internal = obj(obj(obj(m.expose).http).internal)
   const httpExpose = obj(obj(m.expose).http)
-  const caddyRaw = obj(m.proxy).caddy
 
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -29,8 +28,8 @@ export function ServiceFields({ service, onSave, onDelete }: Props) {
   )
   const [port, setPort] = useState(internal.port != null ? String(internal.port) : "")
   const [health, setHealth] = useState((httpExpose.health_path as string) ?? "")
-  // Exposed at <service-name>.<gateway.domain> when proxy.caddy is present + enabled.
-  const [expose, setExpose] = useState(caddyRaw !== undefined && obj(caddyRaw).enable !== false)
+  // Exposed at <service-name>.<gateway.domain> when proxy is true.
+  const [expose, setExpose] = useState(m.proxy === true)
 
   const { element: envEditor, merged } = useEnvSecrets(obj(obj(m.defaults).env) as Record<string, string>)
 
@@ -62,7 +61,7 @@ export function ServiceFields({ service, onSave, onDelete }: Props) {
         delete config.expose
       }
 
-      if (expose) config.proxy = { caddy: {} }
+      if (expose) config.proxy = true
       else delete config.proxy
 
       const env = merged()

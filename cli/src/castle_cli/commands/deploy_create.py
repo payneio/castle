@@ -11,14 +11,12 @@ import argparse
 
 from castle_cli.config import load_config, save_config
 from castle_cli.manifest import (
-    CaddySpec,
     DefaultsSpec,
     ExposeSpec,
     HttpExposeSpec,
     HttpInternal,
     JobSpec,
     ManageSpec,
-    ProxySpec,
     RunCommand,
     RunPython,
     ServiceSpec,
@@ -62,7 +60,7 @@ def run_service_create(args: argparse.Namespace) -> int:
     run = _run_spec(args.runner, args.run or args.program or name, name)
 
     expose = None
-    proxy = None
+    proxy = False
     if args.port is not None:
         expose = ExposeSpec(
             http=HttpExposeSpec(
@@ -70,9 +68,8 @@ def run_service_create(args: argparse.Namespace) -> int:
                 health_path=args.health,
             )
         )
-        if not args.no_proxy:
-            # Expose at <name>.<gateway.domain> (the subdomain is the service name).
-            proxy = ProxySpec(caddy=CaddySpec())
+        # Expose at <name>.<gateway.domain> (the subdomain is the service name).
+        proxy = not args.no_proxy
 
     config.services[name] = ServiceSpec(
         id=name,
@@ -90,7 +87,7 @@ def run_service_create(args: argparse.Namespace) -> int:
     print(f"  runs:   {args.runner} ({args.run or args.program or name})")
     if expose:
         print(f"  port:   {args.port}")
-    if proxy and proxy.caddy:
+    if proxy:
         print(f"  subdomain: {name}.<gateway.domain>")
     print(f"\nNext: castle service deploy {name} && castle service start {name}")
     return 0

@@ -12,13 +12,13 @@ browser on your LAN:
 2. **Trust** — is the certificate the node serves one the browser accepts? *(TLS)*
 
 Castle answers #1 by leaning on your LAN's own DNS, and #2 with a per-node choice
-of three TLS modes. They're orthogonal: you pick a resolution strategy and a trust
+of two TLS modes. They're orthogonal: you pick a resolution strategy and a trust
 strategy, and any working combination is fine.
 
 ## The gateway is the single ingress
 
 Every gateway-reachable service goes through the Caddy **gateway**. Exposure is a
-single **checkbox** (`proxy.caddy` on a service):
+single **checkbox** (`proxy: true` on a service):
 
 - **unchecked** — the service is reachable only at its own `host:port` (no gateway
   route, no DNS name).
@@ -116,7 +116,7 @@ origin — moving a service onto HTTPS changes its origin.
 
 ## Putting a service on trusted HTTPS — the recipe
 
-1. **Check the box.** Add `proxy: { caddy: {} }` to the service — it's now exposed
+1. **Check the box.** Add `proxy: true` to the service — it's now exposed
    at `<service-name>.<gateway.domain>` (rename the service to change the name).
 2. **Make the name resolve.** Add (or rely on) the LAN wildcard for the zone
    (§DNS). Verify: `dig +short <name>.<domain>` → the node's IP.

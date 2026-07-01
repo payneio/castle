@@ -5,14 +5,12 @@ from __future__ import annotations
 import pytest
 from castle_core.manifest import (
     BuildSpec,
-    CaddySpec,
     ProgramSpec,
     ExposeSpec,
     HttpExposeSpec,
     HttpInternal,
     JobSpec,
     ManageSpec,
-    ProxySpec,
     RunCommand,
     RunPython,
     RunRemote,
@@ -92,9 +90,9 @@ class TestServiceSpec:
         s = ServiceSpec(
             id="svc",
             run=RunPython(runner="python", program="svc"),
-            proxy=ProxySpec(caddy=CaddySpec()),
+            proxy=True,
         )
-        assert s.proxy.caddy.enable is True
+        assert s.proxy is True
 
     def test_service_with_manage(self) -> None:
         """Service with systemd management."""
@@ -185,10 +183,10 @@ class TestModelSerialization:
                     internal=HttpInternal(port=9001), health_path="/health"
                 )
             ),
-            proxy=ProxySpec(caddy=CaddySpec()),
+            proxy=True,
             manage=ManageSpec(systemd=SystemdSpec()),
         )
         data = s.model_dump(exclude_none=True, exclude={"id"})
         assert data["run"]["runner"] == "python"
         assert data["expose"]["http"]["internal"]["port"] == 9001
-        assert data["proxy"]["caddy"]["enable"] is True
+        assert data["proxy"] is True

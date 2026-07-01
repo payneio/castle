@@ -79,8 +79,7 @@ expose:
   http:
     internal: { port: 9001 }
     health_path: /health
-proxy:
-  caddy: {}   # expose at my-service.<gateway.domain>
+proxy: true   # expose at my-service.<gateway.domain>
 manage:
   systemd: {}
 ```
@@ -272,13 +271,12 @@ expose:
 
 ### `proxy` — Expose the service at a subdomain
 
-`proxy.caddy` is a **checkbox**: present (and `enable: true`, the default) means the
-gateway routes **`<service-name>.<gateway.domain>`** to this service; absent means
-the service is reachable only at its own `host:port`.
+`proxy` is a **checkbox** (a bool): `true` means the gateway routes
+**`<service-name>.<gateway.domain>`** to this service; omitted/`false` means the
+service is reachable only at its own `host:port`.
 
 ```yaml
-proxy:
-  caddy: {}   # expose at <service-name>.<gateway.domain>
+proxy: true   # expose at <service-name>.<gateway.domain>
 ```
 
 The subdomain is always the service name — there's nothing to customize (rename the
@@ -334,7 +332,7 @@ version number"). `gateway.tls` has two values:
 | `acme` | one `*.<domain>` `:443` site | matcher inside the wildcard site | **real Let's Encrypt wildcard, no CA install** |
 
 Path-prefix and static routes always stay on the HTTP `:<port>` site — the way to
-put a service on HTTPS is to give it a `proxy.caddy.host`. A node with no public
+put a service on HTTPS is to set `proxy: true` (and use acme mode). A node with no public
 domain stays on `off` (plain HTTP; use `localhost`/direct ports for anything that
 needs a secure context).
 
@@ -387,7 +385,7 @@ it needs **no inbound exposure and no public A records** for the services. Only 
 **LAN DNS** resolves `*.<domain>` to the gateway's private IP. (HTTP-01 can't
 validate a wildcard, so DNS-01 — and thus the provider token — is mandatory here.)
 
-Every subdomain is the **service name**: a service checks the `proxy.caddy` box and
+Every subdomain is the **service name**: a service sets `proxy: true` and
 is published at `<name>.<domain>`. Services stay domain-agnostic (switching
 `gateway.domain` needs no service edits). One `*.<domain>` site means a single cert
 covers every route — adding a service needs no new cert.
@@ -560,8 +558,7 @@ services:
       http:
         internal: { port: 9001 }
         health_path: /health
-    proxy:
-      caddy: {}   # expose at my-service.<gateway.domain>
+    proxy: true   # expose at my-service.<gateway.domain>
     manage:
       systemd: {}
 ```

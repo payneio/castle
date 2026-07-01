@@ -117,11 +117,12 @@ the function holds credentials and can meter usage.
 
 ## Gateway & secure context
 
-A `public` app is fine on the gateway's HTTP static route at `/my-app/`. An app
-that uses **auth or WebCrypto** needs a **secure context**, so give it its own
-HTTPS host route instead — `proxy.caddy.host: my-app.lan` with `gateway.tls:
-internal` — exactly like the substrate itself (`supabase.lan`). See the "HTTPS for
-host routes" section of @docs/registry.md.
+A supabase app is a `frontend` program (its `public/` is served in place), so the
+gateway serves it at its own subdomain `<name>.<gateway.domain>`. With
+`gateway.tls: acme` that subdomain is HTTPS — a **secure context**, which apps
+using **auth or WebCrypto** require — with no private CA to install. (The substrate
+service itself is likewise at `supabase.<gateway.domain>`.) See
+@docs/dns-and-tls.md.
 
 ## Commands
 

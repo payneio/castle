@@ -123,8 +123,7 @@ services:
       http:
         internal: { port: 9001 }
         health_path: /health
-    proxy:
-      caddy: { path_prefix: /my-service }
+    proxy: true   # expose at my-service.<gateway.domain>
     manage:
       systemd: {}
 ```

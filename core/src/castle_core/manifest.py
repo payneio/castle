@@ -145,18 +145,6 @@ class ExposeSpec(BaseModel):
     http: HttpExposeSpec | None = None
 
 
-class CaddySpec(BaseModel):
-    # The "expose" checkbox: when present and enabled, the gateway routes
-    # <service-name>.<gateway.domain> to this service (whole host → backend root).
-    # The subdomain is always the service name — rename the service to change it.
-    enable: bool = True
-    extra_snippets: list[str] = Field(default_factory=list)
-
-
-class ProxySpec(BaseModel):
-    caddy: CaddySpec | None = None
-
-
 # ---------------------
 # Build spec
 # ---------------------
@@ -277,7 +265,9 @@ class ServiceSpec(BaseModel):
     run: RunSpec
 
     expose: ExposeSpec | None = None
-    proxy: ProxySpec | None = None
+    # Expose this service at <service-name>.<gateway.domain> through the gateway
+    # (the subdomain is the service name). False → reachable only at its host:port.
+    proxy: bool = False
     manage: ManageSpec | None = None
     defaults: DefaultsSpec | None = None
 

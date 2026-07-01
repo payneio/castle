@@ -11,12 +11,10 @@ from castle_core.generators.caddyfile import (
 )
 from castle_core.manifest import (
     BuildSpec,
-    CaddySpec,
     ExposeSpec,
     HttpExposeSpec,
     HttpInternal,
     ProgramSpec,
-    ProxySpec,
     RunPython,
     ServiceSpec,
 )
@@ -151,7 +149,7 @@ def _service(port: int, *, expose: bool) -> ServiceSpec:
     return ServiceSpec(
         run=RunPython(runner="python", program="svc"),
         expose=ExposeSpec(http=HttpExposeSpec(internal=HttpInternal(port=port))),
-        proxy=ProxySpec(caddy=CaddySpec()) if expose else None,
+        proxy=expose,
     )
 
 

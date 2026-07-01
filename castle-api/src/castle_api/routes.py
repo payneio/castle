@@ -103,7 +103,7 @@ def _summary_from_service(
     if svc.expose and svc.expose.http:
         port = svc.expose.http.internal.port
         health_path = svc.expose.http.health_path
-    subdomain = name if (svc.proxy and svc.proxy.caddy and svc.proxy.caddy.enable) else None
+    subdomain = name if svc.proxy else None
 
     managed = bool(svc.manage and svc.manage.systemd and svc.manage.systemd.enable)
 
@@ -278,7 +278,7 @@ def _service_from_spec(name: str, svc: ServiceSpec, config: object) -> ServiceSu
         port = svc.expose.http.internal.port
         health_path = svc.expose.http.health_path
     # Exposed at <name>.<domain> when the proxy checkbox is on.
-    subdomain = name if (svc.proxy and svc.proxy.caddy and svc.proxy.caddy.enable) else None
+    subdomain = name if svc.proxy else None
 
     managed = bool(svc.manage and svc.manage.systemd and svc.manage.systemd.enable)
     systemd_info = _make_systemd_info(name) if managed else None

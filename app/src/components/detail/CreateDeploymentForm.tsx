@@ -74,7 +74,7 @@ export function CreateDeploymentForm({
         },
       }
     }
-    if (port && expose) base.proxy = { caddy: {} }
+    if (port && expose) base.proxy = true
     return base
   }
 

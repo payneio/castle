@@ -56,9 +56,9 @@ import { defineConfig } from "vite"
 import react from "@vitejs/plugin-react"
 
 export default defineConfig({
-  // Castle sets VITE_BASE to the gateway serve prefix at build time (`/<name>/`,
-  // or `/` for the root app). Reading it here makes the bundle's absolute asset
-  // URLs resolve when served behind the gateway at a subpath — no hand-tuning.
+  // Castle sets VITE_BASE=/ at build time (every frontend serves at its
+  // subdomain root). Reading it here keeps the bundle.s absolute asset
+  // URLs resolving at the root — no hand-tuning.
   base: process.env.VITE_BASE ?? "/",
   plugins: [react(), tailwindcss()],
   resolve: {
@@ -157,8 +157,7 @@ services:
     expose:
       http:
         internal: { port: 5173 }
-    proxy:
-      caddy: {}   # expose the dev server at my-frontend.<gateway.domain>
+    proxy: true   # expose the dev server at my-frontend.<gateway.domain>
 ```
 
 See @docs/registry.md for the full registry reference.

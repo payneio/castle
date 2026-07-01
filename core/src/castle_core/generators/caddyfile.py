@@ -61,7 +61,7 @@ def service_proxy_targets(name: str, svc: ServiceSpec) -> ProxyTargets:
     port = None
     if svc.expose and svc.expose.http:
         port = svc.expose.http.internal.port
-    expose = bool(svc.proxy and svc.proxy.caddy and svc.proxy.caddy.enable)
+    expose = bool(svc.proxy)
     base_url = getattr(svc.run, "base_url", None)
     return expose, port, base_url
 

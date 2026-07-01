@@ -170,9 +170,7 @@ services:
       http:
         internal: { port: 9001 }
         health_path: /health
-    proxy:
-      caddy:
-        path_prefix: /central-context
+    proxy: true   # expose at central-context.<gateway.domain>
     manage:
       systemd: {}
 

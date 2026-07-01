@@ -8,14 +8,12 @@ import subprocess
 from castle_cli.config import REPOS_DIR, load_config, save_config
 from castle_cli.manifest import (
     BuildSpec,
-    CaddySpec,
     DefaultsSpec,
     ExposeSpec,
     HttpExposeSpec,
     HttpInternal,
     ManageSpec,
     ProgramSpec,
-    ProxySpec,
     RunPython,
     ServiceSpec,
     SystemdSpec,
@@ -121,7 +119,7 @@ def run_create(args: argparse.Namespace) -> int:
                     health_path="/health",
                 )
             ),
-            proxy=ProxySpec(caddy=CaddySpec()),  # expose at <name>.<gateway.domain>
+            proxy=True,  # expose at <name>.<gateway.domain>
             manage=ManageSpec(systemd=SystemdSpec()),
             # python-fastapi scaffold reads env_prefix MY_SERVICE_ — map castle's
             # computed port/data dir to those vars (explicit, no hidden injection).
