@@ -76,6 +76,17 @@ class ApiClient {
   streamUrl(path: string): string {
     return `${this.baseUrl}${path}`
   }
+
+  // Build a ws(s):// URL for a WebSocket endpoint. Handles both the cross-origin
+  // base (https://castle-api.<domain>) and the same-origin "/api" base.
+  wsUrl(path: string): string {
+    const absolute = this.baseUrl.startsWith("http")
+      ? `${this.baseUrl}${path}`
+      : `${window.location.origin}${this.baseUrl}${path}`
+    const url = new URL(absolute)
+    url.protocol = url.protocol === "https:" ? "wss:" : "ws:"
+    return url.toString()
+  }
 }
 
 export const apiClient = new ApiClient()

@@ -17,6 +17,9 @@ import type {
   MeshStatus,
   NodeSummary,
   NodeDetail,
+  AgentInfo,
+  AgentSessionInfo,
+  AgentHistoryEntry,
 } from "@/types"
 
 // Compat hook for the /deployments/{name} unified detail endpoint
@@ -205,6 +208,39 @@ export function useMeshStatus() {
     queryKey: ["mesh"],
     queryFn: () => apiClient.get<MeshStatus>("/mesh/status"),
     refetchInterval: 30_000,
+  })
+}
+
+export function useAgents() {
+  return useQuery({
+    queryKey: ["agents"],
+    queryFn: () => apiClient.get<AgentInfo[]>("/agents"),
+    staleTime: Infinity,
+  })
+}
+
+export function useAgentSessions() {
+  return useQuery({
+    queryKey: ["agent-sessions"],
+    queryFn: () => apiClient.get<AgentSessionInfo[]>("/agents/sessions"),
+    refetchInterval: 5_000,
+  })
+}
+
+export function useAgentHistory(enabled: boolean) {
+  return useQuery({
+    queryKey: ["agent-history"],
+    queryFn: () => apiClient.get<AgentHistoryEntry[]>("/agents/history"),
+    enabled,
+    staleTime: 10_000,
+  })
+}
+
+export function useDeleteAgentSession() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => apiClient.delete(`/agents/sessions/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["agent-sessions"] }),
   })
 }
 

@@ -18,6 +18,7 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useEventStream } from "@/services/api/hooks"
+import { AssistantDock } from "@/components/AssistantDock"
 
 type NavLeaf = { to: string; label: string; icon: LucideIcon; end?: boolean }
 type NavGroup = { label: string; icon: LucideIcon; children: NavLeaf[] }
@@ -228,6 +229,9 @@ export function Layout() {
       >
         <Outlet />
       </main>
+
+      {/* Global assistant — persists across navigation (Layout doesn't remount). */}
+      <AssistantDock />
     </div>
   )
 }

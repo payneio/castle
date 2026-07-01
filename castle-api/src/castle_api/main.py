@@ -12,6 +12,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import StreamingResponse
 
+from castle_api.agent_sessions import manager as agent_session_manager
+from castle_api.agents import router as agents_router
 from castle_api.config import get_registry, settings
 from castle_api.config_editor import router as config_router
 from castle_api.deploy_routes import router as deploy_router
@@ -98,6 +100,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     if mdns_service:
         mdns_service.stop()
 
+    await agent_session_manager.close_all()
     close_all_subscribers()
 
 
@@ -123,6 +126,7 @@ app.include_router(secrets_router)
 app.include_router(services_router)
 app.include_router(programs_router)
 app.include_router(deploy_router)
+app.include_router(agents_router)
 
 
 @app.get("/health")

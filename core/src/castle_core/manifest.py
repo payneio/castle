@@ -198,6 +198,52 @@ class DefaultsSpec(BaseModel):
 
 
 # ---------------------
+# Agent spec — a launchable agent CLI (assistant-agnostic)
+# ---------------------
+
+
+class SessionsSpec(BaseModel):
+    """Declarative session-history capability for an agent (optional).
+
+    Lets the dashboard show a unified picker of an agent's *own* past sessions
+    without castle knowing anything agent-specific in code: it runs
+    ``list_command`` (which must print a JSON array of session objects), reads
+    three named fields off each object, and launches ``command`` + ``resume``
+    (with ``{id}`` substituted) to reopen one. Field names default to opencode's
+    shape and are overridable per agent (dotted paths allowed, e.g.
+    ``config_summary.session_id``).
+    """
+
+    list_command: list[str]  # argv → JSON array of session objects
+    resume: list[str]  # appended to the agent command; "{id}" is substituted
+    id_field: str = "id"
+    title_field: str = "title"
+    time_field: str = "updated"
+
+
+class AgentSpec(BaseModel):
+    """A launchable agent CLI for the dashboard's terminal UX.
+
+    Castle just runs ``command args`` inside a pty at ``cwd``; it never parses
+    the agent's output, so any interactive CLI works. This block only names the
+    launch — live sessions (list/resume/kill) are a runtime concern, not config.
+    """
+
+    command: str
+    args: list[str] = Field(default_factory=list)
+    description: str | None = None
+    cwd: str | None = None  # defaults to the castle repo root when unset
+    env: EnvMap = Field(default_factory=dict)
+    # Extra args that open the agent's own session browser / continue its last
+    # conversation (e.g. ["--resume"] or ["--continue"]). Optional and
+    # agent-specific — castle just passes them through. Empty = no such affordance.
+    resume_args: list[str] = Field(default_factory=list)
+    # Optional: declares how to list + resume the agent's own sessions, so the
+    # dashboard can render a unified session picker (see SessionsSpec).
+    sessions: SessionsSpec | None = None
+
+
+# ---------------------
 # Program spec — software identity
 # ---------------------
 

@@ -156,6 +156,38 @@ export interface SSEHealthEvent {
   timestamp: number
 }
 
+// Agent terminal UX
+export interface AgentInfo {
+  name: string
+  command: string
+  available: boolean
+  cwd: string
+  description: string | null
+  can_continue: boolean
+  can_list_sessions: boolean
+}
+
+export interface AgentHistoryEntry {
+  agent: string
+  id: string
+  title: string
+  time: number | string | null
+}
+
+export interface AgentSessionInfo {
+  id: string
+  agent: string
+  command: string
+  cwd: string
+  created_at: number
+  running: boolean
+  exited: boolean
+  exit_code: number | null
+  cols: number | null
+  rows: number | null
+  clients: number
+}
+
 export interface SSEServiceActionEvent {
   action: string
   program: string

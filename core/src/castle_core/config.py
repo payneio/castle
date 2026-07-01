@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
 from pydantic import BaseModel, TypeAdapter
 
 from castle_core.manifest import (
+    AgentSpec,
     DeploymentSpec,
     ProgramSpec,
     kind_for,
@@ -142,6 +143,9 @@ class CastleConfig:
     # The one deployment concept (manager-discriminated). service/job/tool/static/
     # reference are *derived views* over this, filtered by kind_for — see below.
     deployments: dict[str, DeploymentSpec]
+    # Launchable agent CLIs for the dashboard terminal UX (assistant-agnostic).
+    # Optional; empty means the API falls back to a built-in default set.
+    agents: dict[str, AgentSpec] = field(default_factory=dict)
 
     def deployments_of(self, name: str) -> list[tuple[str, str]]:
         """A program's deployments as (deployment-name, kind) pairs, name-sorted.
@@ -364,12 +368,18 @@ def load_config(root: Path | None = None) -> CastleConfig:
         name: _parse_deployment(name, dep_data) for name, dep_data in raw.items()
     }
 
+    agents: dict[str, AgentSpec] = {
+        name: AgentSpec.model_validate(spec or {})
+        for name, spec in (data.get("agents") or {}).items()
+    }
+
     config = CastleConfig(
         root=root,
         repo=repo_path,
         gateway=gateway,
         programs=programs,
         deployments=deployments,
+        agents=agents,
     )
     return config
 
@@ -495,6 +505,11 @@ def save_config(config: CastleConfig) -> None:
     data: dict = {"gateway": gateway_data}
     if config.repo:
         data["repo"] = str(config.repo)
+    if config.agents:
+        data["agents"] = {
+            n: s.model_dump(exclude_none=True, exclude_defaults=True)
+            for n, s in config.agents.items()
+        }
 
     config_path = config.root / "castle.yaml"
     with open(config_path, "w") as f:
