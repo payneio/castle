@@ -18,7 +18,7 @@ export function ServiceFields({ service, onSave, onDelete }: Props) {
   const run = obj(m.run)
   const internal = obj(obj(obj(m.expose).http).internal)
   const httpExpose = obj(obj(m.expose).http)
-  const caddy = obj(obj(m.proxy).caddy)
+  const caddyRaw = obj(m.proxy).caddy
 
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -29,8 +29,8 @@ export function ServiceFields({ service, onSave, onDelete }: Props) {
   )
   const [port, setPort] = useState(internal.port != null ? String(internal.port) : "")
   const [health, setHealth] = useState((httpExpose.health_path as string) ?? "")
-  const [proxyPath, setProxyPath] = useState((caddy.path_prefix as string) ?? "")
-  const [proxyHost, setProxyHost] = useState((caddy.host as string) ?? "")
+  // Exposed at <service-name>.<gateway.domain> when proxy.caddy is present + enabled.
+  const [expose, setExpose] = useState(caddyRaw !== undefined && obj(caddyRaw).enable !== false)
 
   const { element: envEditor, merged } = useEnvSecrets(obj(obj(m.defaults).env) as Record<string, string>)
 
@@ -62,16 +62,8 @@ export function ServiceFields({ service, onSave, onDelete }: Props) {
         delete config.expose
       }
 
-      if (proxyPath || proxyHost) {
-        config.proxy = {
-          caddy: {
-            ...(proxyPath ? { path_prefix: proxyPath } : {}),
-            ...(proxyHost ? { host: proxyHost } : {}),
-          },
-        }
-      } else {
-        delete config.proxy
-      }
+      if (expose) config.proxy = { caddy: {} }
+      else delete config.proxy
 
       const env = merged()
       if (Object.keys(env).length > 0) config.defaults = { ...obj(config.defaults), env }
@@ -117,23 +109,21 @@ export function ServiceFields({ service, onSave, onDelete }: Props) {
         placeholder="/health"
         hint="HTTP path castle polls to report up/down."
       />
-      <TextField
-        label="Proxy path"
-        value={proxyPath}
-        onChange={setProxyPath}
-        width="w-48"
-        mono
-        placeholder="/my-service"
-        hint="Gateway prefix — reachable at gateway:9000<path>/ (reverse-proxied to the port)."
-      />
-      <TextField
-        label="Proxy host"
-        value={proxyHost}
-        onChange={setProxyHost}
-        mono
-        placeholder="my-service.lan"
-        hint="Optional: route a whole hostname to this service instead of a path (lets a root-based app serve unchanged)."
-      />
+      <Field
+        label="Expose"
+        hint="Route this service through the gateway at <service-name>.<gateway.domain>. Unchecked: reachable only at its own host:port."
+      >
+        <label className="flex items-center gap-2 text-sm cursor-pointer">
+          <input
+            type="checkbox"
+            checked={expose}
+            onChange={(e) => setExpose(e.target.checked)}
+          />
+          <span className="font-mono text-[var(--muted)]">
+            {expose ? `${service.id}.<gateway.domain>` : "off (host:port only)"}
+          </span>
+        </label>
+      </Field>
       {envEditor}
       <FormFooter
         saving={saving}

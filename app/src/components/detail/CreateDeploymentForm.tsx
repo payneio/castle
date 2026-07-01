@@ -39,8 +39,7 @@ export function CreateDeploymentForm({
   const [runTarget, setRunTarget] = useState(prefill?.runTarget ?? prefill?.name ?? "")
   const [port, setPort] = useState("")
   const [health, setHealth] = useState("/health")
-  const [path, setPath] = useState("")
-  const [host, setHost] = useState("")
+  const [expose, setExpose] = useState(true)
   const [schedule, setSchedule] = useState("0 2 * * *")
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState("")
@@ -75,14 +74,7 @@ export function CreateDeploymentForm({
         },
       }
     }
-    if (path || host) {
-      base.proxy = {
-        caddy: {
-          ...(path ? { path_prefix: path.startsWith("/") ? path : `/${path}` } : {}),
-          ...(host ? { host } : {}),
-        },
-      }
-    }
+    if (port && expose) base.proxy = { caddy: {} }
     return base
   }
 
@@ -160,8 +152,14 @@ export function CreateDeploymentForm({
         <>
           <TextField label="Port" value={port} onChange={setPort} width="w-32" mono placeholder="9001" />
           <TextField label="Health path" value={health} onChange={setHealth} width="w-48" mono />
-          <TextField label="Proxy path" value={path} onChange={setPath} width="w-48" mono placeholder={`/${name || "name"}`} />
-          <TextField label="Proxy host" value={host} onChange={setHost} mono placeholder="my-service.lan (optional)" />
+          <Field label="Expose" hint="Route through the gateway at <name>.<gateway.domain>. Off: reachable only at host:port.">
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input type="checkbox" checked={expose} onChange={(e) => setExpose(e.target.checked)} />
+              <span className="font-mono text-[var(--muted)]">
+                {expose ? `${name || "name"}.<gateway.domain>` : "off (host:port only)"}
+              </span>
+            </label>
+          </Field>
         </>
       ) : (
         <TextField label="Schedule" value={schedule} onChange={setSchedule} width="w-48" mono placeholder="0 2 * * *" />

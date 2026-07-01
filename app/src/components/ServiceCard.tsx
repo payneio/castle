@@ -2,7 +2,7 @@ import { ExternalLink, Play, RefreshCw, Server, Square, Terminal } from "lucide-
 import { Link } from "react-router-dom"
 import type { ServiceSummary, HealthStatus } from "@/types"
 import { useServiceAction } from "@/services/api/hooks"
-import { runnerLabel } from "@/lib/labels"
+import { runnerLabel, subdomainUrl } from "@/lib/labels"
 import { HealthBadge } from "./HealthBadge"
 import { StackBadge } from "./StackBadge"
 
@@ -58,13 +58,13 @@ export function ServiceCard({ service, health }: ServiceCardProps) {
               {runnerLabel(service.runner)}
             </span>
           )}
-          {service.proxy_path && (
+          {service.subdomain && (
             <a
-              href={service.proxy_path + "/"}
+              href={subdomainUrl(service.subdomain) ?? undefined}
               className="flex items-center gap-1 text-[var(--primary)] hover:underline"
             >
               <ExternalLink size={12} />
-              {service.proxy_path}
+              {service.subdomain}
             </a>
           )}
           {service.port && (

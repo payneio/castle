@@ -12,8 +12,7 @@ export interface ServiceSummary {
   run_target: string | null
   port: number | null
   health_path: string | null
-  proxy_path: string | null
-  proxy_host: string | null
+  subdomain: string | null // exposed at <subdomain>.<gateway.domain>, else null
   managed: boolean
   systemd: SystemdInfo | null
   program: string | null
@@ -80,7 +79,7 @@ export interface DeploymentSummary {
   runner: string | null
   port: number | null
   health_path: string | null
-  proxy_path: string | null
+  subdomain: string | null // exposed at <subdomain>.<gateway.domain>, else null
   managed: boolean
   systemd: SystemdInfo | null
   version: string | null

@@ -1,7 +1,7 @@
 import { useParams, Link } from "react-router-dom"
 import { Server, ExternalLink, Terminal } from "lucide-react"
 import { useService, useStatus, useEventStream, useCaddyfile } from "@/services/api/hooks"
-import { runnerLabel } from "@/lib/labels"
+import { runnerLabel, subdomainUrl } from "@/lib/labels"
 import { HealthBadge } from "@/components/HealthBadge"
 import { LogViewer } from "@/components/LogViewer"
 import { DetailHeader } from "@/components/detail/DetailHeader"
@@ -68,21 +68,15 @@ export function ServiceDetailPage() {
               <span className="font-mono break-all">{deployment.health_path}</span>
             </>
           )}
-          {deployment.proxy_path && (
+          {deployment.subdomain && (
             <>
-              <span className="text-[var(--muted)]">Proxy</span>
+              <span className="text-[var(--muted)]">Subdomain</span>
               <a
-                href={deployment.proxy_path + "/"}
+                href={subdomainUrl(deployment.subdomain) ?? undefined}
                 className="flex items-center gap-1 min-w-0 break-all text-[var(--primary)] hover:underline font-mono"
               >
-                <ExternalLink size={12} className="shrink-0" />{deployment.proxy_path}
+                <ExternalLink size={12} className="shrink-0" />{deployment.subdomain}
               </a>
-            </>
-          )}
-          {deployment.proxy_host && (
-            <>
-              <span className="text-[var(--muted)]">Host</span>
-              <span className="font-mono break-all">{deployment.proxy_host}</span>
             </>
           )}
           {deployment.runner && (

@@ -47,3 +47,16 @@ export function behaviorLabel(behavior: string): string {
 export function stackLabel(stack: string): string {
   return STACK_LABELS[stack] ?? stack
 }
+
+/**
+ * Full URL for a service exposed at <subdomain>.<gateway.domain>. The domain is
+ * derived from the dashboard's own host (it is served at castle-app.<domain>), so
+ * this returns null when the dashboard is on a bare host (off mode, no subdomains).
+ */
+export function subdomainUrl(subdomain: string): string | null {
+  if (typeof window === "undefined") return null
+  const { protocol, hostname } = window.location
+  const labels = hostname.split(".")
+  if (labels.length <= 2) return null
+  return `${protocol}//${subdomain}.${labels.slice(1).join(".")}`
+}
