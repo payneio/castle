@@ -76,8 +76,23 @@ class RunRemote(RunBase):
     health_url: str | None = None
 
 
+class RunStatic(RunBase):
+    """A static site served by the gateway (Caddy ``file_server``), no process.
+
+    Like ``remote``, this is a service with no local process and no systemd unit —
+    the gateway *is* its runtime. ``root`` is the built directory to serve, resolved
+    relative to the referenced program's source (e.g. ``dist`` or ``public``).
+    Building that directory is the program's concern; this only serves it.
+    """
+
+    runner: Literal["static"]
+    root: str = "dist"  # served dir, relative to the program source
+
+
 RunSpec = Annotated[
-    Union[RunCommand, RunPython, RunContainer, RunNode, RunCompose, RunRemote],
+    Union[
+        RunCommand, RunPython, RunContainer, RunNode, RunCompose, RunRemote, RunStatic
+    ],
     Field(discriminator="runner"),
 ]
 
@@ -255,6 +270,10 @@ class ServiceSpec(BaseModel):
     # Expose this service at <service-name>.<gateway.domain> through the gateway
     # (the subdomain is the service name). False → reachable only at its host:port.
     proxy: bool = False
+    # Also expose this service to the public internet via the Cloudflare tunnel, at
+    # <service-name>.<gateway.public_domain>. Default False — public is opt-in and
+    # explicit. Requires proxy (the tunnel projects an already-routed subdomain).
+    public: bool = False
     manage: ManageSpec | None = None
     defaults: DefaultsSpec | None = None
 
@@ -263,6 +282,8 @@ class ServiceSpec(BaseModel):
         if self.manage and self.manage.systemd and self.manage.systemd.enable:
             if self.run.runner == "remote":
                 raise ValueError("manage.systemd cannot be enabled for runner=remote.")
+        if self.public and not self.proxy:
+            raise ValueError("public requires proxy (a service must be routed to be exposed).")
         return self
 
 

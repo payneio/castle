@@ -118,6 +118,12 @@ class GatewayConfig:
     domain: str | None = None
     acme_email: str | None = None
     acme_dns_provider: str = "cloudflare"
+    # Public exposure via the Cloudflare tunnel (optional). `public_domain` is the
+    # separate zone public services are published at (e.g. "pub.payne.io" →
+    # <service>.pub.payne.io), kept distinct from `domain` so internal subdomain
+    # names never appear in public DNS. `tunnel_id` is the cloudflared tunnel UUID.
+    public_domain: str | None = None
+    tunnel_id: str | None = None
 
 
 @dataclass
@@ -265,6 +271,8 @@ def load_config(root: Path | None = None) -> CastleConfig:
         domain=gateway_data.get("domain"),
         acme_email=gateway_data.get("acme_email"),
         acme_dns_provider=gateway_data.get("acme_dns_provider", "cloudflare"),
+        public_domain=gateway_data.get("public_domain"),
+        tunnel_id=gateway_data.get("tunnel_id"),
     )
 
     # repo: field points to the git repo for repo-relative sources

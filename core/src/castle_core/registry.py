@@ -27,6 +27,9 @@ class NodeConfig:
     gateway_domain: str | None = None  # acme: zone for wildcard cert + host subdomains
     acme_email: str | None = None
     acme_dns_provider: str = "cloudflare"
+    # Cloudflare tunnel: public services publish at <subdomain>.<public_domain>.
+    public_domain: str | None = None
+    tunnel_id: str | None = None
 
     def __post_init__(self) -> None:
         if not self.hostname:
@@ -55,6 +58,12 @@ class Deployment:
     # Exposed at <subdomain>.<gateway.domain> (the subdomain is the service name),
     # or None when the service is reachable only at its host:port.
     subdomain: str | None = None
+    # Also projected to the public internet via the tunnel at
+    # <subdomain>.<gateway.public_domain>. Requires subdomain.
+    public: bool = False
+    # For `static` runner services: the absolute dir the gateway file_servers.
+    # Set → the route is `static` (file_server) rather than `proxy` (reverse_proxy).
+    static_root: str | None = None
     base_url: str | None = None
     schedule: str | None = None
     managed: bool = False
@@ -94,6 +103,8 @@ def load_registry(path: Path | None = None) -> NodeRegistry:
         gateway_domain=node_data.get("gateway_domain"),
         acme_email=node_data.get("acme_email"),
         acme_dns_provider=node_data.get("acme_dns_provider", "cloudflare"),
+        public_domain=node_data.get("public_domain"),
+        tunnel_id=node_data.get("tunnel_id"),
     )
 
     deployed: dict[str, Deployment] = {}
@@ -123,6 +134,8 @@ def load_registry(path: Path | None = None) -> NodeRegistry:
             port=comp_data.get("port"),
             health_path=comp_data.get("health_path"),
             subdomain=comp_data.get("subdomain"),
+            public=comp_data.get("public", False),
+            static_root=comp_data.get("static_root"),
             base_url=comp_data.get("base_url"),
             schedule=comp_data.get("schedule"),
             managed=comp_data.get("managed", False),
@@ -157,6 +170,10 @@ def save_registry(registry: NodeRegistry, path: Path | None = None) -> None:
         data["node"]["acme_email"] = registry.node.acme_email
     if registry.node.acme_dns_provider and registry.node.acme_dns_provider != "cloudflare":
         data["node"]["acme_dns_provider"] = registry.node.acme_dns_provider
+    if registry.node.public_domain:
+        data["node"]["public_domain"] = registry.node.public_domain
+    if registry.node.tunnel_id:
+        data["node"]["tunnel_id"] = registry.node.tunnel_id
 
     for name, comp in registry.deployed.items():
         entry: dict = {
@@ -180,6 +197,10 @@ def save_registry(registry: NodeRegistry, path: Path | None = None) -> None:
             entry["health_path"] = comp.health_path
         if comp.subdomain:
             entry["subdomain"] = comp.subdomain
+        if comp.public:
+            entry["public"] = comp.public
+        if comp.static_root:
+            entry["static_root"] = comp.static_root
         if comp.base_url:
             entry["base_url"] = comp.base_url
         if comp.schedule:

@@ -1,0 +1,70 @@
+"""Tests for cloudflared tunnel ingress generation."""
+
+from __future__ import annotations
+
+import yaml
+
+from castle_core.generators.tunnel import (
+    generate_tunnel_config,
+    public_hostnames,
+)
+from castle_core.registry import Deployment, NodeConfig, NodeRegistry
+
+
+def _registry(
+    *,
+    tunnel_id: str | None = "tid-123",
+    public_domain: str | None = "pub.payne.io",
+    gateway_domain: str | None = "civil.payne.io",
+    deployed: dict[str, Deployment] | None = None,
+) -> NodeRegistry:
+    return NodeRegistry(
+        node=NodeConfig(
+            hostname="civil",
+            gateway_tls="acme",
+            gateway_domain=gateway_domain,
+            public_domain=public_domain,
+            tunnel_id=tunnel_id,
+        ),
+        deployed=deployed
+        or {
+            "app": Deployment(runner="python", run_cmd=["x"], port=9001,
+                              subdomain="app", public=True),
+            "private": Deployment(runner="python", run_cmd=["y"], port=9002,
+                                 subdomain="private", public=False),
+        },
+    )
+
+
+def test_public_service_maps_public_zone_to_internal_host() -> None:
+    cfg = yaml.safe_load(generate_tunnel_config(_registry()))
+    assert cfg["tunnel"] == "tid-123"
+    rules = {r.get("hostname"): r for r in cfg["ingress"] if "hostname" in r}
+    # only the public service is mapped
+    assert set(rules) == {"app.pub.payne.io"}
+    r = rules["app.pub.payne.io"]
+    assert r["service"] == "https://localhost:443"
+    # public zone → internal host (Host + SNI rewritten so Caddy routes + cert validates)
+    assert r["originRequest"]["httpHostHeader"] == "app.civil.payne.io"
+    assert r["originRequest"]["originServerName"] == "app.civil.payne.io"
+
+
+def test_terminal_catch_all_present() -> None:
+    cfg = yaml.safe_load(generate_tunnel_config(_registry()))
+    assert cfg["ingress"][-1] == {"service": "http_status:404"}
+
+
+def test_private_service_not_in_public_dns() -> None:
+    assert public_hostnames(_registry()) == ["app.pub.payne.io"]
+
+
+def test_none_when_no_public_services() -> None:
+    only_private = {
+        "x": Deployment(runner="python", run_cmd=["x"], subdomain="x", public=False)
+    }
+    assert generate_tunnel_config(_registry(deployed=only_private)) is None
+
+
+def test_none_when_tunnel_unconfigured() -> None:
+    assert generate_tunnel_config(_registry(tunnel_id=None)) is None
+    assert generate_tunnel_config(_registry(public_domain=None)) is None

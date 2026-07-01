@@ -16,6 +16,7 @@ from castle_core.manifest import (
     HttpInternal,
     ProgramSpec,
     RunPython,
+    RunStatic,
     ServiceSpec,
 )
 from castle_core.registry import Deployment, NodeConfig, NodeRegistry
@@ -105,17 +106,16 @@ class TestAcmeMode:
     def test_static_frontend_is_a_file_server_subdomain(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # Static frontends come from config.programs, so hand the generator a config.
+        # A static frontend is a `runner: static` service serving <source>/<root>.
         import castle_core.config as config_mod
 
         cfg = _config(
-            services={},
-            programs={
-                "castle": ProgramSpec(
-                    behavior="frontend", source="/data/repos/castle/app",
-                    build=BuildSpec(outputs=["dist"]),
+            services={
+                "castle": ServiceSpec(
+                    program="castle", run=RunStatic(runner="static", root="dist")
                 )
             },
+            programs={"castle": ProgramSpec(source="/data/repos/castle/app")},
         )
         monkeypatch.setattr(config_mod, "load_config", lambda *a, **k: cfg)
         cf = generate_caddyfile_from_registry(_acme({}))

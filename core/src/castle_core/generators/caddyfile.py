@@ -66,24 +66,46 @@ def service_proxy_targets(name: str, svc: ServiceSpec) -> ProxyTargets:
     return expose, port, base_url
 
 
-def _local_exposures(
+def _local_routes(
     config: CastleConfig | None, registry: NodeRegistry
-) -> list[tuple[str, ProxyTargets]]:
-    """Each local service's (expose?, port, base_url), name-sorted.
+) -> list[tuple[str, str, str]]:
+    """Each local service's route as ``(name, kind, target)``, name-sorted.
 
-    Prefers ``castle.yaml`` (``config.services``) as the source of truth so a
-    regenerated Caddyfile always reflects the current spec; falls back to the
-    deployed registry snapshot when config isn't available.
+    ``kind`` is ``static`` (file-serve a built dir) or ``proxy`` (reverse-proxy a
+    port/base_url). Prefers ``castle.yaml`` (``config.services``) as the source of
+    truth so a regenerated Caddyfile always reflects the current spec; falls back to
+    the deployed registry snapshot when config isn't available.
     """
+    out: list[tuple[str, str, str]] = []
     services = getattr(config, "services", None)
     if services is not None:
-        return sorted(
-            (name, service_proxy_targets(name, svc)) for name, svc in services.items()
-        )
-    return sorted(
-        (name, (d.subdomain is not None, d.port, d.base_url))
-        for name, d in registry.deployed.items()
-    )
+        for name, svc in sorted(services.items()):
+            if svc.run.runner == "static":
+                src = _program_source(config, svc.program)
+                if src is not None:
+                    out.append((name, "static", str(src / svc.run.root)))
+                continue
+            expose, port, base_url = service_proxy_targets(name, svc)
+            if expose and (port or base_url):
+                out.append((name, "proxy", base_url or f"localhost:{port}"))
+        return out
+    # No config → route from the deployed registry snapshot.
+    for name, d in sorted(registry.deployed.items()):
+        if d.static_root:
+            out.append((name, "static", d.static_root))
+        elif d.subdomain and (d.port or d.base_url):
+            out.append((name, "proxy", d.base_url or f"localhost:{d.port}"))
+    return out
+
+
+def _program_source(config: CastleConfig | None, program: str | None):
+    """Absolute source dir of a referenced program (already resolved), or None."""
+    if config is None or not program:
+        return None
+    prog = getattr(config, "programs", {}).get(program)
+    if prog and prog.source:
+        return Path(prog.source)
+    return None
 
 
 def compute_routes(
@@ -107,24 +129,12 @@ def compute_routes(
     node = registry.node.hostname
     routes: list[GatewayRoute] = []
 
-    # Exposed services → a subdomain reverse-proxy (address = service name).
-    for name, (expose, port, base_url) in _local_exposures(config, registry):
-        if expose and (port or base_url):
-            target = base_url or f"localhost:{port}"
-            routes.append(GatewayRoute(name, "proxy", target, name, node))
-
-    # Static frontends — a behavior=frontend program with build outputs and no
-    # service of its own; served in place from <source>/<dist> at <name>.<domain>.
-    if config is not None:
-        for name, prog in sorted(config.programs.items()):
-            if prog.behavior != "frontend" or not prog.source:
-                continue
-            if not (prog.build and prog.build.outputs):
-                continue
-            if name in config.services:  # self-serving frontend → already a proxy route
-                continue
-            serve_dir = str(Path(prog.source) / prog.build.outputs[0])
-            routes.append(GatewayRoute(name, "static", serve_dir, name, node))
+    # Every route comes from a service. `static`-runner services file-serve their
+    # built dir; everything else that's exposed reverse-proxies its port/base_url.
+    # (Static frontends are `runner: static` services now — no separate program
+    # branch, so routing derives from one place.)
+    for name, kind, target in _local_routes(config, registry):
+        routes.append(GatewayRoute(name, kind, target, name, node))
 
     return routes
 

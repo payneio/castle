@@ -279,6 +279,21 @@ service is reachable only at its own `host:port`.
 proxy: true   # expose at <service-name>.<gateway.domain>
 ```
 
+### `public` — Also expose to the public internet (opt-in)
+
+`public: true` additionally projects a proxied service to the public internet via a
+Cloudflare tunnel, at **`<service-name>.<gateway.public_domain>`** (a separate zone,
+so internal subdomain names stay out of public DNS). Defaults to `false` — public is
+explicit — and **requires `proxy: true`**. `castle deploy` generates the cloudflared
+ingress from the set of public services. Needs `gateway.public_domain` +
+`gateway.tunnel_id` set and the `castle-tunnel` service running; see
+@docs/tunnel-setup.md for the one-time setup.
+
+```yaml
+proxy: true
+public: true   # also reachable at <service-name>.<gateway.public_domain>
+```
+
 The subdomain is always the service name — there's nothing to customize (rename the
 service to change it). There are **no path-prefix routes**: a whole subdomain maps
 to the backend root, so root-relative asset URLs and `window.location`-derived

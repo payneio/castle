@@ -28,6 +28,10 @@ from castle_core.generators.caddyfile import (
     generate_caddyfile_from_registry,
     service_proxy_targets,
 )
+from castle_core.generators.tunnel import (
+    generate_tunnel_config,
+    public_hostnames,
+)
 from castle_core.generators.systemd import (
     SECRET_ENV_DIR,
     generate_timer,
@@ -82,6 +86,8 @@ def deploy(target_name: str | None = None, root: Path | None = None) -> DeployRe
         gateway_domain=config.gateway.domain,
         acme_email=config.gateway.acme_email,
         acme_dns_provider=config.gateway.acme_dns_provider,
+        public_domain=config.gateway.public_domain,
+        tunnel_id=config.gateway.tunnel_id,
     )
 
     # Load existing registry to preserve entries not being redeployed,
@@ -134,6 +140,9 @@ def deploy(target_name: str | None = None, root: Path | None = None) -> DeployRe
     caddyfile_path.write_text(caddyfile_content)
     result.messages.append(f"Caddyfile written: {caddyfile_path}")
 
+    # Generate the cloudflared tunnel ingress from the registry's public services.
+    _write_tunnel_config(registry, result.messages)
+
     # acme mode needs a domain + a DNS-provider token; warn (don't fail) if the
     # prerequisites the operator must set up by hand are missing.
     if (config.gateway.tls or "").lower() == "acme":
@@ -181,6 +190,46 @@ def _acme_preflight(config: CastleConfig, messages: list[str]) -> None:
         messages.append(
             f"Warning: secret '{token_env}' not found in {SECRETS_DIR} — place the "
             f"DNS-provider API token there (Cloudflare token scope: Zone:DNS:Edit)."
+        )
+
+
+_TUNNEL_NAME = "tunnel"  # the cloudflared service is castle-tunnel
+
+
+def _write_tunnel_config(registry: NodeRegistry, messages: list[str]) -> None:
+    """Write the cloudflared ingress config from the registry's public services.
+
+    No public services (or no tunnel configured) → remove any stale config and
+    leave the tunnel down. Otherwise write it, list the hostnames that still need a
+    DNS route, and restart the tunnel service if it's running so it takes effect.
+    """
+    config_path = SPECS_DIR / "cloudflared.yml"
+    content = generate_tunnel_config(registry)
+    if content is None:
+        if config_path.exists():
+            config_path.unlink()
+            messages.append("No public services — removed cloudflared config.")
+        return
+
+    config_path.write_text(content)
+    hosts = public_hostnames(registry)
+    messages.append(f"Tunnel config written: {config_path} ({len(hosts)} public)")
+    # DNS is not automatic: each public host needs a CNAME → the tunnel. Surface the
+    # exact commands rather than silently assuming they're routed.
+    tid = registry.node.tunnel_id
+    for h in hosts:
+        messages.append(f"  public: {h}  (route once: cloudflared tunnel route dns {tid} {h})")
+
+    tunnel_unit = unit_name(_TUNNEL_NAME)
+    active = subprocess.run(
+        ["systemctl", "--user", "is-active", tunnel_unit], capture_output=True, text=True
+    )
+    if active.stdout.strip() == "active":
+        subprocess.run(["systemctl", "--user", "restart", tunnel_unit], check=False)
+        messages.append("Tunnel reloaded.")
+    else:
+        messages.append(
+            "Tunnel not running — enable it with 'castle service enable tunnel'."
         )
 
 
@@ -287,14 +336,19 @@ def _build_deployed_service(
     # /data/castle/protonmail). Falls back to the service name.
     config_key = svc.program or name
 
-    managed = run.runner != "remote"
+    # `remote` and `static` are caddy-managed (or unmanaged) — no local process, no
+    # systemd unit. The gateway is their runtime.
+    managed = run.runner not in ("remote", "static")
     if svc.manage and svc.manage.systemd and not svc.manage.systemd.enable:
         managed = False
 
     # Routing comes from the shared deriver, so the registry written here and the
     # Caddyfile computed from castle.yaml stay in lockstep. `expose` is the
-    # checkbox; the subdomain is the service name.
+    # checkbox; the subdomain is the service name. A `static` service is inherently
+    # served (that's its whole purpose), so it's always exposed.
     expose, port, base_url = service_proxy_targets(name, svc)
+    if run.runner == "static":
+        expose = True
     health_path = None
     if svc.expose and svc.expose.http:
         health_path = svc.expose.http.health_path
@@ -329,6 +383,11 @@ def _build_deployed_service(
     )
     stop_cmd = _build_stop_cmd(name, run, source_dir)
 
+    # A static service serves <program-source>/<run.root> via the gateway.
+    static_root = None
+    if run.runner == "static" and source_dir is not None:
+        static_root = str(source_dir / run.root)  # type: ignore[union-attr]
+
     # Resolve stack from referenced program
     stack = None
     if svc.program and svc.program in config.programs:
@@ -346,6 +405,8 @@ def _build_deployed_service(
         port=port,
         health_path=health_path,
         subdomain=(name if expose else None),
+        public=bool(getattr(svc, "public", False) and expose),
+        static_root=static_root,
         base_url=base_url,
         managed=managed,
     )
@@ -548,6 +609,9 @@ def _build_run_cmd(
                 cmd.extend(run.args)  # type: ignore[union-attr]
             return cmd
         case "remote":
+            return []
+        case "static":
+            # No process — the gateway file_servers this service's root.
             return []
         case _:
             raise ValueError(f"Unsupported runner: {run.runner}")  # type: ignore[union-attr]
