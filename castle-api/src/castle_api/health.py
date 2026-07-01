@@ -46,7 +46,9 @@ async def _check_http(client: httpx.AsyncClient, name: str, url: str) -> HealthS
     try:
         resp = await client.get(url)
         latency = int((time.monotonic() - start) * 1000)
-        if resp.status_code < 300:
+        # 2xx/3xx = the server answered (a 3xx redirect still means it's alive —
+        # e.g. the gateway's :<port> now redirects to the dashboard subdomain).
+        if resp.status_code < 400:
             return HealthStatus(id=name, status="up", latency_ms=latency)
         return HealthStatus(id=name, status="down", latency_ms=latency)
     except httpx.HTTPError:
