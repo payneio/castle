@@ -211,11 +211,35 @@ def _reload_gateway(messages: list[str]) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _env_context(name: str, config_key: str, port: int | None) -> dict[str, str]:
-    """Placeholder values for defaults.env: ${name}/${data_dir}/${port}."""
+def _public_url(
+    config: CastleConfig, name: str, exposed: bool, port: int | None
+) -> str | None:
+    """The service's publicly-reachable base URL — the ``${public_url}`` placeholder.
+
+    When the service is exposed through the gateway under acme TLS, this is its
+    trusted subdomain ``https://<name>.<gateway.domain>`` — the origin an app must
+    allowlist for CORS/WebSocket/secure-context to work behind the gateway. It
+    tracks ``gateway.domain`` automatically, so a domain change needs no app edit.
+    Off mode / port-only falls back to the node-local ``http://localhost:<port>``;
+    ``None`` when there's no port to reach it on (nothing to interpolate).
+    """
+    gw = config.gateway
+    if exposed and str(gw.tls or "").lower() == "acme" and gw.domain:
+        return f"https://{name}.{gw.domain}"
+    if port is not None:
+        return f"http://localhost:{port}"
+    return None
+
+
+def _env_context(
+    name: str, config_key: str, port: int | None, public_url: str | None = None
+) -> dict[str, str]:
+    """Placeholder values for defaults.env: ${name}/${data_dir}/${port}/${public_url}."""
     ctx = {"name": name, "data_dir": str(DATA_DIR / config_key)}
     if port is not None:
         ctx["port"] = str(port)
+    if public_url is not None:
+        ctx["public_url"] = public_url
     return ctx
 
 
@@ -276,12 +300,16 @@ def _build_deployed_service(
         health_path = svc.expose.http.health_path
 
     # Env is exactly what's declared in defaults.env — no hidden convention
-    # injection. ${port}/${data_dir}/${name} let the program's own env var names
-    # map to castle's computed values without hardcoding them. Secret-bearing vars
+    # injection. ${port}/${data_dir}/${name}/${public_url} let the program's own
+    # env var names map to castle's computed values without hardcoding them.
+    # Secret-bearing vars
     # are split out so they never land in the unit file or process argv — they're
     # written to a mode-0600 env file referenced via EnvironmentFile=/--env-file.
     raw_env = dict(svc.defaults.env) if (svc.defaults and svc.defaults.env) else {}
-    env, secret_env = resolve_env_split(raw_env, _env_context(name, config_key, port))
+    public_url = _public_url(config, name, expose, port)
+    env, secret_env = resolve_env_split(
+        raw_env, _env_context(name, config_key, port, public_url)
+    )
     secret_env_file = _write_secret_env_file(name, secret_env)
 
     # `command`-runner services resolve a tool on PATH → ensure it's installed.

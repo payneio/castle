@@ -469,6 +469,7 @@ Values may contain placeholders that castle resolves at deploy:
 | `${port}` | the service's `expose.http.internal.port` (so it can't drift) |
 | `${data_dir}` | `$CASTLE_DATA_DIR/<program-or-name>` (the dedicated data volume) |
 | `${name}` | the deployment name |
+| `${public_url}` | the service's gateway-facing base URL — `https://<name>.<domain>` when exposed under `tls: acme`, else the node-local `http://localhost:<port>`. The origin an app allowlists (CORS/WebSocket/secure-context); tracks `gateway.domain`, so a domain change needs no app edit. |
 | `${secret:NAME}` | the contents of `~/.castle/secrets/NAME` |
 
 Hardcode the values instead if you prefer; the placeholders just save you from
