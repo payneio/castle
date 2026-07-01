@@ -110,7 +110,14 @@ class GatewayConfig:
     port: int = 9000
     # None/"off" → HTTP-only gateway. "internal" → Caddy serves host routes over
     # HTTPS with its local CA (browsers get a secure context; trust the root CA).
+    # "acme" → real Let's Encrypt wildcard cert (*.domain) via a DNS-01 challenge;
+    # publicly trusted, no CA to install.
     tls: str | None = None
+    # acme mode only: the zone for the wildcard cert and host-route subdomains
+    # (e.g. "civil.payne.io" → host routes become <service>.civil.payne.io).
+    domain: str | None = None
+    acme_email: str | None = None
+    acme_dns_provider: str = "cloudflare"
 
 
 @dataclass
@@ -253,6 +260,9 @@ def load_config(root: Path | None = None) -> CastleConfig:
     gateway = GatewayConfig(
         port=gateway_data.get("port", 9000),
         tls=gateway_data.get("tls"),
+        domain=gateway_data.get("domain"),
+        acme_email=gateway_data.get("acme_email"),
+        acme_dns_provider=gateway_data.get("acme_dns_provider", "cloudflare"),
     )
 
     # repo: field points to the git repo for repo-relative sources
@@ -397,6 +407,13 @@ def save_config(config: CastleConfig) -> None:
     gateway_data: dict = {"port": config.gateway.port}
     if config.gateway.tls:
         gateway_data["tls"] = config.gateway.tls
+    if config.gateway.domain:
+        gateway_data["domain"] = config.gateway.domain
+    if config.gateway.acme_email:
+        gateway_data["acme_email"] = config.gateway.acme_email
+    # Only persist the provider when non-default, to keep castle.yaml minimal.
+    if config.gateway.acme_dns_provider and config.gateway.acme_dns_provider != "cloudflare":
+        gateway_data["acme_dns_provider"] = config.gateway.acme_dns_provider
     data: dict = {"gateway": gateway_data}
     if config.repo:
         data["repo"] = str(config.repo)

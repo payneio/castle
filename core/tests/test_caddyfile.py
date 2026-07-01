@@ -38,10 +38,20 @@ def _make_registry(
     deployed: dict[str, Deployment] | None = None,
     gateway_port: int = 9000,
     gateway_tls: str | None = None,
+    gateway_domain: str | None = None,
+    acme_email: str | None = None,
+    acme_dns_provider: str = "cloudflare",
 ) -> NodeRegistry:
     """Create a test registry."""
     return NodeRegistry(
-        node=NodeConfig(hostname="test", gateway_port=gateway_port, gateway_tls=gateway_tls),
+        node=NodeConfig(
+            hostname="test",
+            gateway_port=gateway_port,
+            gateway_tls=gateway_tls,
+            gateway_domain=gateway_domain,
+            acme_email=acme_email,
+            acme_dns_provider=acme_dns_provider,
+        ),
         deployed=deployed or {},
     )
 
@@ -283,6 +293,62 @@ class TestCaddyfileTlsInternal:
         assert "@host_claw host claw.civil.lan" in caddyfile
         assert "tls internal" not in caddyfile
         assert "claw.civil.lan {" not in caddyfile
+
+
+class TestCaddyfileTlsAcme:
+    """gateway.tls=acme → host routes served under one *.domain wildcard site
+    with a Let's Encrypt cert via DNS-01."""
+
+    def _acme_registry(self, domain: str | None = "civil.payne.io") -> NodeRegistry:
+        return _make_registry(
+            gateway_tls="acme",
+            gateway_domain=domain,
+            acme_email="paul@example.com",
+            deployed={
+                "claw": Deployment(
+                    runner="node", run_cmd=["claw"], port=18789, proxy_host="claw.civil.lan"
+                ),
+                "api": Deployment(
+                    runner="python", run_cmd=["api"], port=9020, proxy_path="/api"
+                ),
+            },
+        )
+
+    def test_global_email_and_acme_dns(self) -> None:
+        caddyfile = generate_caddyfile_from_registry(self._acme_registry())
+        assert "email paul@example.com" in caddyfile
+        assert "acme_dns cloudflare {env.CLOUDFLARE_API_TOKEN}" in caddyfile
+
+    def test_wildcard_site_with_derived_host_matcher(self) -> None:
+        caddyfile = generate_caddyfile_from_registry(self._acme_registry())
+        assert "*.civil.payne.io {" in caddyfile
+        # Subdomain derived from the SERVICE NAME (claw), not the declared .lan host.
+        assert "@host_claw host claw.civil.payne.io" in caddyfile
+        assert "reverse_proxy localhost:18789" in caddyfile
+
+    def test_path_routes_stay_on_http_port(self) -> None:
+        caddyfile = generate_caddyfile_from_registry(self._acme_registry())
+        assert ":9000 {" in caddyfile
+        assert "handle_path /api/*" in caddyfile
+
+    def test_no_auto_https_off_and_no_internal_ca(self) -> None:
+        caddyfile = generate_caddyfile_from_registry(self._acme_registry())
+        assert "auto_https off" not in caddyfile
+        assert "tls internal" not in caddyfile
+        # The .lan host must not leak into the :9000 site as a plain matcher.
+        assert "claw.civil.lan" not in caddyfile
+
+    def test_staging_toggle(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("CASTLE_ACME_STAGING", "1")
+        caddyfile = generate_caddyfile_from_registry(self._acme_registry())
+        assert "acme_ca https://acme-staging-v02.api.letsencrypt.org/directory" in caddyfile
+
+    def test_acme_without_domain_falls_back_to_http(self) -> None:
+        # No domain → no *.None site; host route degrades to an off-mode matcher.
+        caddyfile = generate_caddyfile_from_registry(self._acme_registry(domain=None))
+        assert "*." not in caddyfile
+        assert "auto_https off" in caddyfile
+        assert "@host_claw host claw.civil.lan" in caddyfile
 
 
 class TestCaddyfileRemoteRegistries:

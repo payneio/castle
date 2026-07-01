@@ -21,7 +21,12 @@ class NodeConfig:
     hostname: str = ""
     castle_root: str | None = None  # repo path, for dev commands
     gateway_port: int = 9000
-    gateway_tls: str | None = None  # None/"off" → HTTP-only; "internal" → Caddy local-CA HTTPS
+    # None/"off" → HTTP-only; "internal" → Caddy local-CA HTTPS; "acme" → Let's
+    # Encrypt wildcard (*.gateway_domain) via DNS-01.
+    gateway_tls: str | None = None
+    gateway_domain: str | None = None  # acme: zone for wildcard cert + host subdomains
+    acme_email: str | None = None
+    acme_dns_provider: str = "cloudflare"
 
     def __post_init__(self) -> None:
         if not self.hostname:
@@ -85,6 +90,9 @@ def load_registry(path: Path | None = None) -> NodeRegistry:
         castle_root=node_data.get("castle_root"),
         gateway_port=node_data.get("gateway_port", 9000),
         gateway_tls=node_data.get("gateway_tls"),
+        gateway_domain=node_data.get("gateway_domain"),
+        acme_email=node_data.get("acme_email"),
+        acme_dns_provider=node_data.get("acme_dns_provider", "cloudflare"),
     )
 
     deployed: dict[str, Deployment] = {}
@@ -143,6 +151,12 @@ def save_registry(registry: NodeRegistry, path: Path | None = None) -> None:
 
     if registry.node.gateway_tls:
         data["node"]["gateway_tls"] = registry.node.gateway_tls
+    if registry.node.gateway_domain:
+        data["node"]["gateway_domain"] = registry.node.gateway_domain
+    if registry.node.acme_email:
+        data["node"]["acme_email"] = registry.node.acme_email
+    if registry.node.acme_dns_provider and registry.node.acme_dns_provider != "cloudflare":
+        data["node"]["acme_dns_provider"] = registry.node.acme_dns_provider
 
     for name, comp in registry.deployed.items():
         entry: dict = {

@@ -14,12 +14,21 @@ a **target**, of one **kind**:
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
 from castle_core.config import SPECS_DIR, CastleConfig
 from castle_core.manifest import ServiceSpec
 from castle_core.registry import NodeRegistry
+
+# DNS-01 provider → the env var the Caddyfile reads its API token from. The token
+# reaches Caddy via the gateway service's defaults.env (a mode-0600 EnvironmentFile).
+_DNS_TOKEN_ENV = {"cloudflare": "CLOUDFLARE_API_TOKEN"}
+
+# Let's Encrypt staging directory — opt in via CASTLE_ACME_STAGING=1 to avoid the
+# production rate limits while testing, then cut over to prod (unset the env var).
+_ACME_STAGING_CA = "https://acme-staging-v02.api.letsencrypt.org/directory"
 
 
 @dataclass
@@ -156,13 +165,28 @@ def compute_routes(
     return routes
 
 
+def _host_matcher_block(label: str, host: str, target: str) -> list[str]:
+    """A `@host_X host <host> / handle @host_X { reverse_proxy <target> }` block.
+
+    Shared by the off-mode `:<port>` site and the acme wildcard site so the two
+    can't drift. `label` names the matcher (service name, or the address)."""
+    matcher = f"@host_{label.replace('-', '_').replace('.', '_')}"
+    return [
+        f"    {matcher} host {host}",
+        f"    handle {matcher} {{",
+        f"        reverse_proxy {target}",
+        "    }",
+        "",
+    ]
+
+
 def generate_caddyfile_from_registry(
     registry: NodeRegistry,
     remote_registries: dict[str, NodeRegistry] | None = None,
 ) -> str:
     """Render the route list to a Caddyfile.
 
-    Two modes, set by `gateway.tls`:
+    Three modes, set by `gateway.tls`:
 
     - **off (default)** — HTTP-only. Everything (host matchers + path prefixes +
       static) lives in one `:<port>` site with `auto_https off`, so a named host
@@ -172,15 +196,44 @@ def generate_caddyfile_from_registry(
       redirects :80). This makes those hosts a browser "secure context". Path
       prefixes, static frontends, and the dashboard stay on the HTTP `:<port>`
       site — give a service a `proxy.caddy.host` to put it on HTTPS.
+    - **acme** — host routes are served under a single `*.<domain>` site with a
+      real Let's Encrypt **wildcard** cert obtained via a DNS-01 challenge (one
+      cert for all of them). Publicly trusted → no CA install on clients. Each
+      host route maps to `<service-name>.<domain>`. Requires `gateway.domain`;
+      the DNS provider token reaches Caddy via `{env.<TOKEN>}`.
     """
     routes = compute_routes(registry, None, remote_registries)
-    gw_port = registry.node.gateway_port
-    tls_internal = (registry.node.gateway_tls or "").lower() == "internal"
+    node = registry.node
+    gw_port = node.gateway_port
+    mode = (node.gateway_tls or "").lower()
+    tls_internal = mode == "internal"
+    domain = node.gateway_domain
+    tls_acme = mode == "acme" and bool(domain)  # acme without a domain → off-mode
 
     host_routes = [r for r in routes if r.is_host]
     lines: list[str] = []
 
-    if tls_internal:
+    if tls_acme:
+        # Global ACME options: LE account email + DNS-01 provider token (from env).
+        provider = node.acme_dns_provider or "cloudflare"
+        token_env = _DNS_TOKEN_ENV.get(provider, "CLOUDFLARE_API_TOKEN")
+        lines.append("{")
+        if node.acme_email:
+            lines.append(f"    email {node.acme_email}")
+        lines.append(f"    acme_dns {provider} {{env.{token_env}}}")
+        if os.environ.get("CASTLE_ACME_STAGING") == "1":
+            lines.append(f"    acme_ca {_ACME_STAGING_CA}")
+        lines += ["}", ""]
+        # One wildcard site → a single DNS-01 cert covers every host route, so a
+        # new host-routed service needs no new cert or challenge.
+        if host_routes:
+            lines.append(f"*.{domain} {{")
+            for r in host_routes:
+                sub = r.name or r.address.split(".")[0]
+                lines += _host_matcher_block(r.name or r.address, f"{sub}.{domain}", r.target)
+            lines.append("}")
+            lines.append("")
+    elif tls_internal:
         # Per-host HTTPS sites via Caddy's internal CA. `tls internal` overrides
         # ACME for that host, so no public cert is attempted; clients must trust
         # the Caddy root CA (`caddy trust`, then distribute root.crt).
@@ -195,6 +248,9 @@ def generate_caddyfile_from_registry(
     else:
         # HTTP-only: keep auto-HTTPS off so the bare-port site stays plain HTTP
         # and named hosts don't trigger cert provisioning.
+        if mode == "acme" and not domain:
+            lines.append("# gateway.tls=acme but gateway.domain is unset — host routes")
+            lines.append("# fall back to plain-HTTP matchers on the gateway port.")
         lines += ["{", "    auto_https off", "}", ""]
 
     lines.append(f":{gw_port} {{")
@@ -224,16 +280,9 @@ def generate_caddyfile_from_registry(
                 "",
             ]
         elif r.is_host:  # host-based proxy
-            if tls_internal:
-                continue  # emitted as its own HTTPS site block above
-            matcher = f"@host_{(r.name or r.address).replace('-', '_').replace('.', '_')}"
-            lines += [
-                f"    {matcher} host {r.address}",
-                f"    handle {matcher} {{",
-                f"        reverse_proxy {r.target}",
-                "    }",
-                "",
-            ]
+            if tls_internal or tls_acme:
+                continue  # emitted as its own HTTPS / wildcard site above
+            lines += _host_matcher_block(r.name or r.address, r.address, r.target)
         else:  # path-prefix proxy (local or remote)
             if r.kind == "remote":
                 lines.append(f"    # {r.name} on {r.node}")

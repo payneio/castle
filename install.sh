@@ -162,6 +162,51 @@ ensure_caddy() {
     log_ok
 }
 
+# Pinned Caddy version for the DNS-plugin build (reproducible across nodes).
+CADDY_DNS_VERSION="${CADDY_DNS_VERSION:-v2.10.0}"
+
+# Build a Caddy with a DNS-provider plugin, required for gateway.tls=acme
+# (Let's Encrypt wildcard via DNS-01). Stock apt Caddy has no DNS modules. The
+# result goes to /usr/local/bin/caddy, which precedes /usr/bin on PATH, so the
+# gateway (a `command` runner resolving `caddy` via PATH) picks it up on the next
+# `castle deploy` with no spec change. Idempotent and opt-in (--with-dns-plugin).
+ensure_caddy_dns_plugin() {
+    local provider="${1:-cloudflare}"
+    local module
+    case "$provider" in
+        cloudflare) module="github.com/caddy-dns/cloudflare" ;;
+        *) log_fail "Unknown DNS provider '$provider' — add its caddy-dns module to install.sh" ;;
+    esac
+
+    log_step "Ensuring Caddy with $provider DNS plugin (for gateway.tls=acme)"
+    if [ -x /usr/local/bin/caddy ] \
+       && /usr/local/bin/caddy list-modules 2>/dev/null | grep -q "dns.providers.$provider"; then
+        log_skip "already present at /usr/local/bin/caddy"
+        return
+    fi
+
+    cmd_exists go || log_fail "Go toolchain required to build the DNS-plugin Caddy"
+
+    local gobin; gobin="$(go env GOPATH)/bin"
+    if [ ! -x "$gobin/xcaddy" ]; then
+        log_info "Installing xcaddy..."
+        go install github.com/caddyserver/xcaddy/cmd/xcaddy@latest >/dev/null 2>&1 \
+            || log_fail "xcaddy install failed"
+    fi
+
+    log_info "Building Caddy $CADDY_DNS_VERSION with $module (~1 min)..."
+    local tmp; tmp="$(mktemp -d)"
+    ( cd "$tmp" && "$gobin/xcaddy" build "$CADDY_DNS_VERSION" --with "$module" ) \
+        || { rm -rf "$tmp"; log_fail "xcaddy build failed"; }
+    sudo install -m 0755 "$tmp/caddy" /usr/local/bin/caddy || { rm -rf "$tmp"; log_fail "install failed"; }
+    rm -rf "$tmp"
+
+    /usr/local/bin/caddy list-modules 2>/dev/null | grep -q "dns.providers.$provider" \
+        || log_fail "built caddy is missing dns.providers.$provider"
+    log_info "Built /usr/local/bin/caddy — run 'castle deploy && castle gateway restart' to use it."
+    log_ok
+}
+
 # ---------------------------------------------------------------------------
 # Directory structure
 # ---------------------------------------------------------------------------
@@ -394,9 +439,12 @@ main() {
 
     # Parse args
     AUTO_YES=0
+    WITH_DNS_PLUGIN=""   # e.g. "cloudflare" → also build a DNS-plugin Caddy for acme TLS
     for arg in "$@"; do
         case "$arg" in
             --yes|-y) AUTO_YES=1 ;;
+            --with-dns-plugin) WITH_DNS_PLUGIN="cloudflare" ;;
+            --with-dns-plugin=*) WITH_DNS_PLUGIN="${arg#*=}" ;;
             *) printf "Unknown argument: %s\n" "$arg"; exit 1 ;;
         esac
     done
@@ -405,6 +453,7 @@ main() {
     check_systemd
     ensure_docker
     ensure_caddy
+    [ -n "$WITH_DNS_PLUGIN" ] && ensure_caddy_dns_plugin "$WITH_DNS_PLUGIN"
     create_directories
     enable_lingering
     seed_caddyfile

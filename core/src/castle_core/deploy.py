@@ -16,6 +16,7 @@ from pathlib import Path
 
 from castle_core.config import (
     DATA_DIR,
+    SECRETS_DIR,
     SPECS_DIR,
     CastleConfig,
     ensure_dirs,
@@ -23,6 +24,7 @@ from castle_core.config import (
     resolve_env_split,
 )
 from castle_core.generators.caddyfile import (
+    _DNS_TOKEN_ENV,
     generate_caddyfile_from_registry,
     service_proxy_targets,
 )
@@ -77,6 +79,9 @@ def deploy(target_name: str | None = None, root: Path | None = None) -> DeployRe
         castle_root=str(config.root),
         gateway_port=config.gateway.port,
         gateway_tls=config.gateway.tls,
+        gateway_domain=config.gateway.domain,
+        acme_email=config.gateway.acme_email,
+        acme_dns_provider=config.gateway.acme_dns_provider,
     )
 
     # Load existing registry to preserve entries not being redeployed,
@@ -129,6 +134,11 @@ def deploy(target_name: str | None = None, root: Path | None = None) -> DeployRe
     caddyfile_path.write_text(caddyfile_content)
     result.messages.append(f"Caddyfile written: {caddyfile_path}")
 
+    # acme mode needs a domain + a DNS-provider token; warn (don't fail) if the
+    # prerequisites the operator must set up by hand are missing.
+    if (config.gateway.tls or "").lower() == "acme":
+        _acme_preflight(config, result.messages)
+
     # Reload systemd daemon
     subprocess.run(["systemctl", "--user", "daemon-reload"], check=False)
 
@@ -143,6 +153,35 @@ def deploy(target_name: str | None = None, root: Path | None = None) -> DeployRe
 
 # Gateway service name in the registry → its systemd unit (castle-castle-gateway).
 _GATEWAY_NAME = "castle-gateway"
+
+
+def _acme_preflight(config: CastleConfig, messages: list[str]) -> None:
+    """Warn (never fail, never write) if acme-mode prerequisites are missing.
+
+    acme mode needs a `gateway.domain`, the DNS-provider token mapped into the
+    castle-gateway service env, and the matching secret on disk — all operator
+    steps (castle never rewrites the user-authored gateway service YAML)."""
+    gw = config.gateway
+    if not gw.domain:
+        messages.append(
+            "Warning: gateway.tls=acme but gateway.domain is unset — host routes "
+            "won't get a wildcard cert (serving plain HTTP on the gateway port)."
+        )
+        return
+    token_env = _DNS_TOKEN_ENV.get(gw.acme_dns_provider or "cloudflare", "CLOUDFLARE_API_TOKEN")
+    svc = config.services.get(_GATEWAY_NAME)
+    env = dict(svc.defaults.env) if (svc and svc.defaults and svc.defaults.env) else {}
+    if token_env not in env:
+        messages.append(
+            f"Warning: acme mode needs {token_env} in the {_GATEWAY_NAME} service env. "
+            f"Add to services/{_GATEWAY_NAME}.yaml → defaults.env: "
+            f"{token_env}: ${{secret:{token_env}}}"
+        )
+    if not (SECRETS_DIR / token_env).exists():
+        messages.append(
+            f"Warning: secret '{token_env}' not found in {SECRETS_DIR} — place the "
+            f"DNS-provider API token there (Cloudflare token scope: Zone:DNS:Edit)."
+        )
 
 
 def _reload_gateway(messages: list[str]) -> None:

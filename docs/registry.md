@@ -340,7 +340,17 @@ Pin `<node-ip>` with a DHCP reservation — the wildcard hardcodes it.
 By default the gateway is **HTTP-only**: it generates `auto_https off` and listens
 on a bare `:<gateway-port>` (default `:9000`), so reach it at `http://<host>:9000/`,
 **not** `https://` (a TLS hello to the plain-HTTP listener fails with "wrong
-version number").
+version number"). `gateway.tls` opts host routes into HTTPS:
+
+| `gateway.tls` | listener | host routes | cert / trust |
+|---------------|----------|-------------|--------------|
+| `off` (default/unset) | `:<port>` HTTP, `auto_https off` | host matcher on `:<port>` | none |
+| `internal` | per-host `:443` HTTPS | own `tls internal` site | Caddy **local CA** — must distribute root.crt to clients |
+| `acme` | one `*.<domain>` `:443` site | matcher inside the wildcard site | **real Let's Encrypt wildcard, no CA install** |
+
+`acme` and `internal` are mutually exclusive (one `gateway.tls` value); path-prefix
+and static routes always stay on the HTTP `:<port>` site. Both HTTPS modes need the
+443/80 bind below.
 
 #### HTTPS for host routes — `gateway.tls: internal`
 
@@ -380,6 +390,74 @@ Two operational requirements:
   `GET /gateway/ca.crt` — the public root cert, sourced from Caddy's admin API,
   with its SHA-256 shown for out-of-band verification. The on-disk copy is at
   `~/.local/share/caddy/pki/authorities/local/root.crt`.
+
+#### Publicly-trusted HTTPS — `gateway.tls: acme`
+
+`internal` mode forces every client device to trust a private CA — which some
+platforms (e.g. Android browsers) make painful. `acme` mode avoids it entirely:
+Caddy obtains a **real Let's Encrypt wildcard cert** (`*.<domain>`) via a **DNS-01**
+challenge, so every browser trusts it with **zero CA install** — while the services
+stay **internal-only**.
+
+```yaml
+gateway:
+  port: 9000
+  tls: acme
+  domain: civil.payne.io          # wildcard cert *.civil.payne.io; host routes → <service>.civil.payne.io
+  acme_email: you@example.com
+  acme_dns_provider: cloudflare   # default
+```
+
+```caddyfile
+{
+    email you@example.com
+    acme_dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+}
+
+*.civil.payne.io {
+    @host_claw host claw.civil.payne.io
+    handle @host_claw {
+        reverse_proxy localhost:18789
+    }
+}
+```
+
+How it stays internal-only: DNS-01 proves domain ownership by having Caddy write a
+transient `_acme-challenge` TXT to the **public** zone via the DNS provider API —
+it needs **no inbound exposure and no public A records** for the services. Only your
+**LAN DNS** resolves `*.<domain>` to the gateway's private IP. (HTTP-01 can't
+validate a wildcard, so DNS-01 — and thus the provider token — is mandatory here.)
+
+Host-route subdomains are **derived from the service name**: a service opts into a
+host route with `proxy.caddy.host` (its literal value is ignored in acme mode), and
+the route is published at `<service-name>.<domain>`. One `*.<domain>` site means a
+single cert covers every host route — adding a service needs no new cert.
+
+Setup (the parts castle can't do for you):
+
+- **DNS-plugin Caddy.** Stock Caddy has no DNS modules; build one with the
+  provider plugin: `./install.sh --with-dns-plugin=cloudflare` (uses `xcaddy`,
+  installs to `/usr/local/bin/caddy`, which the gateway picks up on next deploy).
+- **Provider token.** Store a scoped API token as the `CLOUDFLARE_API_TOKEN`
+  secret (Cloudflare scope: **Zone → DNS → Edit**), and map it into the gateway
+  service env — add to `services/castle-gateway.yaml`:
+  ```yaml
+  defaults:
+    env:
+      CLOUDFLARE_API_TOKEN: ${secret:CLOUDFLARE_API_TOKEN}
+  ```
+  `castle deploy` warns if the domain, this env var, or the secret is missing.
+- **LAN DNS.** Point `*.<domain>` at the gateway's private IP on your LAN
+  resolver. For a `*.payne.io` subdomain that's **wild-central's dnsmasq** (the
+  router already forwards `*.payne.io` there): `address=/civil.payne.io/<gateway-ip>`.
+  The public zone gets no A records, so services aren't externally reachable.
+- **Staging first.** Set `CASTLE_ACME_STAGING=1` to use Let's Encrypt's staging CA
+  (its rate limits are generous) while verifying issuance, then unset it and
+  redeploy to get a browser-trusted production cert. Verify with
+  `openssl s_client -connect <ip>:443 -servername claw.<domain> | openssl x509 -noout -issuer`.
+
+The 443/80 bind requirement (above) applies to acme too. Unlike `internal`, there's
+no CA to distribute — the dashboard's CA-download button is `internal`-only.
 
 Routing only moves bytes — it does **not** supply the proxied app's own auth.
 If a backend requires a token/credential (e.g. in the URL or a header), that
