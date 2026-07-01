@@ -163,7 +163,7 @@ ensure_caddy() {
 }
 
 # Pinned Caddy version for the DNS-plugin build (reproducible across nodes).
-CADDY_DNS_VERSION="${CADDY_DNS_VERSION:-v2.10.0}"
+CADDY_DNS_VERSION="${CADDY_DNS_VERSION:-v2.11.4}"
 
 # Build a Caddy with a DNS-provider plugin, required for gateway.tls=acme
 # (Let's Encrypt wildcard via DNS-01). Stock apt Caddy has no DNS modules. The
