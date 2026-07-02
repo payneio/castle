@@ -576,16 +576,19 @@ def _scaffold_supabase(project_dir: Path, name: str, description: str) -> None:
     /<name>/ by the gateway), and supabase.app.yaml (auth policy + wiring).
 
     The app owns its code and stays repo-durable; only its rows/blobs live on the
-    shared substrate. Tables are namespaced by the app id (they share the `public`
-    schema so no substrate reconfiguration is needed) and protected by RLS.
+    shared substrate. Each app is isolated in its **own Postgres schema** (the app
+    id) rather than sharing `public` — so `castle program build` creates+grants the
+    schema and tracks migrations per-app, and `castle delete --purge-data` drops
+    the whole schema cleanly. Rows are further protected by RLS.
     """
-    ident = name.replace("-", "_")  # a safe SQL/JS identifier
-    table = f"{ident}_entries"
+    ident = name.replace("-", "_")  # a safe SQL/JS identifier — and the app schema
+    table = "entries"  # unqualified; lives in the app's own schema (search_path)
 
     def sub(text: str) -> str:
         return (
             text.replace("__NAME__", name)
             .replace("__IDENT__", ident)
+            .replace("__SCHEMA__", ident)
             .replace("__TABLE__", table)
             .replace("__DESC__", description)
         )
@@ -606,8 +609,10 @@ substrate: supabase          # the shared castle service this app deploys agains
 auth: public
 # shared: [alice, bob]
 
-# Tables are namespaced by this prefix in the shared `public` schema.
-table_prefix: __IDENT___
+# This app is isolated in its own Postgres schema (created + exposed through
+# PostgREST by `castle program build`). The frontend selects it via
+# supabase-js `db: { schema }`.
+schema: __SCHEMA__
 """
         ),
     )
@@ -617,11 +622,14 @@ table_prefix: __IDENT___
         project_dir / "migrations" / "0001_init.sql",
         sub(
             """-- 0001_init: example table + RLS. Applied by `castle program build`
--- via the versioned migration runner (tracked in schema_migrations; only
--- unapplied migrations run). Forward-only — never edit an applied migration;
--- add a new numbered file instead.
+-- via the versioned migration runner (tracked per-app in
+-- <schema>.schema_migrations; only unapplied migrations run). Forward-only —
+-- never edit an applied migration; add a new numbered file instead.
+--
+-- The runner sets search_path to this app's own schema, so unqualified names
+-- land there (NOT in public). Keep tables unqualified for schema portability.
 
-create table if not exists public.__TABLE__ (
+create table if not exists __TABLE__ (
     id          bigint generated always as identity primary key,
     message     text not null check (char_length(message) <= 500),
     author      text,
@@ -632,13 +640,13 @@ create table if not exists public.__TABLE__ (
 -- static app shell or Storage objects. For a `public` app, anon read/write is
 -- intended (still row-gated). For `private`/`shared`, replace the policies below
 -- with owner checks (auth.uid()) AND gate the shell + use signed Storage URLs.
-alter table public.__TABLE__ enable row level security;
+alter table __TABLE__ enable row level security;
 
-drop policy if exists "__IDENT___public_read" on public.__TABLE__;
-create policy "__IDENT___public_read"  on public.__TABLE__ for select using (true);
+drop policy if exists "__IDENT___public_read" on __TABLE__;
+create policy "__IDENT___public_read"  on __TABLE__ for select using (true);
 
-drop policy if exists "__IDENT___public_write" on public.__TABLE__;
-create policy "__IDENT___public_write" on public.__TABLE__ for insert with check (true);
+drop policy if exists "__IDENT___public_write" on __TABLE__;
+create policy "__IDENT___public_write" on __TABLE__ for insert with check (true);
 """
         ),
     )
@@ -672,6 +680,7 @@ serve((_req: Request) => {
 window.APP = {
   SUPABASE_URL: "https://supabase.lan",
   SUPABASE_ANON_KEY: "PASTE_ANON_KEY_HERE",
+  SCHEMA: "__SCHEMA__",   // this app's isolated Postgres schema
   TABLE: "__TABLE__",
 };
 """
@@ -691,8 +700,8 @@ window.APP = {
   <script src="./config.js"></script>
   <script type="module">
     import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-    const { SUPABASE_URL, SUPABASE_ANON_KEY, TABLE } = window.APP;
-    const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const { SUPABASE_URL, SUPABASE_ANON_KEY, SCHEMA, TABLE } = window.APP;
+    const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { db: { schema: SCHEMA } });
 
     const list = document.getElementById("list");
     async function refresh() {

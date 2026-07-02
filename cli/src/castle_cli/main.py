@@ -30,7 +30,11 @@ def _build_program_group(subparsers: argparse._SubParsersAction) -> None:
     sub = prog.add_subparsers(dest="program_command")
 
     p = sub.add_parser("list", help="List programs")
-    p.add_argument("--kind", choices=["service", "job", "tool", "static", "reference"], help="Filter by derived kind")
+    p.add_argument(
+        "--kind",
+        choices=["service", "job", "tool", "static", "reference"],
+        help="Filter by derived kind",
+    )
     p.add_argument("--stack", help="Filter by stack")
     p.add_argument("--json", action="store_true", help="Output as JSON")
 
@@ -55,6 +59,11 @@ def _build_program_group(subparsers: argparse._SubParsersAction) -> None:
     p = sub.add_parser("delete", help="Remove a program from castle.yaml")
     _add_name(p, "Program name")
     p.add_argument("--source", action="store_true", help="Also delete the source directory")
+    p.add_argument(
+        "--purge-data",
+        action="store_true",
+        help="Also destroy the program's persistent data (e.g. a supabase app's DB schema)",
+    )
     p.add_argument("-y", "--yes", action="store_true", help="Skip confirmation")
 
     p = sub.add_parser("run", help="Run a program's declared run command")
@@ -87,7 +96,9 @@ def _build_tool_group(subparsers: argparse._SubParsersAction) -> None:
     p.add_argument("--json", action="store_true", help="Machine-readable output")
 
     sub.add_parser("install", help="Install a tool on PATH").add_argument("name", help="Tool name")
-    sub.add_parser("uninstall", help="Remove a tool from PATH").add_argument("name", help="Tool name")
+    sub.add_parser("uninstall", help="Remove a tool from PATH").add_argument(
+        "name", help="Tool name"
+    )
 
 
 def _add_service_create(sub: argparse._SubParsersAction, kind: str) -> None:
@@ -134,6 +145,7 @@ def _build_deployment_group(subparsers: argparse._SubParsersAction, kind: str) -
     _add_name(p, f"{kind.capitalize()} name")
     p.add_argument("-y", "--yes", action="store_true", help="Skip confirmation")
     p.add_argument("--source", action="store_true", help=argparse.SUPPRESS)
+    p.add_argument("--purge-data", action="store_true", help=argparse.SUPPRESS)
 
     cap = f"{kind.capitalize()} name"
     _add_name(sub.add_parser("deploy", help=f"Deploy this {kind} (unit + gateway)"), cap)
@@ -186,7 +198,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     # Cross-resource overview
     p = subparsers.add_parser("list", help="List programs, services, jobs, and tools")
-    p.add_argument("--kind", choices=["service", "job", "tool", "static", "reference"], help="Filter by derived kind")
+    p.add_argument(
+        "--kind",
+        choices=["service", "job", "tool", "static", "reference"],
+        help="Filter by derived kind",
+    )
     p.add_argument("--stack", help="Filter by stack")
     p.add_argument("--json", action="store_true", help="Output as JSON")
 

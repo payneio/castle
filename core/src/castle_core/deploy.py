@@ -174,7 +174,9 @@ def _acme_preflight(config: CastleConfig, messages: list[str]) -> None:
             "won't get a wildcard cert (serving plain HTTP on the gateway port)."
         )
         return
-    token_env = _DNS_TOKEN_ENV.get(gw.acme_dns_provider or "cloudflare", "CLOUDFLARE_API_TOKEN")
+    token_env = _DNS_TOKEN_ENV.get(
+        gw.acme_dns_provider or "cloudflare", "CLOUDFLARE_API_TOKEN"
+    )
     svc = config.services.get(_GATEWAY_NAME)
     env = dict(svc.defaults.env) if (svc and svc.defaults and svc.defaults.env) else {}
     if token_env not in env:
@@ -216,11 +218,15 @@ def _write_tunnel_config(registry: NodeRegistry, messages: list[str]) -> None:
     # exact commands rather than silently assuming they're routed.
     tid = registry.node.tunnel_id
     for h in hosts:
-        messages.append(f"  public: {h}  (route once: cloudflared tunnel route dns {tid} {h})")
+        messages.append(
+            f"  public: {h}  (route once: cloudflared tunnel route dns {tid} {h})"
+        )
 
     tunnel_unit = unit_name(_TUNNEL_NAME)
     active = subprocess.run(
-        ["systemctl", "--user", "is-active", tunnel_unit], capture_output=True, text=True
+        ["systemctl", "--user", "is-active", tunnel_unit],
+        capture_output=True,
+        text=True,
     )
     if active.stdout.strip() == "active":
         subprocess.run(["systemctl", "--user", "restart", tunnel_unit], check=False)
@@ -278,15 +284,41 @@ def _public_url(
     return None
 
 
+def _supabase_app_schemas(config: CastleConfig) -> str:
+    """The ``${supabase_app_schemas}`` placeholder: each registered supabase app's
+    own schema, comma-prefixed and joined (or '' when there are none).
+
+    The substrate exposes app schemas through PostgREST by listing them in
+    PGRST_DB_SCHEMAS; its deployment maps that env to
+    ``public,storage,graphql_public${supabase_app_schemas}``. Comma-prefixing each
+    entry keeps the base list valid when zero apps are registered (no trailing
+    comma). Adding/removing a supabase app thus changes this list — the substrate
+    needs a restart (recreate) after `castle deploy` to pick it up.
+    """
+    from castle_core.stacks import app_schema
+
+    schemas = sorted(
+        app_schema(pn) for pn, ps in config.programs.items() if ps.stack == "supabase"
+    )
+    return "".join(f",{s}" for s in schemas)
+
+
 def _env_context(
-    name: str, config_key: str, port: int | None, public_url: str | None = None
+    name: str,
+    config_key: str,
+    port: int | None,
+    public_url: str | None = None,
+    supabase_app_schemas: str | None = None,
 ) -> dict[str, str]:
-    """Placeholder values for defaults.env: ${name}/${data_dir}/${port}/${public_url}."""
+    """Placeholder values for defaults.env: ${name}/${data_dir}/${port}/${public_url}/
+    ${supabase_app_schemas}."""
     ctx = {"name": name, "data_dir": str(DATA_DIR / config_key)}
     if port is not None:
         ctx["port"] = str(port)
     if public_url is not None:
         ctx["public_url"] = public_url
+    if supabase_app_schemas is not None:
+        ctx["supabase_app_schemas"] = supabase_app_schemas
     return ctx
 
 
@@ -313,9 +345,7 @@ def _write_secret_env_file(name: str, secret_env: dict[str, str]) -> Path | None
     return path
 
 
-def _resolve_description(
-    config: CastleConfig, spec: DeploymentBase
-) -> str | None:
+def _resolve_description(config: CastleConfig, spec: DeploymentBase) -> str | None:
     """Get description, falling through to program if referenced."""
     if spec.description:
         return spec.description
@@ -397,7 +427,8 @@ def _build_deployed(
     raw_env = dict(dep.defaults.env) if (dep.defaults and dep.defaults.env) else {}
     public_url = _public_url(config, name, expose, port)
     env, secret_env = resolve_env_split(
-        raw_env, _env_context(name, config_key, port, public_url)
+        raw_env,
+        _env_context(name, config_key, port, public_url, _supabase_app_schemas(config)),
     )
     secret_env_file = _write_secret_env_file(name, secret_env)
 

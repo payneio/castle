@@ -87,6 +87,12 @@ def _source_dir(comp: ProgramSpec, root: Path) -> Path:
 class StackHandler:
     """Base class — subclasses implement each lifecycle action."""
 
+    # Whether this stack owns *persistent external state* (a database schema, a
+    # bucket, …) that outlives a code delete. Drives whether `castle delete`
+    # surfaces a data remnant / honors `--purge-data`. Overridden to True by the
+    # stacks whose `teardown` actually destroys something.
+    owns_data: bool = False
+
     async def build(self, name: str, comp: ProgramSpec, root: Path) -> ActionResult:
         raise NotImplementedError
 
@@ -126,6 +132,21 @@ class StackHandler:
 
     async def uninstall(self, name: str, comp: ProgramSpec, root: Path) -> ActionResult:
         raise NotImplementedError
+
+    async def teardown(self, name: str, comp: ProgramSpec, root: Path) -> ActionResult:
+        """Destroy the persistent external state this program's stack created
+        (database schema, blobs, …) — the irreversible counterpart to a code
+        delete. Distinct from `uninstall` (which only takes a program offline).
+
+        Default: nothing to tear down. Only stacks that set ``owns_data`` and own
+        durable state override this; `castle delete --purge-data` invokes it.
+        """
+        return ActionResult(
+            program=name,
+            action="teardown",
+            status="ok",
+            output=f"{name}: no persistent state to tear down.",
+        )
 
 
 class PythonHandler(StackHandler):
@@ -362,8 +383,11 @@ def _substrate_db_url() -> str | None:
     """Best-effort Postgres URL for the shared substrate.
 
     Prefers an explicit ``SUPABASE_DB_URL``; otherwise builds one from the
-    generated ``SUPABASE_POSTGRES_PASSWORD`` secret against localhost:5432. Returns
-    None if neither is available (build then fails loud with guidance).
+    generated ``SUPABASE_POSTGRES_PASSWORD`` secret against the substrate's direct
+    Postgres port. The self-hosted substrate publishes Postgres on host **5433**
+    (5432 is taken by another Postgres on this node — see the substrate compose),
+    overridable via ``SUPABASE_DB_HOST_PORT``. Returns None if neither an explicit
+    URL nor the secret is available (build then fails loud with guidance).
     """
     explicit = os.environ.get("SUPABASE_DB_URL")
     if explicit:
@@ -373,25 +397,65 @@ def _substrate_db_url() -> str | None:
     pw_file = SECRETS_DIR / "SUPABASE_POSTGRES_PASSWORD"
     if pw_file.exists():
         pw = pw_file.read_text().strip()
-        return f"postgresql://postgres:{pw}@localhost:5432/postgres"
+        port = os.environ.get("SUPABASE_DB_HOST_PORT", "5433")
+        return f"postgresql://postgres:{pw}@localhost:{port}/postgres"
     return None
+
+
+def app_schema(name: str) -> str:
+    """The dedicated Postgres schema a supabase app owns.
+
+    Each app is isolated in its own schema (named after the program, ``-``→``_``
+    for a valid unquoted identifier) rather than sharing ``public``. That gives a
+    clean teardown (``drop schema … cascade``) and a per-app ``schema_migrations``
+    so migration version tokens never collide across apps.
+    """
+    return name.replace("-", "_")
+
+
+# The privilege grant that makes an app schema reachable through PostgREST — the
+# canonical Supabase "expose a custom schema" snippet. Idempotent; run before
+# migrations so `alter default privileges` also covers the tables they create.
+# Exposure ALSO requires the schema in the substrate's PGRST_DB_SCHEMAS — castle
+# derives that from the registered supabase apps (`${supabase_app_schemas}`), so a
+# newly-added app needs a `castle deploy` + substrate restart to become routable.
+def _schema_setup_sql(schema: str) -> str:
+    roles = "anon, authenticated, service_role"
+    return (
+        f'create schema if not exists "{schema}";\n'
+        f'grant usage on schema "{schema}" to {roles};\n'
+        f'grant all on all tables in schema "{schema}" to {roles};\n'
+        f'grant all on all routines in schema "{schema}" to {roles};\n'
+        f'grant all on all sequences in schema "{schema}" to {roles};\n'
+        f'alter default privileges in schema "{schema}" '
+        f"grant all on tables to {roles};\n"
+        f'alter default privileges in schema "{schema}" '
+        f"grant all on routines to {roles};\n"
+        f'alter default privileges in schema "{schema}" '
+        f"grant all on sequences to {roles};\n"
+    )
 
 
 class SupabaseHandler(StackHandler):
     """Stack handler for supabase apps (migrations + edge functions + static UI).
 
-    `build` runs the versioned migration runner against the shared substrate; the
-    static UI is served in place by the gateway (no process), so install/uninstall
-    are no-ops like a frontend.
+    Each app is isolated in its **own Postgres schema** (``app_schema(name)``): the
+    migration runner creates + grants that schema, tracks applied versions in
+    ``<schema>.schema_migrations``, and runs each migration with ``search_path``
+    set to it — so migration SQL is schema-agnostic and version tokens never
+    collide across apps. The static UI is served in place by the gateway (no
+    process), so install/uninstall are no-ops like a frontend. `teardown` drops the
+    schema (and thus every object the app created) in one shot.
     """
 
+    owns_data = True
+
     async def build(self, name: str, comp: ProgramSpec, root: Path) -> ActionResult:
-        """Apply unapplied migrations to the shared substrate (idempotent)."""
+        """Apply unapplied migrations into the app's own schema (idempotent)."""
         src = _source_dir(comp, root)
+        schema = app_schema(name)
         mig_dir = src / "migrations"
         files = sorted(mig_dir.glob("*.sql")) if mig_dir.is_dir() else []
-        if not files:
-            return ActionResult(name, "build", "ok", "No migrations to apply.")
 
         psql = shutil.which("psql")
         url = _substrate_db_url()
@@ -411,7 +475,8 @@ class SupabaseHandler(StackHandler):
                 "(scripts/gen-keys.py) so SUPABASE_POSTGRES_PASSWORD exists.",
             )
 
-        # Ensure the tracking table, then read applied versions.
+        # Ensure the app's schema exists, is PostgREST-exposable (grants), and has
+        # its own tracking table — then read applied versions from THAT schema.
         rc, out = await _run(
             [
                 psql,
@@ -419,15 +484,29 @@ class SupabaseHandler(StackHandler):
                 "-v",
                 "ON_ERROR_STOP=1",
                 "-c",
-                "create table if not exists public.schema_migrations "
+                _schema_setup_sql(schema),
+                "-c",
+                f'create table if not exists "{schema}".schema_migrations '
                 "(version text primary key, applied_at timestamptz default now())",
             ],
             src,
         )
         if rc != 0:
             return ActionResult(name, "build", "error", f"connect/init failed:\n{out}")
+
+        if not files:
+            return ActionResult(
+                name, "build", "ok", f"Schema '{schema}' ready. No migrations to apply."
+            )
+
         rc, out = await _run(
-            [psql, url, "-tA", "-c", "select version from public.schema_migrations"],
+            [
+                psql,
+                url,
+                "-tA",
+                "-c",
+                f'select version from "{schema}".schema_migrations',
+            ],
             src,
         )
         if rc != 0:
@@ -438,12 +517,19 @@ class SupabaseHandler(StackHandler):
 
         pending = plan_migrations(files, applied)
         if not pending:
-            return ActionResult(name, "build", "ok", "All migrations already applied.")
+            return ActionResult(
+                name,
+                "build",
+                "ok",
+                f"All migrations already applied (schema {schema}).",
+            )
 
         log = []
         for path in pending:
             version = _migration_version(path)
-            # File + version-insert in ONE transaction: a failed migration records
+            # search_path → the app schema, so migration SQL can write unqualified
+            # names and they land in the app's schema (not public). File +
+            # version-insert in ONE transaction: a failed migration records
             # nothing, so the next build safely retries it.
             rc, out = await _run(
                 [
@@ -452,10 +538,13 @@ class SupabaseHandler(StackHandler):
                     "-v",
                     "ON_ERROR_STOP=1",
                     "--single-transaction",
+                    "-c",
+                    f'set search_path to "{schema}", public',
                     "-f",
                     str(path),
                     "-c",
-                    f"insert into public.schema_migrations(version) values('{version}')",
+                    f'insert into "{schema}".schema_migrations(version) '
+                    f"values('{version}')",
                 ],
                 src,
             )
@@ -464,6 +553,45 @@ class SupabaseHandler(StackHandler):
                 return ActionResult(name, "build", "error", "\n".join(log))
             log.append(f"✓ {path.name}")
         return ActionResult(name, "build", "ok", "\n".join(log))
+
+    async def teardown(self, name: str, comp: ProgramSpec, root: Path) -> ActionResult:
+        """Drop the app's schema and everything in it (tables, its own
+        schema_migrations, functions) in one statement — total and knowable
+        because the app owns exactly one schema. The substrate's PGRST_DB_SCHEMAS
+        drops the (now-absent) schema on the next `castle deploy` + restart.
+        """
+        schema = app_schema(name)
+        psql = shutil.which("psql")
+        url = _substrate_db_url()
+        if not psql or not url:
+            return ActionResult(
+                name,
+                "teardown",
+                "error",
+                f"Cannot drop schema '{schema}': psql or substrate DB URL "
+                'unavailable. Drop it manually: drop schema "%s" cascade;' % schema,
+            )
+        cwd = src if (src := (root / comp.source if comp.source else None)) else root
+        rc, out = await _run(
+            [
+                psql,
+                url,
+                "-v",
+                "ON_ERROR_STOP=1",
+                "-c",
+                f'drop schema if exists "{schema}" cascade',
+            ],
+            cwd,
+        )
+        if rc != 0:
+            return ActionResult(name, "teardown", "error", f"drop failed:\n{out}")
+        return ActionResult(
+            name,
+            "teardown",
+            "ok",
+            f"Dropped schema '{schema}' (all tables + rows). Run `castle deploy` "
+            "and restart the substrate to prune it from PGRST_DB_SCHEMAS.",
+        )
 
     async def _deno(
         self, name: str, action: str, comp: ProgramSpec, root: Path, args: list[str]

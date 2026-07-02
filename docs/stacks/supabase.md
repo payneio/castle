@@ -24,11 +24,16 @@ is **code + migrations that deploy against a shared backend**:
   deploys onto the substrate. Its rows/blobs live on the substrate; everything
   else rebuilds from git.
 
-Apps are isolated on the shared instance by **table prefix + RLS** in the shared
-`public` schema (and Storage buckets), under **one identity pool** — correct for a
-single-operator datalake. Substrate-per-app is deliberately not supported: ~14
-containers per app doesn't scale to "lots of small ideas," and a DB-backed app is
-a pet either way.
+Apps are isolated on the shared instance by their **own Postgres schema + RLS**
+(and Storage buckets), under **one identity pool** — correct for a single-operator
+datalake. Each app owns a schema named after the program (`my-app` → schema
+`my_app`); `castle program build` creates and grants it, tracks migrations in a
+per-app `<schema>.schema_migrations`, and PostgREST exposes it (castle derives the
+substrate's `PGRST_DB_SCHEMAS` from the registered apps). This gives a clean
+teardown — `castle delete --purge-data` runs `drop schema <app> cascade` — and
+means migration version tokens never collide across apps. Substrate-per-app is
+deliberately not supported: ~14 containers per app doesn't scale to "lots of small
+ideas," and a DB-backed app is a pet either way.
 
 ## Stack
 
@@ -66,33 +71,56 @@ gateway serves `public/` in place at `/my-app/` — no service, no process.
 name: my-app
 substrate: supabase        # the shared castle service this app deploys against
 auth: public               # public | private | shared: [handles]
-table_prefix: my_app_
+schema: my_app             # this app's isolated Postgres schema (frontend: db.schema)
 ```
 
 ## Migrations
 
 `migrations/*.sql` are **numbered, forward-only, and idempotent**. `castle program
-build my-app` runs the versioned migration runner: it ensures a
-`public.schema_migrations` table, reads applied versions, and applies only the
-**unapplied** files (in filename order), each in a single transaction with its
-version-insert — so a failed migration records nothing and the next build retries
+build my-app` runs the versioned migration runner: it creates + grants the app's
+schema, ensures a per-app `<schema>.schema_migrations` table, reads applied
+versions, and applies only the **unapplied** files (in filename order) with
+`search_path` set to the app schema — each in a single transaction with its
+version-insert, so a failed migration records nothing and the next build retries
 it. Never edit an applied migration; add a new numbered file.
+
+Because the runner sets `search_path` to the app's own schema, write **unqualified**
+names — they land in `<schema>`, not `public`:
 
 ```sql
 -- migrations/0001_init.sql
-create table if not exists public.my_app_entries (
+create table if not exists entries (
     id bigint generated always as identity primary key,
     message text not null,
     created_at timestamptz not null default now()
 );
-alter table public.my_app_entries enable row level security;
-create policy "my_app_read"  on public.my_app_entries for select using (true);
-create policy "my_app_write" on public.my_app_entries for insert with check (true);
+alter table entries enable row level security;
+create policy "my_app_read"  on entries for select using (true);
+create policy "my_app_write" on entries for insert with check (true);
 ```
 
 The runner connects via `SUPABASE_DB_URL`, or builds one from the generated
-`SUPABASE_POSTGRES_PASSWORD` secret against `localhost:5432`. `psql` must be on
-PATH; a missing URL or client fails loud with guidance.
+`SUPABASE_POSTGRES_PASSWORD` secret against the substrate's direct Postgres port
+(host **5433**, `SUPABASE_DB_HOST_PORT` to override). `psql` must be on PATH; a
+missing URL or client fails loud with guidance.
+
+The frontend selects the app schema through supabase-js:
+
+```js
+const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { db: { schema: SCHEMA } });
+```
+
+### Teardown
+
+An app's rows live only on the substrate, so an ordinary `castle delete my-app`
+leaves the schema intact (and says so). To destroy the data too:
+
+```bash
+castle delete my-app --purge-data      # drop schema my_app cascade
+```
+
+`castle deploy` then prunes the schema from `PGRST_DB_SCHEMAS`; **restart the
+`supabase` service** for PostgREST to pick up the added/removed schema list.
 
 ## Auth, RLS & the three privacy layers
 
