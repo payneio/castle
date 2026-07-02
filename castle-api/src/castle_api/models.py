@@ -35,6 +35,7 @@ class DeploymentSummary(BaseModel):
     schedule: str | None = None
     installed: bool | None = None
     active: bool | None = None  # uniform lifecycle state (on PATH / running / served)
+    enabled: bool = True  # declared desired state; `apply` converges to it
     node: str | None = None
 
 
@@ -65,6 +66,7 @@ class ServiceSummary(BaseModel):
     systemd: SystemdInfo | None = None
     program: str | None = None  # the program this deployment references, if any
     source: str | None = None
+    enabled: bool = True  # declared desired state; `apply` converges to it
     node: str | None = None
 
 
@@ -87,6 +89,7 @@ class JobSummary(BaseModel):
     systemd: SystemdInfo | None = None
     program: str | None = None  # the program this deployment references, if any
     source: str | None = None
+    enabled: bool = True  # declared desired state; `apply` converges to it
     node: str | None = None
 
 

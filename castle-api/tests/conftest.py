@@ -164,7 +164,6 @@ def registry_path(tmp_path: Path, castle_root: Path) -> Generator[Path, None, No
         "services.get_castle_root": services_mod.get_castle_root,
         "nodes.get_registry": nodes_mod.get_registry,
         "stream.get_registry": stream_mod.get_registry,
-        "config_editor.get_registry": config_editor_mod.get_registry,
         "config_editor.get_castle_root": config_editor_mod.get_castle_root,
     }
 
@@ -192,7 +191,6 @@ def registry_path(tmp_path: Path, castle_root: Path) -> Generator[Path, None, No
     services_mod.get_castle_root = originals["services.get_castle_root"]
     nodes_mod.get_registry = originals["nodes.get_registry"]
     stream_mod.get_registry = originals["stream.get_registry"]
-    config_editor_mod.get_registry = originals["config_editor.get_registry"]
     config_editor_mod.get_castle_root = originals["config_editor.get_castle_root"]
 
 
