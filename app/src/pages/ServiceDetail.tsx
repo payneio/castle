@@ -51,7 +51,7 @@ export function ServiceDetailPage() {
         {!isStatic && (
           <div className="flex items-center gap-2">
             {health && <HealthBadge status={health.status} latency={health.latency_ms} />}
-            <ServiceControls name={deployment.id} health={health} />
+            <ServiceControls name={deployment.id} enabled={deployment.enabled} />
           </div>
         )}
       </DetailHeader>

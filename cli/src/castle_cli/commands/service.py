@@ -7,13 +7,10 @@ import subprocess
 
 from castle_core.generators.systemd import (
     SYSTEMD_USER_DIR,
-    generate_timer,
-    generate_unit_from_deployed,
     timer_name,
     unit_name,
 )
 from castle_core.manifest import kind_for
-from castle_core.registry import REGISTRY_PATH, load_registry
 
 from castle_cli.config import (
     CastleConfig,
@@ -45,44 +42,35 @@ _PAST = {"start": "started", "stop": "stopped", "restart": "restarted"}
 
 
 def run_service_cmd(args: argparse.Namespace) -> int:
-    """`castle service <enable|disable|start|stop|restart> <name>`."""
-    sub = args.service_command
+    """`castle service restart <name>` — the imperative bounce (only verb left).
+
+    Lifecycle (deploy/enable/disable/start/stop) is now convergence: `castle apply`.
+    """
     config = load_config()
-    if sub == "enable":
-        if getattr(args, "dry_run", False):
-            return _service_dry_run(config, args.name)
-        return _service_enable(config, args.name)
-    if sub == "disable":
-        return _service_disable(config, args.name)
-    if sub in ("start", "stop", "restart"):
-        return _unit_action(config, args.name, sub, is_job=False)
-    return 1
+    return _unit_action(config, args.name, "restart", is_job=False)
 
 
 def run_job_cmd(args: argparse.Namespace) -> int:
-    """`castle job <enable|disable|start|stop|restart> <name>` (acts on the timer)."""
-    sub = args.job_command
+    """`castle job restart <name>` — bounce the job's timer."""
     config = load_config()
-    if sub == "enable":
-        return _service_enable(config, args.name)  # enable_service handles timers
-    if sub == "disable":
-        return _service_disable(config, args.name)
-    if sub in ("start", "stop", "restart"):
-        return _unit_action(config, args.name, sub, is_job=True)
-    return 1
+    return _unit_action(config, args.name, "restart", is_job=True)
 
 
-def run_platform(args: argparse.Namespace) -> int:
-    """Top-level `castle start|stop|restart` — the whole platform."""
+def run_restart(args: argparse.Namespace) -> int:
+    """Top-level `castle restart [name]` — bounce one deployment, or all of them.
+
+    An imperative op: it re-actualizes current desired state, it does not change it
+    (that's `castle apply`).
+    """
     config = load_config()
-    action = args.command
-    if action == "start":
-        return _services_start(config)
-    if action == "stop":
-        return _services_stop(config)
-    if action == "restart":
+    name = getattr(args, "name", None)
+    if not name:
         return _services_restart(config)
-    return 1
+    dep = config.deployments.get(name)
+    if dep is None:
+        print(f"Error: no deployment '{name}'.")
+        return 1
+    return _unit_action(config, name, "restart", is_job=(kind_for(dep) == "job"))
 
 
 _GATEWAY_NAME = "castle-gateway"
@@ -256,78 +244,3 @@ def _service_status(config: CastleConfig) -> int:
     print()
     return 0
 
-
-def _service_dry_run(config: CastleConfig, name: str) -> int:
-    """Print the generated systemd unit(s) without installing."""
-    if REGISTRY_PATH.exists():
-        registry = load_registry()
-        if name in registry.deployed:
-            deployed = registry.deployed[name]
-            systemd_spec = None
-            dep = config.deployments.get(name)
-            manage = getattr(dep, "manage", None)
-            if manage and manage.systemd:
-                systemd_spec = manage.systemd
-
-            svc_unit = unit_name(name)
-            svc_content = generate_unit_from_deployed(name, deployed, systemd_spec)
-            print(f"# {svc_unit}")
-            print(svc_content)
-
-            if deployed.schedule:
-                timer_content = generate_timer(
-                    name,
-                    schedule=deployed.schedule,
-                    description=deployed.description,
-                )
-                print(f"# {timer_name(name)}")
-                print(timer_content)
-            return 0
-
-    print(f"Error: '{name}' not found in registry. Run 'castle deploy' first.")
-    return 1
-
-
-def _services_start(config: CastleConfig) -> int:
-    """Start all managed services and gateway."""
-    if not REGISTRY_PATH.exists():
-        print("Error: no registry found. Run 'castle deploy' first.")
-        return 1
-
-    ensure_dirs()
-
-    from castle_core.config import SPECS_DIR
-    from castle_core.generators.caddyfile import generate_caddyfile_from_registry
-
-    registry = load_registry()
-    caddyfile_path = SPECS_DIR / "Caddyfile"
-    caddyfile_path.write_text(generate_caddyfile_from_registry(registry))
-    print(f"Generated {caddyfile_path}")
-
-    # Activate every deployment in its mode: systemd unit / timer, gateway route
-    # (static), or PATH install (tool). activate() dispatches by manager.
-    for name in config.deployments:
-        if name not in registry.deployed:
-            print(f"  {name}: skipped (not in registry, run 'castle deploy')")
-            continue
-        _service_enable(config, name)
-
-    print(f"\nDashboard: http://localhost:{config.gateway.port}")
-    return 0
-
-
-def _services_stop(config: CastleConfig) -> int:
-    """Stop all managed services and jobs."""
-    for name in config.jobs:
-        tmr_unit = timer_name(name)
-        subprocess.run(["systemctl", "--user", "stop", tmr_unit], check=False)
-        svc_unit = unit_name(name)
-        subprocess.run(["systemctl", "--user", "stop", svc_unit], check=False)
-        print(f"  {name}: stopped")
-
-    for name in config.services:
-        svc_unit = unit_name(name)
-        subprocess.run(["systemctl", "--user", "stop", svc_unit], check=False)
-        print(f"  {name}: stopped")
-
-    return 0

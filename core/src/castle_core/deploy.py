@@ -70,6 +70,30 @@ class DeployResult:
     registry: NodeRegistry | None = None
 
 
+@dataclass
+class ApplyResult:
+    """Result of a converge (`castle apply`): what actually changed.
+
+    `deploy` renders config → artifacts; `apply` renders *and then* reconciles the
+    running system to match, so the interesting output is the diff it enacted.
+    """
+
+    activated: list[str] = field(default_factory=list)
+    restarted: list[str] = field(default_factory=list)
+    deactivated: list[str] = field(default_factory=list)
+    unchanged: list[str] = field(default_factory=list)
+    pruned: list[str] = field(default_factory=list)
+    messages: list[str] = field(default_factory=list)
+    registry: NodeRegistry | None = None
+    # True for a `--plan` run: the diff was computed but nothing was written or
+    # activated. Lets callers render "would activate…" vs "activated…".
+    planned: bool = False
+
+    @property
+    def changed(self) -> bool:
+        return bool(self.activated or self.restarted or self.deactivated or self.pruned)
+
+
 def deploy(target_name: str | None = None, root: Path | None = None) -> DeployResult:
     """Deploy from castle.yaml to ~/.castle/.
 
@@ -86,16 +110,7 @@ def deploy(target_name: str | None = None, root: Path | None = None) -> DeployRe
     ensure_dirs()
 
     # Build node config
-    node = NodeConfig(
-        castle_root=str(config.root),
-        gateway_port=config.gateway.port,
-        gateway_tls=config.gateway.tls,
-        gateway_domain=config.gateway.domain,
-        acme_email=config.gateway.acme_email,
-        acme_dns_provider=config.gateway.acme_dns_provider,
-        public_domain=config.gateway.public_domain,
-        tunnel_id=config.gateway.tunnel_id,
-    )
+    node = _node_config(config)
 
     # Load existing registry to preserve entries not being redeployed,
     # or start fresh if deploying all
@@ -156,6 +171,131 @@ def deploy(target_name: str | None = None, root: Path | None = None) -> DeployRe
 
     result.registry = registry
     return result
+
+
+def _node_config(config: CastleConfig) -> NodeConfig:
+    """The registry NodeConfig derived from a config's gateway settings."""
+    return NodeConfig(
+        castle_root=str(config.root),
+        gateway_port=config.gateway.port,
+        gateway_tls=config.gateway.tls,
+        gateway_domain=config.gateway.domain,
+        acme_email=config.gateway.acme_email,
+        acme_dns_provider=config.gateway.acme_dns_provider,
+        public_domain=config.gateway.public_domain,
+        tunnel_id=config.gateway.tunnel_id,
+    )
+
+
+def _unit_file_for(name: str, is_job: bool) -> Path:
+    """On-disk systemd unit path for a deployment (timer if it's a job)."""
+    return SYSTEMD_USER_DIR / (timer_name(name) if is_job else unit_name(name))
+
+
+def _unit_bytes(name: str, is_job: bool) -> str | None:
+    """Current unit-file contents, or None if it isn't written yet."""
+    path = _unit_file_for(name, is_job)
+    return path.read_text() if path.exists() else None
+
+
+def apply(
+    target_name: str | None = None,
+    root: Path | None = None,
+    plan: bool = False,
+) -> ApplyResult:
+    """Converge the running system to match config — the one honest bring-up.
+
+    `apply` = `deploy` (render units/Caddyfile/tunnel) **plus** reconcile: activate
+    every enabled deployment that isn't live, restart any whose unit changed,
+    deactivate the disabled ones. It replaces the old two-step ``deploy && start``
+    and the per-kind enable/disable/install verbs — the mechanism varies by manager
+    (systemd unit / PATH install / gateway route), the verb never does.
+
+    `plan=True` computes and returns the diff **without writing or touching the
+    runtime** (the ``--plan`` dry run).
+    """
+    import asyncio
+
+    from castle_core.lifecycle import activate, deactivate, is_active
+
+    config = load_config(root)
+    names = [n for n in config.deployments if not target_name or n == target_name]
+    is_job = {n: (n in config.jobs) for n in names}
+
+    # Snapshot BEFORE rendering: liveness + current unit bytes (for restart-on-change).
+    before_active = {n: is_active(n, config) for n in names}
+    before_unit = {n: _unit_bytes(n, is_job[n]) for n in names}
+
+    # Desired state, rendered in memory to classify each deployment. For a real run
+    # this is recomputed by deploy() below (which also writes it); cheap and keeps
+    # the plan/apply classification identical.
+    desired = {n: _build_deployed(config, n, config.deployments[n], []) for n in names}
+
+    def _classify(name: str, after_unit: str | None) -> str:
+        dep = desired[name]
+        if not dep.enabled:
+            return "deactivate" if before_active[name] else "unchanged"
+        if not before_active[name]:
+            return "activate"
+        if dep.manager == "systemd" and before_unit[name] != after_unit:
+            return "restart"
+        return "unchanged"
+
+    result = ApplyResult(registry=NodeRegistry(node=_node_config(config), deployed=desired))
+
+    if plan:
+        # No writes: for systemd, predict the new unit bytes by rendering to a string
+        # so "would restart" is accurate; other managers never restart.
+        result.planned = True
+        for name in names:
+            after = _render_unit_preview(config, name, desired[name], is_job[name])
+            _record(result, name, _classify(name, after))
+        return result
+
+    # Real run: render everything (writes units/Caddyfile/tunnel, daemon-reload,
+    # gateway reload, orphan prune), then reconcile the runtime.
+    deploy_result = deploy(target_name, root)
+    result.messages = list(deploy_result.messages)
+    result.registry = deploy_result.registry
+
+    for name in names:
+        after_unit = _unit_bytes(name, is_job[name])
+        action = _classify(name, after_unit)
+        if action == "activate":
+            asyncio.run(activate(name, config, config.root))
+            result.activated.append(name)
+        elif action == "deactivate":
+            asyncio.run(deactivate(name, config, config.root))
+            result.deactivated.append(name)
+        elif action == "restart":
+            unit = timer_name(name) if is_job[name] else unit_name(name)
+            subprocess.run(["systemctl", "--user", "restart", unit], check=False)
+            result.restarted.append(name)
+        else:
+            result.unchanged.append(name)
+
+    return result
+
+
+def _record(result: ApplyResult, name: str, action: str) -> None:
+    {
+        "activate": result.activated,
+        "deactivate": result.deactivated,
+        "restart": result.restarted,
+        "unchanged": result.unchanged,
+    }[action].append(name)
+
+
+def _render_unit_preview(
+    config: CastleConfig, name: str, dep: Deployment, is_job: bool
+) -> str | None:
+    """The unit bytes `deploy` would write for the deployment we'd restart (the
+    .timer for a job, the .service for a service), for --plan restart detection.
+    None when there's no unit to compare (non-systemd, or unmanaged)."""
+    files = _render_unit_files(config, name, dep)
+    if not files:
+        return None
+    return files.get(timer_name(name) if is_job else unit_name(name))
 
 
 # Gateway service name in the registry → its systemd unit (castle-castle-gateway).
@@ -387,6 +527,7 @@ def _build_deployed(
             public=bool(dep.public),
             static_root=static_root,
             managed=False,
+            enabled=dep.enabled,
         )
     if isinstance(dep, PathDeployment):
         return Deployment(
@@ -396,6 +537,7 @@ def _build_deployed(
             kind=kind,
             stack=stack,
             managed=False,
+            enabled=dep.enabled,
         )
     if isinstance(dep, RemoteDeployment):
         return Deployment(
@@ -406,6 +548,7 @@ def _build_deployed(
             stack=stack,
             base_url=dep.base_url,
             managed=False,
+            enabled=dep.enabled,
         )
 
     # systemd: a supervised process (a service, or a job when scheduled).
@@ -465,6 +608,7 @@ def _build_deployed(
         public=bool(dep.public and expose),
         schedule=getattr(dep, "schedule", None),
         managed=managed,
+        enabled=dep.enabled,
     )
 
 
@@ -711,31 +855,40 @@ def _prune_orphans(registry: NodeRegistry, messages: list[str]) -> None:
                 _teardown_unit(path.name, messages)
 
 
+def _render_unit_files(
+    config: CastleConfig, name: str, deployed: Deployment
+) -> dict[str, str]:
+    """The exact unit files `deploy` would write for a deployment: {filename: content}.
+
+    Empty for a non-systemd-managed deployment (caddy/path/none have no unit). The
+    single source of truth for unit bytes — used both to write units and to predict
+    restart-on-change in `apply`/`--plan`, so the prediction can never drift from
+    what actually gets written.
+    """
+    if not deployed.managed:
+        return {}
+    systemd_spec = None
+    dep = config.deployments.get(name)
+    manage = getattr(dep, "manage", None)
+    if manage and manage.systemd:
+        systemd_spec = manage.systemd
+
+    files = {
+        unit_name(name): generate_unit_from_deployed(
+            name, deployed, systemd_spec, env_file=unit_env_file(deployed, name)
+        )
+    }
+    if deployed.schedule:
+        files[timer_name(name)] = generate_timer(
+            name, schedule=deployed.schedule, description=deployed.description
+        )
+    return files
+
+
 def _generate_systemd_units(config: CastleConfig, registry: NodeRegistry) -> None:
     """Generate systemd units from the registry."""
     SYSTEMD_USER_DIR.mkdir(parents=True, exist_ok=True)
 
     for name, deployed in registry.deployed.items():
-        if not deployed.managed:
-            continue
-
-        systemd_spec = None
-        dep = config.deployments.get(name)
-        manage = getattr(dep, "manage", None)
-        if manage and manage.systemd:
-            systemd_spec = manage.systemd
-
-        svc_name = unit_name(name)
-        svc_content = generate_unit_from_deployed(
-            name, deployed, systemd_spec, env_file=unit_env_file(deployed, name)
-        )
-        (SYSTEMD_USER_DIR / svc_name).write_text(svc_content)
-
-        if deployed.schedule:
-            timer_content = generate_timer(
-                name,
-                schedule=deployed.schedule,
-                description=deployed.description,
-            )
-            tmr_name = timer_name(name)
-            (SYSTEMD_USER_DIR / tmr_name).write_text(timer_content)
+        for fname, content in _render_unit_files(config, name, deployed).items():
+            (SYSTEMD_USER_DIR / fname).write_text(content)

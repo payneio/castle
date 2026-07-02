@@ -55,9 +55,10 @@ A program can have several deployments — a CLI that is both a `tool` on PATH a
 scheduled `job` — so a program has no single kind of its own; it *has deployments*,
 each with its own.
 
-Standing everything up is the two honest steps `castle deploy` (regenerate systemd
-units and gateway config from your config) then `castle start` (enable/start it).
-There is no bundled "up".
+Standing everything up is one honest step: `castle apply` renders systemd units and
+gateway config from your config, then reconciles the runtime to match — activating
+what's enabled, restarting what changed, deactivating what's disabled. Edit config,
+`castle apply`; `castle apply --plan` shows the diff first.
 
 ## Stacks
 
@@ -112,7 +113,7 @@ git clone <this-repo> ~/castle && cd ~/castle
 # Postgres), creates ~/.castle, registers Castle's own control plane, builds the UI.
 ./install.sh
 
-castle deploy && castle start   # apply config to the runtime, then bring it up
+castle apply                    # converge the runtime to config (units, routes, run)
 castle doctor                   # verify — every check should be green
 open http://localhost:9000      # the dashboard
 ```
@@ -124,7 +125,7 @@ looks off — after an install, a deploy, or a config change.
 ### Exposure: from localhost to your own HTTPS domain
 
 Localhost is the first rung; you climb only as far as you need. Each rung is a small
-config change plus `castle deploy`, and `castle doctor` tells you what a rung still
+config change plus `castle apply`, and `castle doctor` tells you what a rung still
 needs.
 
 | Rung | You get | What it takes |
@@ -145,15 +146,15 @@ are still missing, each with its fix.
 # A service — FastAPI app + a systemd service deployment (health, unit, route)
 castle program create my-api --stack python-fastapi --description "Does something"
 castle program test my-api
-castle deploy my-api && castle service enable my-api
+castle apply my-api                       # render unit + route, then start it
 
 # A tool — a CLI installed on your PATH
 castle program create my-tool --stack python-cli --description "Does something"
-castle tool install my-tool
+castle apply my-tool                      # installs its path deployment on PATH
 
 # A static frontend — built once, served by the gateway
 castle program create my-app --stack react-vite --description "Web interface"
-castle program build my-app && castle deploy
+castle program build my-app && castle apply
 
 # Adopt an existing repo (no stack needed — dev verbs detected or declared)
 castle program add ~/projects/some-rust-tool
@@ -162,27 +163,31 @@ castle program add ~/projects/some-rust-tool
 ## CLI
 
 Operations live under the resource they act on. `program` is the catalog;
-`service`, `job`, and `tool` are **views** over the one deployment set; platform
-lifecycle is top-level.
+`service`, `job`, and `tool` are **views** over the one deployment set. Lifecycle
+is convergence — `castle apply` — not a pile of per-kind verbs.
 
 ```
 # Programs — the software catalog
-castle program list|info|create|add|clone|delete|run|install|uninstall
+castle program list|info|create|add|clone|delete|run
 castle program build|test|lint|type-check|check [name]        # dev verbs
 
 # Deployment lenses (service = systemd, job = systemd + schedule, tool = path)
-castle service  list|info|create|delete|deploy|enable|disable|start|stop|restart|logs
+castle service  list|info|create|delete|restart|logs
 castle job      …same verbs; create takes --schedule
-castle tool     list|info|install|uninstall                    # CLIs on your PATH
+castle tool     list|info                                      # CLIs on your PATH
 
 # Platform-wide
+castle apply [name] [--plan]                  # converge runtime to config — the workhorse
 castle list [--kind K] [--stack S] [--json]   # catalog + every deployment view
 castle status                                 # unified runtime status
 castle doctor                                 # diagnose setup + health, with fix hints
-castle deploy [name]                          # apply config → units + Caddyfile
-castle start | stop | restart                 # all deployments (+ gateway)
-castle gateway start|stop|reload|status
+castle restart [name]                         # imperative bounce (one or all)
+castle gateway reload|status
 ```
+
+To turn a deployment off, set `enabled: false` in its config and `castle apply` —
+there's no start/stop/enable/install verb; the manager decides the mechanism
+(systemd unit, PATH install, gateway route), the verb is always `apply`.
 
 `castle tool list --json` is the machine-readable tool catalog assistants use to
 build context — it surfaces each tool's actual **executable** (which can differ from

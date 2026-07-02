@@ -1,44 +1,40 @@
-import { Play, RefreshCw, Square } from "lucide-react"
-import { useServiceAction } from "@/services/api/hooks"
-import type { HealthStatus } from "@/types"
+import { Power, RefreshCw } from "lucide-react"
+import { useServiceAction, useSetEnabled } from "@/services/api/hooks"
 
 interface ServiceControlsProps {
   name: string
-  health?: HealthStatus
+  enabled: boolean
 }
 
-export function ServiceControls({ name, health }: ServiceControlsProps) {
-  const { mutate, isPending } = useServiceAction()
-  const isDown = health?.status === "down"
+// Lifecycle is convergence: the Power toggle sets desired on/off state and applies
+// (activate/deactivate); Restart is the one imperative bounce. No raw start/stop.
+export function ServiceControls({ name, enabled }: ServiceControlsProps) {
+  const restart = useServiceAction()
+  const setEnabled = useSetEnabled()
+  const busy = restart.isPending || setEnabled.isPending
 
   return (
     <div className="flex items-center gap-1">
-      {isDown && (
-        <button
-          onClick={() => mutate({ name, action: "start" })}
-          disabled={isPending}
-          className="p-1.5 rounded hover:bg-green-800/30 text-green-400 transition-colors disabled:opacity-40"
-          title="Start"
-        >
-          <Play size={16} />
-        </button>
-      )}
       <button
-        onClick={() => mutate({ name, action: "restart" })}
-        disabled={isPending}
-        className="p-1.5 rounded hover:bg-blue-800/30 text-blue-400 transition-colors disabled:opacity-40"
-        title="Restart"
+        onClick={() => setEnabled.mutate({ name, enabled: !enabled })}
+        disabled={busy}
+        className={`p-1.5 rounded transition-colors disabled:opacity-40 ${
+          enabled
+            ? "hover:bg-red-800/30 text-red-400"
+            : "hover:bg-green-800/30 text-green-400"
+        }`}
+        title={enabled ? "Disable (stop & keep off)" : "Enable (start)"}
       >
-        <RefreshCw size={16} />
+        <Power size={16} />
       </button>
-      {!isDown && (
+      {enabled && (
         <button
-          onClick={() => mutate({ name, action: "stop" })}
-          disabled={isPending}
-          className="p-1.5 rounded hover:bg-red-800/30 text-red-400 transition-colors disabled:opacity-40"
-          title="Stop"
+          onClick={() => restart.mutate({ name, action: "restart" })}
+          disabled={busy}
+          className="p-1.5 rounded hover:bg-blue-800/30 text-blue-400 transition-colors disabled:opacity-40"
+          title="Restart"
         >
-          <Square size={16} />
+          <RefreshCw size={16} className={restart.isPending ? "animate-spin" : ""} />
         </button>
       )}
     </div>

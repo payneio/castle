@@ -116,9 +116,9 @@ def run_delete(args: argparse.Namespace) -> int:
 
         try:
             deploy()
-            print("Reconciled runtime (castle deploy).")
+            print("Reconciled runtime (castle apply).")
         except Exception as e:
-            print(f"warning: reconcile (castle deploy) failed — run 'castle deploy': {e}")
+            print(f"warning: reconcile failed — run 'castle apply': {e}")
 
     # Optional: delete the source directory.
     if args.source and source_dir:

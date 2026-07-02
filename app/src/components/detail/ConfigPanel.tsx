@@ -42,7 +42,7 @@ export function ConfigPanel({ deployment, configSection, onRefetch }: ConfigPane
       setMessage({
         type: "ok",
         text: isDeployment
-          ? "Saved to castle.yaml — not live yet; apply to deploy & restart."
+          ? "Saved to castle.yaml — not live yet; apply to converge."
           : "Saved to castle.yaml",
       })
       if (isDeployment) setPendingApply(true)
@@ -58,16 +58,21 @@ export function ConfigPanel({ deployment, configSection, onRefetch }: ConfigPane
     setApplying(true)
     setMessage(null)
     try {
-      await apiClient.post(`/deploy`, { name: deployment.id })
-      if (configSection === "services") {
-        await apiClient.post(`/services/${deployment.id}/restart`, {})
-      }
+      // One converge: renders units/routes and reconciles the runtime (restarts
+      // only what changed). No separate restart call needed.
+      await apiClient.post(`/apply`, { name: deployment.id })
       setPendingApply(false)
       setMessage({ type: "ok", text: "Applied — the change is now live." })
-      qc.invalidateQueries({ queryKey: ["status"] })
-      qc.invalidateQueries({ queryKey: [configSection] })
+      qc.invalidateQueries()
       onRefetch()
     } catch (e: unknown) {
+      // A self-apply of castle-api restarts it, killing the connection — expected.
+      if (e instanceof TypeError) {
+        setPendingApply(false)
+        setMessage({ type: "ok", text: "Applied — the service is restarting." })
+        setApplying(false)
+        return
+      }
       let msg = e instanceof Error ? e.message : String(e)
       try {
         msg = JSON.parse((e as Error).message).detail ?? msg
@@ -122,11 +127,7 @@ export function ConfigPanel({ deployment, configSection, onRefetch }: ConfigPane
               className="shrink-0 flex items-center gap-1.5 px-3 py-1 text-xs rounded bg-amber-700 hover:bg-amber-600 text-white transition-colors disabled:opacity-50"
             >
               <RefreshCw size={12} className={applying ? "animate-spin" : ""} />
-              {applying
-                ? "Applying…"
-                : configSection === "services"
-                  ? "Apply (deploy & restart)"
-                  : "Apply (deploy)"}
+              {applying ? "Applying…" : "Apply"}
             </button>
           )}
         </div>

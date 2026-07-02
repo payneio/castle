@@ -137,7 +137,7 @@ def run_tool_info(args: argparse.Namespace) -> int:
     if comp.system_dependencies:
         print(f"  {BOLD}requires{RESET}:    {', '.join(comp.system_dependencies)}")
     if not installed:
-        print(f"\n  {DIM}install with: castle tool install {name}{RESET}")
+        print(f"\n  {DIM}enable it in its deployment, then: castle apply{RESET}")
     else:
         print(f"\n  {DIM}run `{exes[0]} --help` for arguments{RESET}")
     print()

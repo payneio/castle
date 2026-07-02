@@ -22,7 +22,7 @@ CASTLE_HOME="${HOME}/.castle"
 CASTLE_CONF="${CASTLE_HOME}/infra.conf"
 # Program data lives on a dedicated volume, decoupled from CASTLE_HOME — must match
 # castle_core.config._resolve_data_dir (default /data/castle, override CASTLE_DATA_DIR)
-# so the data dirs + container mounts created here line up with what castle deploy
+# so the data dirs + container mounts created here line up with what castle apply
 # generates for the mqtt/postgres/neo4j deployments.
 DATA_DIR="${CASTLE_DATA_DIR:-/data/castle}"
 # Program source repos (default /data/repos, override CASTLE_REPOS_DIR).
@@ -177,7 +177,7 @@ CADDY_DNS_VERSION="${CADDY_DNS_VERSION:-v2.11.4}"
 # (Let's Encrypt wildcard via DNS-01). Stock apt Caddy has no DNS modules. The
 # result goes to /usr/local/bin/caddy, which precedes /usr/bin on PATH, so the
 # gateway (a `command` runner resolving `caddy` via PATH) picks it up on the next
-# `castle deploy` with no spec change. Idempotent and opt-in (--with-dns-plugin).
+# `castle apply` with no spec change. Idempotent and opt-in (--with-dns-plugin).
 ensure_caddy_dns_plugin() {
     local provider="${1:-cloudflare}"
     local module
@@ -211,7 +211,7 @@ ensure_caddy_dns_plugin() {
 
     /usr/local/bin/caddy list-modules 2>/dev/null | grep -q "dns.providers.$provider" \
         || log_fail "built caddy is missing dns.providers.$provider"
-    log_info "Built /usr/local/bin/caddy — run 'castle deploy && castle gateway restart' to use it."
+    log_info "Built /usr/local/bin/caddy — run 'castle apply' to use it."
     log_ok
 }
 
@@ -259,7 +259,7 @@ create_directories() {
 
     # Program data volume (default /data/castle) lives outside $HOME, so on a fresh
     # machine its parent may not be user-writable — fall back to sudo + chown so the
-    # later container mounts (and castle deploy) can write there.
+    # later container mounts (and castle apply) can write there.
     if ! mkdir -p "${DATA_DIR}" 2>/dev/null; then
         log_info "creating ${DATA_DIR} (needs sudo — outside \$HOME)"
         sudo mkdir -p "${DATA_DIR}"
@@ -280,7 +280,7 @@ create_directories() {
 # ---------------------------------------------------------------------------
 
 # Register Castle's own control-plane programs/deployments from bootstrap/ so a
-# fresh registry is not empty. Without this, `castle deploy && castle start`
+# fresh registry is not empty. Without this, `castle apply`
 # would bring up nothing. Never clobbers existing entries (idempotent). The
 # gateway deployment carries a `__SPECS_DIR__` placeholder (the source repo has
 # no machine-specific paths) that we substitute with this machine's specs dir.
@@ -337,7 +337,7 @@ seed_caddyfile() {
     fi
     cat > "$caddyfile" << 'EOF'
 :9000 {
-    respond "Castle is starting. Run 'castle deploy' to configure." 200
+    respond "Castle is starting. Run 'castle apply' to configure." 200
 }
 EOF
     log_ok
@@ -553,8 +553,7 @@ print_summary() {
     printf "\n"
 
     printf "Next steps:\n"
-    printf "  castle deploy                 # Generate registry, systemd units, Caddyfile\n"
-    printf "  castle start                  # Start the gateway, API, and all deployments\n"
+    printf "  castle apply                  # Converge: render units/routes + start everything\n"
     printf "  castle doctor                 # Verify setup + health (green = good to go)\n"
     printf "  open http://localhost:9000    # the dashboard\n"
 }

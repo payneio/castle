@@ -154,6 +154,65 @@ export function useServiceAction() {
   })
 }
 
+export interface ApplyResult {
+  status: string
+  planned: boolean
+  changed: boolean
+  activated: string[]
+  restarted: string[]
+  deactivated: string[]
+  unchanged: string[]
+  messages: string[]
+}
+
+// Converge the running system to config. Pass a name to converge one deployment,
+// or plan:true for a dry-run diff. Handles the API restarting itself mid-apply.
+export function useApply() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ name, plan }: { name?: string; plan?: boolean } = {}) => {
+      try {
+        return await apiClient.post<ApplyResult>("/apply", { name, plan })
+      } catch (err) {
+        if (err instanceof TypeError) {
+          // Self-restart killed the connection — treat as accepted, wait + refresh.
+          await waitForApi()
+          return {
+            status: "ok", planned: false, changed: true,
+            activated: [], restarted: name ? [name] : [], deactivated: [],
+            unchanged: [], messages: [],
+          } as ApplyResult
+        }
+        throw err
+      }
+    },
+    onSuccess: (data) => {
+      if (!data.planned) qc.invalidateQueries()
+    },
+  })
+}
+
+// Set a deployment's desired on/off state, then converge it. One click = "make it
+// so": edit config (declarative), then apply that single deployment.
+export function useSetEnabled() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ name, enabled }: { name: string; enabled: boolean }) => {
+      await apiClient.put(`/config/deployments/${name}/enabled`, { enabled })
+      try {
+        return await apiClient.post<ApplyResult>("/apply", { name })
+      } catch (err) {
+        if (err instanceof TypeError) {
+          await waitForApi()
+          return null
+        }
+        throw err
+      }
+    },
+    onSuccess: () => qc.invalidateQueries(),
+  })
+}
+
 export function useProgramAction() {
   const qc = useQueryClient()
   return useMutation({

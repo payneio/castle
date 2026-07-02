@@ -171,7 +171,7 @@ See @docs/registry.md for the full registry reference.
 ## Serving with Caddy
 
 For production, the static build output is served by Caddy rather than a Node
-process. You do **not** write this block by hand — `castle deploy` generates it.
+process. You do **not** write this block by hand — `castle apply` generates it.
 The flow:
 
 1. You build the frontend with `castle program build <name>` (deploy does **not**

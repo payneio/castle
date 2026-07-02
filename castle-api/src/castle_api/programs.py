@@ -21,14 +21,14 @@ def list_stacks() -> list[str]:
 # Unified program action endpoint
 # ---------------------------------------------------------------------------
 
+# Dev verbs only. Activation (install/uninstall of tools/statics) is convergence:
+# it happens through `POST /apply`, not as a program action.
 _VALID_ACTIONS = {
     "build",
     "test",
     "lint",
     "type-check",
     "check",
-    "install",
-    "uninstall",
 }
 
 

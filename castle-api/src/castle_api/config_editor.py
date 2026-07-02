@@ -21,7 +21,7 @@ from castle_core.config import (
 )
 from castle_core.manifest import ProgramSpec, kind_for
 
-from castle_api.config import get_castle_root, get_config, get_registry
+from castle_api.config import get_castle_root, get_config
 from castle_api.stream import broadcast
 
 router = APIRouter(prefix="/config", tags=["config"])
@@ -323,6 +323,29 @@ def delete_deployment(name: str) -> dict:
     return _delete_deployment(name)
 
 
+class EnabledRequest(BaseModel):
+    enabled: bool
+
+
+@router.put("/deployments/{name}/enabled")
+def set_deployment_enabled(name: str, request: EnabledRequest) -> dict:
+    """Set a deployment's declared `enabled` state (desired on/off).
+
+    Edits config only — the caller runs `POST /apply` to converge. Keeps the
+    declarative flow: change what you want, then apply.
+    """
+    config = get_config()
+    dep = config.deployments.get(name)
+    if dep is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Deployment '{name}' not found",
+        )
+    dep.enabled = request.enabled
+    save_config(config)
+    return {"ok": True, "deployment": name, "enabled": request.enabled}
+
+
 @router.put("/services/{name}")
 def save_service(name: str, request: ServiceConfigRequest) -> dict:
     """Alias of PUT /deployments/{name} (kept for the existing dashboard)."""
@@ -347,42 +370,33 @@ def delete_job(name: str) -> dict:
 
 @router.post("/apply", response_model=ApplyResponse)
 async def apply_config() -> ApplyResponse:
-    """Apply config: rebuild runtime from castle.yaml, then restart services.
-
-    Runs a full ``deploy`` so the registry, systemd units, and Caddyfile are all
-    regenerated from the current castle.yaml (and the gateway reloaded) — this is
-    what keeps the running config from drifting behind an edit. Then restarts the
-    managed services so the freshly written units take effect (``deploy`` only
-    daemon-reloads; a running unit keeps its old ExecStart until restarted).
-    Scheduled jobs are left alone — applying config shouldn't fire every job.
+    """Converge the running system to match castle.yaml (a thin wrapper on core
+    ``apply``). Renders units/Caddyfile/tunnel, then reconciles the runtime —
+    activating what's enabled and down, restarting only what changed, deactivating
+    the disabled. Kept as ``/config/apply`` for compatibility; ``/apply`` exposes
+    the same converge with per-deployment targeting and ``--plan``.
     """
-    from castle_core.deploy import deploy
+    from castle_core.deploy import apply
+
+    # apply is blocking (systemctl + gateway reload) — run off the event loop.
+    try:
+        result = await asyncio.to_thread(apply)
+    except Exception as e:
+        return ApplyResponse(ok=False, actions=[], errors=[f"Apply failed: {e}"])
 
     actions: list[str] = []
-    errors: list[str] = []
-
-    # Rebuild registry + units + Caddyfile from castle.yaml off the event loop
-    # (deploy is blocking: it shells out to systemctl and the gateway).
-    try:
-        result = await asyncio.to_thread(deploy)
-    except Exception as e:
-        return ApplyResponse(ok=False, actions=actions, errors=[f"Deploy failed: {e}"])
-    actions.extend(result.messages)
-
-    # Restart managed services so the new units take effect (skip scheduled jobs).
-    registry = result.registry or get_registry()
-    for name, deployed in registry.deployed.items():
-        if not deployed.managed or deployed.schedule:
-            continue
-        unit = f"castle-{name}.service"
-        ok, output = await _systemctl("restart", unit)
-        if ok:
-            actions.append(f"Restarted {name}")
-        else:
-            errors.append(f"Failed to restart {name}: {output}")
+    for verb, names in (
+        ("Activated", result.activated),
+        ("Restarted", result.restarted),
+        ("Deactivated", result.deactivated),
+    ):
+        if names:
+            actions.append(f"{verb} {', '.join(sorted(names))}")
+    if not result.changed:
+        actions.append("Already converged — nothing to do")
 
     await broadcast("config-changed", {"actions": actions})
-    return ApplyResponse(ok=len(errors) == 0, actions=actions, errors=errors)
+    return ApplyResponse(ok=True, actions=actions, errors=[])
 
 
 async def _systemctl(action: str, unit: str) -> tuple[bool, str]:

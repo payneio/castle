@@ -17,7 +17,7 @@ internet at `<name>.<gateway.public_domain>`, via a Cloudflare Tunnel.
   Cloudflare (no inbound holes, no public IP needed) and forwards each public
   hostname to the gateway on `:443`, rewriting the Host header and TLS SNI to the
   *internal* name so Caddy routes it and its wildcard cert validates. The public
-  surface is exactly the set of `public: true` services — `castle deploy` generates
+  surface is exactly the set of `public: true` services — `castle apply` generates
   the ingress from the registry.
 - **One kill switch.** Stop `castle-tunnel` → instantly nothing is public.
 
@@ -76,8 +76,8 @@ manage:
 Bring it online:
 
 ```bash
-castle deploy                       # writes cloudflared.yml from public services
-castle service enable castle-tunnel # start the tunnel
+castle apply                       # writes cloudflared.yml from public services
+castle apply castle-tunnel # start the tunnel
 ```
 
 ## Using the toggle
@@ -92,10 +92,10 @@ public: true     # also expose at <name>.pub.payne.io via the tunnel
 Then just deploy:
 
 ```bash
-castle deploy
+castle apply
 ```
 
-`castle deploy` regenerates `~/.castle/artifacts/specs/cloudflared.yml` from the
+`castle apply` regenerates `~/.castle/artifacts/specs/cloudflared.yml` from the
 current set of public services and restarts `castle-tunnel`. Flip `public` back to
 `false` (or remove it) and redeploy to un-expose — the hostname drops out of the
 ingress immediately.
@@ -116,14 +116,14 @@ printf %s "<token>" > ~/.castle/secrets/CLOUDFLARE_PUBLIC_DNS_TOKEN
 chmod 600 ~/.castle/secrets/CLOUDFLARE_PUBLIC_DNS_TOKEN
 ```
 
-With it present, every `castle deploy` **reconciles** the public CNAMEs against the
+With it present, every `castle apply` **reconciles** the public CNAMEs against the
 current public set — creating missing ones and deleting removed ones — and prints a
 one-line summary. It only ever touches records pointing at *this* tunnel
 (`<tunnel_id>.cfargotunnel.com`), so hand-managed records in the same zone are safe.
 This token is separate from `CLOUDFLARE_API_TOKEN` (which is the ACME token for the
 internal zone); the public zone is usually a different zone/account.
 
-Without the token, `castle deploy` instead prints the exact command to run per host:
+Without the token, `castle apply` instead prints the exact command to run per host:
 
 ```bash
 cloudflared tunnel route dns <tunnel-id> <name>.pub.payne.io

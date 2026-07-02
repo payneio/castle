@@ -153,19 +153,12 @@ def get_unit(name: str) -> dict[str, str | None]:
     return {"service": unit, "timer": timer}
 
 
-@router.post("/{name}/start")
-async def start_service(name: str) -> JSONResponse:
-    """Start a systemd-managed service."""
-    return await _do_action(name, "start")
-
-
-@router.post("/{name}/stop")
-async def stop_service(name: str) -> JSONResponse:
-    """Stop a systemd-managed service."""
-    return await _do_action(name, "stop")
-
-
 @router.post("/{name}/restart")
 async def restart_service(name: str) -> JSONResponse:
-    """Restart a systemd-managed service."""
+    """Restart a systemd-managed service — the imperative bounce.
+
+    Lifecycle (start/stop/enable/disable) is convergence now: set `enabled` in the
+    deployment config and POST /apply. Restart stays as a way to re-actualize the
+    current desired state without changing it.
+    """
     return await _do_action(name, "restart")

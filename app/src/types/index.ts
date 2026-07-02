@@ -19,6 +19,7 @@ export interface ServiceSummary {
   systemd: SystemdInfo | null
   program: string | null
   source: string | null
+  enabled: boolean // declared desired state; `apply` converges to it
   node: string | null
 }
 
@@ -37,6 +38,7 @@ export interface JobSummary {
   systemd: SystemdInfo | null
   program: string | null
   source: string | null
+  enabled: boolean // declared desired state; `apply` converges to it
   node: string | null
 }
 
@@ -98,6 +100,7 @@ export interface DeploymentSummary {
   schedule: string | null
   installed: boolean | null
   active: boolean | null
+  enabled: boolean // declared desired state; `apply` converges to it
   node: string | null
 }
 

@@ -99,6 +99,13 @@ class TestServicesList:
         svc = next(s for s in data if s["id"] == "test-svc")
         assert "schedule" not in svc
 
+    def test_enabled_flows_through(self, client: TestClient) -> None:
+        """ServiceSummary surfaces the declared `enabled` state (default True)."""
+        response = client.get("/services")
+        data = response.json()
+        svc = next(s for s in data if s["id"] == "test-svc")
+        assert svc["enabled"] is True
+
     def test_no_installed_field(self, client: TestClient) -> None:
         """ServiceSummary does not have installed field."""
         response = client.get("/services")

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import shutil
 import subprocess
 from pathlib import Path
 
@@ -104,6 +103,7 @@ def _summary_from_deployed(name: str, deployed: object) -> DeploymentSummary:
         schedule=deployed.schedule,
         installed=installed,
         active=active,
+        enabled=deployed.enabled,
     )
 
 
@@ -152,6 +152,7 @@ def _summary_from_service(
         managed=managed,
         systemd=systemd_info,
         source=source,
+        enabled=svc.enabled,
     )
 
 
@@ -187,6 +188,7 @@ def _summary_from_job(name: str, job: SystemdDeployment, config: object) -> Depl
         systemd=systemd_info,
         schedule=job.schedule,
         source=source,
+        enabled=job.enabled,
     )
 
 
@@ -276,6 +278,7 @@ def _service_from_deployed(name: str, deployed: object) -> ServiceSummary:
         subdomain=deployed.subdomain,
         managed=deployed.managed,
         systemd=systemd_info,
+        enabled=deployed.enabled,
     )
 
 
@@ -317,6 +320,7 @@ def _service_from_spec(name: str, svc: SystemdDeployment, config: object) -> Ser
         systemd=systemd_info,
         program=svc.program,
         source=source,
+        enabled=svc.enabled,
     )
 
 
@@ -333,6 +337,7 @@ def _job_from_deployed(name: str, deployed: object) -> JobSummary:
         schedule=deployed.schedule,
         managed=deployed.managed,
         systemd=systemd_info,
+        enabled=deployed.enabled,
     )
 
 
@@ -362,6 +367,7 @@ def _job_from_spec(name: str, job: SystemdDeployment, config: object) -> JobSumm
         systemd=systemd_info,
         program=job.program,
         source=source,
+        enabled=job.enabled,
     )
 
 
