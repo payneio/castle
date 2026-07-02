@@ -4,13 +4,14 @@ import { Terminal } from "@xterm/xterm"
 import { FitAddon } from "@xterm/addon-fit"
 import "@xterm/xterm/css/xterm.css"
 import { apiClient } from "@/services/api/client"
+import { cn } from "@/lib/utils"
 
 type Status = "connecting" | "connected" | "exited" | "closed" | "error"
 
 interface AgentTerminalProps {
   // Agent name to launch, or "terminal" for the plain login shell.
   agent: string
-  // When set, resume this existing session instead of creating a new one.
+  // When set, resume this existing live session (replaying its scrollback).
   resumeId?: string
   // Fired once the backend confirms the session id (new or resumed).
   onSession?: (id: string) => void
@@ -20,6 +21,13 @@ interface AgentTerminalProps {
   mode?: "continue"
   // Resume one of the agent's OWN past sessions by its id (agent-native).
   resumeSessionId?: string
+  // Bump this whenever the terminal's container is resized by an ancestor (e.g.
+  // the dock expanding). Triggers a refit that ResizeObserver alone can miss
+  // when the size change is driven by a class swap rather than layout reflow.
+  fitSignal?: number
+  // Strip chrome (header, border, padding) on narrow screens — used when the
+  // dock is maximized so the terminal goes edge-to-edge on a phone.
+  compact?: boolean
 }
 
 export function AgentTerminal({
@@ -29,11 +37,31 @@ export function AgentTerminal({
   fill,
   mode,
   resumeSessionId,
+  fitSignal,
+  compact,
 }: AgentTerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const termRef = useRef<Terminal | null>(null)
+  const fitRef = useRef<FitAddon | null>(null)
+  const wsRef = useRef<WebSocket | null>(null)
   const [status, setStatus] = useState<Status>("connecting")
   const [detail, setDetail] = useState<string>("")
   const [maximized, setMaximized] = useState(false)
+
+  // Fit to the container, then tell the backend pty the new size.
+  const refit = () => {
+    const term = termRef.current
+    const ws = wsRef.current
+    if (!term) return
+    try {
+      fitRef.current?.fit()
+    } catch {
+      /* container not laid out yet */
+    }
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }))
+    }
+  }
 
   useEffect(() => {
     const term = new Terminal({
@@ -46,6 +74,8 @@ export function AgentTerminal({
     const fit = new FitAddon()
     term.loadAddon(fit)
     term.open(containerRef.current!)
+    termRef.current = term
+    fitRef.current = fit
     try {
       fit.fit()
     } catch {
@@ -61,17 +91,12 @@ export function AgentTerminal({
           : `/agents/${agent}/session`
     const ws = new WebSocket(apiClient.wsUrl(path))
     ws.binaryType = "arraybuffer"
+    wsRef.current = ws
     const enc = new TextEncoder()
-
-    const sendResize = () => {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }))
-      }
-    }
 
     ws.onopen = () => {
       setStatus("connected")
-      sendResize()
+      refit()
       // On resume, full-screen TUIs (opencode, claude) don't know a new client
       // attached and won't repaint. A size change forces SIGWINCH → a full
       // redraw of the current frame, so the prior session becomes visible.
@@ -81,7 +106,7 @@ export function AgentTerminal({
           ws.send(
             JSON.stringify({ type: "resize", cols: Math.max(1, term.cols - 1), rows: term.rows }),
           )
-          setTimeout(sendResize, 60)
+          setTimeout(refit, 60)
         }, 80)
       }
       term.focus()
@@ -116,14 +141,7 @@ export function AgentTerminal({
       if (ws.readyState === WebSocket.OPEN) ws.send(enc.encode(d))
     })
 
-    const ro = new ResizeObserver(() => {
-      try {
-        fit.fit()
-      } catch {
-        /* ignore */
-      }
-      sendResize()
-    })
+    const ro = new ResizeObserver(() => refit())
     if (containerRef.current) ro.observe(containerRef.current)
 
     return () => {
@@ -131,9 +149,26 @@ export function AgentTerminal({
       dataDisp.dispose()
       ws.close()
       term.dispose()
+      termRef.current = null
+      fitRef.current = null
+      wsRef.current = null
     }
     // Remounting (new agent / resume target / mode) tears this down and restarts.
   }, [agent, resumeId, mode, resumeSessionId, onSession])
+
+  // An ancestor changed our size (dock expanded/restored/reopened). ResizeObserver
+  // usually catches it, but a class-swap + CSS can settle a frame late, so refit
+  // across a few frames until the new size stabilizes.
+  useEffect(() => {
+    let raf = 0
+    const start = performance.now()
+    const tick = () => {
+      refit()
+      if (performance.now() - start < 400) raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [fitSignal])
 
   const statusColor =
     status === "connected"
@@ -149,15 +184,21 @@ export function AgentTerminal({
 
   return (
     <div
-      className={
+      className={cn(
         maximized
           ? "fixed inset-0 z-50 bg-[var(--background)] flex flex-col"
           : fill
             ? "h-full flex flex-col bg-black/40 border border-[var(--border)] rounded-lg overflow-hidden"
-            : "bg-black/40 border border-[var(--border)] rounded-lg overflow-hidden"
-      }
+            : "bg-black/40 border border-[var(--border)] rounded-lg overflow-hidden",
+        compact && "max-sm:border-0 max-sm:rounded-none",
+      )}
     >
-      <div className="flex items-center justify-between px-3 py-1.5 border-b border-[var(--border)] text-xs text-[var(--muted)]">
+      <div
+        className={cn(
+          "flex items-center justify-between px-3 py-1.5 border-b border-[var(--border)] text-xs text-[var(--muted)]",
+          compact && "max-sm:hidden",
+        )}
+      >
         <span className="flex items-center gap-2">
           <span>terminal: {agent}</span>
           <span className={statusColor}>
@@ -180,7 +221,10 @@ export function AgentTerminal({
       </div>
       <div
         ref={containerRef}
-        className={maximized || fill ? "flex-1 min-h-0 p-2" : "h-[560px] p-2"}
+        className={cn(
+          maximized || fill ? "flex-1 min-h-0 p-2" : "h-[560px] p-2",
+          compact && "max-sm:p-0",
+        )}
       />
     </div>
   )

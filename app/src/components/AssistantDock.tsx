@@ -99,12 +99,15 @@ export function AssistantDock() {
           terminal's WebSocket survives minimize. */}
       <div
         className={cn(
-          "fixed z-40 flex flex-col",
+          "fixed z-40 flex flex-col bg-[var(--background)] shadow-2xl",
           expanded
-            ? "inset-4"
-            : "bottom-4 right-4 w-[760px] max-w-[calc(100vw-2rem)] h-[600px] max-h-[calc(100vh-2rem)]",
-          "bg-[var(--background)] border border-[var(--border)] rounded-xl shadow-2xl",
-          "transition-all duration-200",
+            ? // Maximized: full-bleed on narrow screens (no margin/border/radius),
+              // ins-4 with chrome on sm+.
+              "inset-0 rounded-none border-0 sm:inset-4 sm:rounded-xl sm:border sm:border-[var(--border)]"
+            : "bottom-4 right-4 w-[760px] max-w-[calc(100vw-2rem)] h-[600px] max-h-[calc(100vh-2rem)] rounded-xl border border-[var(--border)]",
+          // Animate only open/close (opacity + translate); size changes (expand)
+          // are instant so the terminal's fit measures the final box immediately.
+          "transition-[opacity,transform] duration-200",
           open
             ? "opacity-100 translate-y-0"
             : "opacity-0 translate-y-[calc(100%+2rem)] pointer-events-none",
@@ -114,7 +117,14 @@ export function AssistantDock() {
         {/* Header */}
         <div className="flex items-center gap-2 px-3 py-2 border-b border-[var(--border)]">
           <Bot size={16} className="text-[var(--primary)] shrink-0" />
-          <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+          <div
+            className={cn(
+              "flex flex-wrap items-center gap-1.5 min-w-0",
+              // Maximized on a narrow screen: drop the launcher pills for space
+              // (shrink to switch agents). Visible again at sm+.
+              expanded && "max-sm:hidden",
+            )}
+          >
             <button
               onClick={() => launch(SHELL)}
               className={cn(
@@ -190,7 +200,7 @@ export function AssistantDock() {
         </div>
 
         {/* Body */}
-        <div className="relative flex-1 min-h-0 p-2">
+        <div className={cn("relative flex-1 min-h-0 p-2", expanded && "max-sm:p-0")}>
           {active ? (
             <AgentTerminal
               key={active.key}
@@ -200,6 +210,8 @@ export function AssistantDock() {
               resumeSessionId={active.resumeSessionId}
               onSession={onSession}
               fill
+              compact={expanded}
+              fitSignal={(open ? 1 : 0) + (expanded ? 2 : 0)}
             />
           ) : (
             <div className="h-full flex items-center justify-center text-sm text-[var(--muted)]">
