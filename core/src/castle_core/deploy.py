@@ -27,6 +27,7 @@ from castle_core.generators.caddyfile import (
     _DNS_TOKEN_ENV,
     generate_caddyfile_from_registry,
 )
+from castle_core.generators.dns import reconcile_public_dns
 from castle_core.generators.tunnel import (
     generate_tunnel_config,
     public_hostnames,
@@ -200,27 +201,33 @@ def _write_tunnel_config(registry: NodeRegistry, messages: list[str]) -> None:
     """Write the cloudflared ingress config from the registry's public services.
 
     No public services (or no tunnel configured) → remove any stale config and
-    leave the tunnel down. Otherwise write it, list the hostnames that still need a
-    DNS route, and restart the tunnel service if it's running so it takes effect.
+    leave the tunnel down. Otherwise write it and restart the tunnel service if
+    it's running so it takes effect. Either way the public CNAMEs are reconciled to
+    match the current public set (create missing, delete removed) when a DNS token
+    is configured; without one, the manual route-once commands are surfaced instead.
     """
+    node = registry.node
     config_path = SPECS_DIR / "cloudflared.yml"
     content = generate_tunnel_config(registry)
     if content is None:
         if config_path.exists():
             config_path.unlink()
             messages.append("No public services — removed cloudflared config.")
+        # Still reconcile so any CNAMEs castle created earlier are cleaned up.
+        reconcile_public_dns(node.public_domain, node.tunnel_id, [], messages)
         return
 
     config_path.write_text(content)
     hosts = public_hostnames(registry)
     messages.append(f"Tunnel config written: {config_path} ({len(hosts)} public)")
-    # DNS is not automatic: each public host needs a CNAME → the tunnel. Surface the
-    # exact commands rather than silently assuming they're routed.
-    tid = registry.node.tunnel_id
-    for h in hosts:
-        messages.append(
-            f"  public: {h}  (route once: cloudflared tunnel route dns {tid} {h})"
-        )
+    # Reconcile the public CNAMEs to the tunnel. Falls back to surfacing the manual
+    # `cloudflared tunnel route dns` commands when no DNS token is configured.
+    if not reconcile_public_dns(node.public_domain, node.tunnel_id, hosts, messages):
+        for h in hosts:
+            messages.append(
+                f"  public: {h}  "
+                f"(route once: cloudflared tunnel route dns {node.tunnel_id} {h})"
+            )
 
     tunnel_unit = unit_name(_TUNNEL_NAME)
     active = subprocess.run(

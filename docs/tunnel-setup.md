@@ -89,18 +89,45 @@ proxy: true      # required — the service must be routed
 public: true     # also expose at <name>.pub.payne.io via the tunnel
 ```
 
-Then deploy and route DNS (a CNAME `<name>.pub.payne.io → <tunnel>.cfargotunnel.com`,
-created once per public host — `castle deploy` prints the exact command):
+Then just deploy:
 
 ```bash
 castle deploy
-cloudflared tunnel route dns <tunnel-id> <name>.pub.payne.io
 ```
 
 `castle deploy` regenerates `~/.castle/artifacts/specs/cloudflared.yml` from the
 current set of public services and restarts `castle-tunnel`. Flip `public` back to
 `false` (or remove it) and redeploy to un-expose — the hostname drops out of the
 ingress immediately.
+
+### DNS: automatic (with a token) or manual
+
+Each public host needs a CNAME `<name>.pub.payne.io → <tunnel>.cfargotunnel.com`.
+Castle can manage these for you. Create a Cloudflare API token with a single
+**`DNS:Edit`** permission scoped to the **public zone** — this is exactly
+Cloudflare's built-in *"Edit zone DNS"* template. That one permission is
+sufficient: it resolves the zone by name *and* creates/deletes records (no
+separate `Zone:Read` is needed — verified against `domain0.org`). An account-owned
+token (`cfat_…`) works (that's what this was confirmed with). Drop it into the
+secret store:
+
+```bash
+printf %s "<token>" > ~/.castle/secrets/CLOUDFLARE_PUBLIC_DNS_TOKEN
+chmod 600 ~/.castle/secrets/CLOUDFLARE_PUBLIC_DNS_TOKEN
+```
+
+With it present, every `castle deploy` **reconciles** the public CNAMEs against the
+current public set — creating missing ones and deleting removed ones — and prints a
+one-line summary. It only ever touches records pointing at *this* tunnel
+(`<tunnel_id>.cfargotunnel.com`), so hand-managed records in the same zone are safe.
+This token is separate from `CLOUDFLARE_API_TOKEN` (which is the ACME token for the
+internal zone); the public zone is usually a different zone/account.
+
+Without the token, `castle deploy` instead prints the exact command to run per host:
+
+```bash
+cloudflared tunnel route dns <tunnel-id> <name>.pub.payne.io
+```
 
 ## The part that isn't the tunnel
 

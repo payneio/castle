@@ -350,10 +350,70 @@ def _check_tls_exposure(config) -> list[Check]:
                     hint="castle service start castle-tunnel",
                 )
             )
+        checks.append(_check_public_dns(config))
 
     if not checks:
         checks.append(Check(OK, "off mode — no TLS/exposure to check", detail="localhost only"))
     return checks
+
+
+def _check_public_dns(config) -> Check:
+    """Whether Castle can manage the public CNAMEs itself.
+
+    Read-only: confirms the token exists and can reach the public zone + its DNS
+    records. The required permission is a single DNS:Edit (Cloudflare's 'Edit zone
+    DNS' template), which also grants the zone lookup — so a correctly-scoped token
+    passes this probe. Write itself isn't exercised (that would mutate); a
+    DNS:Read-only token would false-pass here but `castle deploy` then surfaces a
+    403 with the fix. Absent token → WARN (CNAMEs stay manual), not a failure.
+    """
+    import urllib.error
+
+    from castle_core.generators.dns import PUBLIC_DNS_TOKEN, _api, public_dns_token
+
+    gw = config.gateway
+    token = public_dns_token()
+    if not token:
+        return Check(
+            WARN,
+            "public DNS not automated",
+            detail=f"no {PUBLIC_DNS_TOKEN} secret — CNAMEs are manual",
+            hint=(
+                f"add a Cloudflare token with DNS:Edit on {gw.public_domain} "
+                f"('Edit zone DNS' template) → ~/.castle/secrets/{PUBLIC_DNS_TOKEN} "
+                "(else route each host by hand)"
+            ),
+        )
+    try:
+        zres = (_api(token, "GET", f"/zones?name={gw.public_domain}").get("result")) or []
+        if not zres:
+            return Check(
+                FAIL,
+                "public DNS token can't see the zone",
+                detail=f"{gw.public_domain} not visible",
+                hint=(
+                    f"token needs DNS:Edit scoped to {gw.public_domain}, in that "
+                    "zone's account ('Edit zone DNS' template)"
+                ),
+            )
+        zid = zres[0]["id"]
+        _api(token, "GET", f"/zones/{zid}/dns_records?type=CNAME&per_page=1")
+    except urllib.error.HTTPError as e:
+        if e.code == 403:
+            return Check(
+                FAIL,
+                "public DNS token lacks DNS access",
+                detail="zone readable but DNS records forbidden (403)",
+                hint="add DNS:Edit to the token (Cloudflare 'Edit zone DNS' template)",
+            )
+        return Check(WARN, "public DNS token check inconclusive", detail=f"HTTP {e.code}")
+    except Exception as e:  # noqa: BLE001 — never let a network hiccup fail doctor
+        return Check(WARN, "public DNS token check inconclusive", detail=str(e)[:60])
+    return Check(
+        OK,
+        "public DNS token valid",
+        detail=f"can reach {gw.public_domain} + its records",
+    )
 
 
 def _check_privileged_ports() -> Check:
