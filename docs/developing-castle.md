@@ -63,7 +63,7 @@ for tools/libraries.
   at `/usr/local/bin/caddy` when `tls: acme`.
 - Systemd user units at `~/.config/systemd/user/castle-*.service` (+ `.timer`);
   the unit for program `X` is `castle-X.service`. Use drop-in `*.service.d/*.conf`
-  for extra env `castle deploy` shouldn't overwrite.
+  for extra env `castle apply` shouldn't overwrite.
 - The `container` launcher resolves docker via `shutil.which("docker")` (preferred
   over rootless podman on this box).
 - Service data at `$CASTLE_DATA_DIR/<name>/`; secrets at `~/.castle/secrets/`

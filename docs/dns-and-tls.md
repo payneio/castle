@@ -122,7 +122,7 @@ origin — moving a service onto HTTPS changes its origin.
    (§DNS). Verify: `dig +short <name>.<domain>` → the node's IP.
 3. **Set `gateway.tls: acme`** (with `domain`/`acme_email`), plus the operational
    prerequisites (below).
-4. **Deploy & reload:** `castle deploy` regenerates the Caddyfile and reloads Caddy.
+4. **Deploy & reload:** `castle apply` regenerates the Caddyfile and reloads Caddy.
 5. **Update the app's origin allowlist** if it has one (§secure context).
 
 ## Operational prerequisites
@@ -142,7 +142,7 @@ a DNS token.
   (`~/.castle/secrets/<TOKEN_NAME>`, scope: the DNS provider's "edit DNS records"
   permission for your zone) and map it into the gateway service env in
   `deployments/castle-gateway.yaml` (`defaults.env`), so Caddy reads it as
-  `{env.<TOKEN_NAME>}`. `castle deploy` warns if the domain, env var, or secret is
+  `{env.<TOKEN_NAME>}`. `castle apply` warns if the domain, env var, or secret is
   missing.
 - **`acme` — stage first.** Set `CASTLE_ACME_STAGING=1` at deploy to use Let's
   Encrypt's staging CA (generous rate limits) while verifying issuance, then unset

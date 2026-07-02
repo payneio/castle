@@ -119,7 +119,7 @@ leaves the schema intact (and says so). To destroy the data too:
 castle delete my-app --purge-data      # drop schema my_app cascade
 ```
 
-`castle deploy` then prunes the schema from `PGRST_DB_SCHEMAS`; **restart the
+`castle apply` then prunes the schema from `PGRST_DB_SCHEMAS`; **restart the
 `supabase` service** for PostgREST to pick up the added/removed schema list.
 
 ## Auth, RLS & the three privacy layers
@@ -161,7 +161,7 @@ service itself is likewise at `supabase.<gateway.domain>`.) See
 castle program create my-app --stack supabase --description "..."   # scaffold + register
 castle program build my-app        # apply unapplied migrations to the substrate
 castle program test  my-app        # deno test over functions/ (if deno present)
-castle deploy && castle gateway reload    # serve the static UI at /my-app/
+castle apply    # serve the static UI at /my-app/
 ```
 
 ## Scaffolding

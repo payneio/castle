@@ -59,38 +59,37 @@ castle program add <path|git-url> [--name ...]                   # adopt EXISTIN
 castle program clone [name]                                      # provision repo: source
 castle program delete <name> [--source] [-y]
 castle program run <name> [args...]                              # declared run command
-castle program install|uninstall [name]                          # activate tools/statics
 castle program build|test|lint|format|type-check|check [name]    # dev verbs
 
 # Services — daemons (manager: systemd, no schedule)
 castle service list|info <name> [--json]
 castle service create <name> [--program P] [--port N] [--health ...] [--launcher ...]
-castle service deploy <name>              # generate unit + gateway route
-castle service enable|disable <name>      # systemd enable/disable (+ boot)
-castle service start|stop|restart <name>
+castle service restart <name>             # imperative bounce
 castle service logs <name> [-f] [-n 50]
 
-# Jobs — scheduled tasks (manager: systemd + schedule). Same verbs; create takes --schedule
+# Jobs — scheduled tasks (manager: systemd + schedule). create takes --schedule
 castle job create <name> [--program P] --schedule "0 2 * * *" [--launcher ...]
-castle job <list|info|delete|deploy|enable|disable|start|stop|restart|logs> ...
+castle job <list|info|delete|restart|logs> ...
 
 # Tools — CLIs on PATH (manager: path)
 castle tool list [--json]          # each tool's executable + description + install state
 castle tool info <name> [--json]
-castle tool install|uninstall <name>
 
 # Platform-wide
-castle list [--kind ...] [--stack ...] [--json]   # all deployments
+castle apply [name] [--plan]                       # converge runtime to config — the workhorse
+castle list [--kind ...] [--stack ...] [--json]    # all deployments
 castle status                                      # unified health/status
-castle doctor                                       # diagnose setup + runtime, with fix hints
-castle deploy [name]                               # apply config → units + Caddyfile
-castle start | stop | restart                      # all services (+ gateway)
-castle gateway start|stop|reload|status            # the Caddy gateway
+castle doctor                                      # diagnose setup + runtime, with fix hints
+castle restart [name]                              # imperative bounce (one or all)
+castle gateway reload|status                       # the Caddy gateway
 ```
 
 `castle service`/`job`/`tool` are **views** over the one deployment set, filtered
-by derived kind. Bringing everything online is the two honest steps
-**`castle deploy && castle start`** (apply config, then start).
+by derived kind. Lifecycle is **convergence**: edit config, then **`castle apply`**
+renders units + the Caddyfile and reconciles the runtime (activate what's enabled,
+restart what changed, deactivate what's disabled). To durably turn a deployment
+off, set `enabled: false` and apply — there is no separate start/stop/enable.
+`castle restart` is the one imperative bounce.
 
 **Dev verbs resolve per-program:** a declared `commands:` entry (or `build:`)
 overrides the program's stack default, else the stack handler, else the verb is
@@ -108,8 +107,7 @@ castle program create my-service --stack python-fastapi --description "Does X"
 cd /data/repos/my-service && uv sync         # implement it
 castle program test my-service
 castle service create my-service --program my-service --port 9001
-castle service deploy my-service && castle service enable my-service
-castle gateway reload
+castle apply my-service        # renders the unit + gateway route and starts it
 ```
 
 The service reads its port/data dir from env vars that `deployments/my-service.yaml`
@@ -120,7 +118,7 @@ maps via placeholders (see §6). Stack guide: **`docs/stacks/python-fastapi.md`*
 ```bash
 castle program create my-tool --stack python-cli --description "Does Y"
 cd /data/repos/my-tool && uv sync
-castle tool install my-tool          # uv tool install → on PATH
+castle apply my-tool                 # installs the path deployment on PATH
 ```
 
 `castle tool list --json` is the machine-readable tool catalog (each tool's real
@@ -134,7 +132,7 @@ A job is a `manager: systemd` deployment with a `schedule` (cron). Generates a
 
 ```bash
 castle job create nightly --program my-tool --schedule "0 2 * * *" --launcher command
-castle job deploy nightly && castle job enable nightly
+castle apply nightly
 ```
 
 ### Create a static frontend
@@ -143,7 +141,7 @@ castle job deploy nightly && castle job enable nightly
 # scaffold a Vite/React app under /data/repos/my-frontend (see docs/stacks/react-vite.md)
 castle program build my-frontend                      # produces dist/
 # deployments/my-frontend.yaml → manager: caddy, root: dist
-castle deploy && castle gateway reload                # served at my-frontend.<domain>
+castle apply                # served at my-frontend.<domain>
 ```
 
 The gateway serves the build **in place** from `<source>/<root>` — no copy, no
@@ -213,7 +211,7 @@ context** (`crypto.subtle`, service workers), which plain-HTTP LAN hosts lack.
 `acme` operational prerequisites (castle can't do these for you):
 - **DNS-plugin Caddy** at `/usr/local/bin/caddy` — `./install.sh --with-dns-plugin=cloudflare`.
 - **Provider token** stored as a secret and mapped into the gateway service env
-  (`CLOUDFLARE_API_TOKEN`); `castle deploy` warns if missing.
+  (`CLOUDFLARE_API_TOKEN`); `castle apply` warns if missing.
 - **Bind :443/:80** — lower the floor once: `net.ipv4.ip_unprivileged_port_start=80`
   in `/etc/sysctl.d/` (beats `setcap`, which `NoNewPrivileges` would void).
 - **Stage first**: `CASTLE_ACME_STAGING=1` at deploy, verify issuance, then unset
@@ -258,7 +256,7 @@ Roots: **`CASTLE_HOME`** (config/code/artifacts/secrets, default `~/.castle`) an
 
 `public: true` (requires `proxy: true`) projects a service to the internet at
 `<name>.<gateway.public_domain>` (a **separate** zone, so internal subdomain names
-stay out of public DNS). `castle deploy` generates the cloudflared ingress from the
+stay out of public DNS). `castle apply` generates the cloudflared ingress from the
 set of public services. Needs `gateway.public_domain` + `gateway.tunnel_id` set and
 the `castle-tunnel` service running. → One-time setup: **`docs/tunnel-setup.md`**.
 

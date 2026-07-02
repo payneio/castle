@@ -333,7 +333,7 @@ proxy: true   # expose at <service-name>.<gateway.domain>
 `public: true` additionally projects a proxied service to the public internet via a
 Cloudflare tunnel, at **`<service-name>.<gateway.public_domain>`** (a separate zone,
 so internal subdomain names stay out of public DNS). Defaults to `false` — public is
-explicit — and **requires `proxy: true`**. `castle deploy` generates the cloudflared
+explicit — and **requires `proxy: true`**. `castle apply` generates the cloudflared
 ingress from the set of public services. Needs `gateway.public_domain` +
 `gateway.tunnel_id` set and the `castle-tunnel` service running; see
 @docs/tunnel-setup.md for the one-time setup.
@@ -467,7 +467,7 @@ Setup (the parts castle can't do for you):
     env:
       CLOUDFLARE_API_TOKEN: ${secret:CLOUDFLARE_API_TOKEN}
   ```
-  `castle deploy` warns if the domain, this env var, or the secret is missing.
+  `castle apply` warns if the domain, this env var, or the secret is missing.
 - **LAN DNS.** Add a wildcard on your LAN's DNS server (usually the router)
   pointing `*.<domain>` at the gateway's private IP — `address=/<domain>/<gateway-ip>`
   (dnsmasq) or the equivalent A record. The public zone gets no A records, so
@@ -493,8 +493,9 @@ manage:
   systemd: {}
 ```
 
-Enables `castle service enable/disable` and `castle service logs`. An empty `{}`
-uses defaults (enable=true, restart=on-failure, restart_sec=2).
+Marks the deployment systemd-managed, so `castle apply` generates and reconciles
+its unit (and `castle service logs` tails it). An empty `{}` uses defaults
+(enable=true, restart=on-failure, restart_sec=2).
 
 Full options:
 ```yaml
@@ -636,17 +637,17 @@ castle program create my-service --stack python-fastapi   # 1. Scaffold + regist
 cd /data/repos/my-service && uv sync   # 2. Install deps
 # ... implement ...
 castle program test my-service                    # 3. Run tests
-castle service enable my-service          # 4. Generate systemd unit, start
-castle gateway reload                     # 5. Update Caddy routes
+castle apply my-service          # 4. Render unit + routes and reconcile (start it)
 ```
 
-After `service enable`, the service starts automatically on boot and restarts
-on failure. Manage with:
+`castle apply` renders the systemd unit + Caddy route and starts the service
+(which then runs on boot and restarts on failure). Manage with:
 
 ```bash
 castle logs my-service -f         # Tail logs
 castle service run my-service     # Run in foreground (for debugging)
-castle service disable my-service # Stop and remove systemd unit
+castle service restart my-service # Imperative bounce
+# To stop it durably: set `enabled: false` in its deployment, then `castle apply`
 ```
 
 ### Tool lifecycle
@@ -656,7 +657,7 @@ castle program create my-tool --stack python-cli        # 1. Scaffold + register
 cd /data/repos/my-tool && uv sync     # 2. Install deps
 # ... implement ...
 castle program test my-tool                      # 3. Run tests
-uv tool install --editable /data/repos/my-tool/   # 4. Install to PATH
+castle apply my-tool                             # 4. Install the path deployment on PATH
 ```
 
 ### Job lifecycle
@@ -676,7 +677,7 @@ manage:
   systemd: {}
 ```
 
-`castle job enable my-job` generates both a `.service` (Type=oneshot)
+`castle apply my-job` generates both a `.service` (Type=oneshot)
 and a `.timer` file.
 
 ## Infrastructure paths
