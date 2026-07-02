@@ -101,17 +101,41 @@ block set, a sensible default set (`claude`, `opencode`, `amplifier`, …) is of
 
 ## Quick start
 
-```bash
-# Install the CLI (editable, onto your PATH)
-uv tool install --editable cli/
+**Prerequisites:** a Debian/Ubuntu-family Linux with `apt` and `sudo`, `systemd`
+(user services), and `git`. `install.sh` sets up everything else — Docker, Caddy,
+`uv`, and the `castle` CLI itself.
 
-# Bootstrap infrastructure + the ~/.castle tree and a default castle.yaml
+```bash
+git clone <this-repo> ~/castle && cd ~/castle
+
+# One command: installs uv + the castle CLI, sets up infra (Docker, Caddy, MQTT,
+# Postgres), creates ~/.castle, registers Castle's own control plane, builds the UI.
 ./install.sh
 
-castle list                     # what's registered
 castle deploy && castle start   # apply config to the runtime, then bring it up
+castle doctor                   # verify — every check should be green
 open http://localhost:9000      # the dashboard
 ```
+
+`castle doctor` is your friend at every step: it inspects setup *and* runtime and,
+for anything not green, prints the exact next command. Run it any time something
+looks off — after an install, a deploy, or a config change.
+
+### Exposure: from localhost to your own HTTPS domain
+
+Localhost is the first rung; you climb only as far as you need. Each rung is a small
+config change plus `castle deploy`, and `castle doctor` tells you what a rung still
+needs.
+
+| Rung | You get | What it takes |
+|------|---------|---------------|
+| **localhost** *(default)* | dashboard + services on `:9000` / `host:port` | nothing — this is the quick start above |
+| **LAN HTTPS** | real `https://<name>.<your-domain>` on every device on your network, publicly-trusted cert, services stay internal | own a domain; set `gateway.tls: acme` + `domain:`; one wildcard DNS record on your router; a Cloudflare token. → [docs/dns-and-tls.md](docs/dns-and-tls.md) |
+| **Public** | a chosen service reachable from the internet | `public: true` on the service + a Cloudflare tunnel. → [docs/tunnel-setup.md](docs/tunnel-setup.md) |
+
+The jump to LAN HTTPS is the involved one (DNS + a token + binding `:443`). Set
+`gateway.tls: acme` and run `castle doctor` — it enumerates exactly the pieces that
+are still missing, each with its fix.
 
 ## Creating programs
 
@@ -153,7 +177,8 @@ castle tool     list|info|install|uninstall                    # CLIs on your PA
 
 # Platform-wide
 castle list [--kind K] [--stack S] [--json]   # catalog + every deployment view
-castle status                                 # unified status
+castle status                                 # unified runtime status
+castle doctor                                 # diagnose setup + health, with fix hints
 castle deploy [name]                          # apply config → units + Caddyfile
 castle start | stop | restart                 # all deployments (+ gateway)
 castle gateway start|stop|reload|status

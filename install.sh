@@ -555,6 +555,7 @@ print_summary() {
     printf "Next steps:\n"
     printf "  castle deploy                 # Generate registry, systemd units, Caddyfile\n"
     printf "  castle start                  # Start the gateway, API, and all deployments\n"
+    printf "  castle doctor                 # Verify setup + health (green = good to go)\n"
     printf "  open http://localhost:9000    # the dashboard\n"
 }
 

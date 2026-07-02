@@ -82,6 +82,7 @@ castle tool install|uninstall <name>
 # Platform-wide
 castle list [--kind ...] [--stack ...] [--json]   # all deployments
 castle status                                      # unified health/status
+castle doctor                                       # diagnose setup + runtime, with fix hints
 castle deploy [name]                               # apply config → units + Caddyfile
 castle start | stop | restart                      # all services (+ gateway)
 castle gateway start|stop|reload|status            # the Caddy gateway

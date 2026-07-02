@@ -193,6 +193,9 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("stop", help="Stop all services and the gateway")
     subparsers.add_parser("restart", help="Restart all services and jobs")
     subparsers.add_parser("status", help="Show status across the platform")
+    subparsers.add_parser(
+        "doctor", help="Diagnose setup + runtime health, with next-step hints"
+    )
     p = subparsers.add_parser("deploy", help="Apply config to runtime (units + Caddyfile)")
     p.add_argument("name", nargs="?", help="Service/job to deploy (default: all)")
 
@@ -346,6 +349,10 @@ def main() -> int:
         from castle_cli.commands.service import run_status
 
         return run_status(args)
+    if cmd == "doctor":
+        from castle_cli.commands.doctor import run_doctor
+
+        return run_doctor(args)
     if cmd == "deploy":
         from castle_cli.commands.deploy import run_deploy
 
