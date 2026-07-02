@@ -32,6 +32,20 @@ def _set_winsize(fd: int, rows: int, cols: int) -> None:
     fcntl.ioctl(fd, termios.TIOCSWINSZ, winsize)
 
 
+def _acquire_controlling_tty() -> None:
+    """Child-side setup (preexec), run after the pty slave is dup'd to fd 0/1/2.
+
+    ``setsid()`` starts a new session (own process group, so cleanup can
+    ``killpg`` the whole tree). ``TIOCSCTTY`` then makes the slave our
+    *controlling terminal* — without it the kernel has no foreground process
+    group to deliver ``SIGWINCH`` to, so a later winsize change (a browser resize)
+    is silently dropped and the app never reflows. This is what makes live resize
+    work, not just the initial size.
+    """
+    os.setsid()
+    fcntl.ioctl(0, termios.TIOCSCTTY, 0)
+
+
 @dataclass
 class PtySession:
     """A child process attached to a pty master.
@@ -77,7 +91,9 @@ class PtySession:
             stderr=slave_fd,
             cwd=str(cwd) if cwd else None,
             env=proc_env,
-            start_new_session=True,  # own session/group → controlling tty + killpg
+            # setsid + TIOCSCTTY in the child: own session/group (for killpg) AND
+            # the slave as controlling tty (for SIGWINCH resize delivery).
+            preexec_fn=_acquire_controlling_tty,
             close_fds=True,
         )
         os.close(slave_fd)  # parent keeps only the master

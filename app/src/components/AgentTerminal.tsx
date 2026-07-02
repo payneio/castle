@@ -219,13 +219,18 @@ export function AgentTerminal({
           </button>
         )}
       </div>
+      {/* Sized region + an absolutely-filled xterm mount. The absolute inset-0
+          child always has an explicit box equal to its parent, so `fit()` never
+          measures a stale/percentage-collapsed height — the terminal tracks the
+          panel as it expands. */}
       <div
-        ref={containerRef}
-        className={cn(
-          maximized || fill ? "flex-1 min-h-0 p-2" : "h-[560px] p-2",
-          compact && "max-sm:p-0",
-        )}
-      />
+        className={cn("relative", maximized || fill ? "flex-1 min-h-0" : "h-[560px]")}
+      >
+        <div
+          ref={containerRef}
+          className={cn("absolute inset-0 p-2", compact && "max-sm:p-0")}
+        />
+      </div>
     </div>
   )
 }
