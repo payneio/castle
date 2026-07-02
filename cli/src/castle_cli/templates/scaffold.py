@@ -573,7 +573,7 @@ def _scaffold_supabase(project_dir: Path, name: str, description: str) -> None:
 
     Produces migrations/ (applied to the substrate by `castle program build`),
     functions/ (deno edge functions), public/ (static UI served in place at
-    /<name>/ by the gateway), and supabase.app.yaml (auth policy + wiring).
+    <name>.<gateway.domain> by the gateway), and supabase.app.yaml (auth policy + wiring).
 
     The app owns its code and stays repo-durable; only its rows/blobs live on the
     shared substrate. Each app is isolated in its **own Postgres schema** (the app

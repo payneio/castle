@@ -262,8 +262,8 @@ class ReactViteHandler(StackHandler):
 
     async def build(self, name: str, comp: ProgramSpec, root: Path) -> ActionResult:
         src = _source_dir(comp, root)
-        # Build against the gateway serve prefix so absolute asset URLs resolve at
-        # /<name>/ (vite.config reads VITE_BASE). Removes the hand-tuned-base footgun.
+        # Build against the gateway serve root so absolute asset URLs resolve at /
+        # (vite.config reads VITE_BASE=/). Removes the hand-tuned-base footgun.
         rc, output = await _run(
             _pnpm("build"), src, env={**_PNPM_ENV, "VITE_BASE": _vite_base(name)}
         )

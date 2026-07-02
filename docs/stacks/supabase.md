@@ -63,7 +63,7 @@ my-app/
 
 Registered as a program with `build.outputs: [public]` plus a `manager: caddy`
 deployment (`root: public`, derived **kind: static**), so the
-gateway serves `public/` in place at `/my-app/` — no service, no process.
+gateway serves `public/` in place at `<name>.<gateway.domain>` (its own subdomain root) — no service, no process.
 
 ## supabase.app.yaml
 
@@ -161,7 +161,7 @@ service itself is likewise at `supabase.<gateway.domain>`.) See
 castle program create my-app --stack supabase --description "..."   # scaffold + register
 castle program build my-app        # apply unapplied migrations to the substrate
 castle program test  my-app        # deno test over functions/ (if deno present)
-castle apply    # serve the static UI at /my-app/
+castle apply    # serve the static UI at <name>.<gateway.domain>
 ```
 
 ## Scaffolding

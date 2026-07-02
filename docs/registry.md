@@ -395,8 +395,8 @@ version number"). `gateway.tls` has two values:
 | `off` (default/unset) | `:<port>` HTTP, `auto_https off` | host matcher on `:<port>` | none |
 | `acme` | one `*.<domain>` `:443` site | matcher inside the wildcard site | **real Let's Encrypt wildcard, no CA install** |
 
-Path-prefix and static routes always stay on the HTTP `:<port>` site — the way to
-put a service on HTTPS is to set `proxy: true` (and use acme mode). A node with no public
+In `off` mode all routes stay on the HTTP `:<port>` site — the way to put a
+service on HTTPS is to set `proxy: true` (and use acme mode). A node with no public
 domain stays on `off` (plain HTTP; use `localhost`/direct ports for anything that
 needs a secure context).
 
@@ -413,9 +413,10 @@ the floor once: `net.ipv4.ip_unprivileged_port_start=80` (persist in
 
 #### Publicly-trusted HTTPS — `gateway.tls: acme`
 
-A private-CA approach (Caddy's `tls internal`) forces every client device to trust
-a custom root — which some platforms (e.g. Android browsers, and Firefox, which
-uses its own store) make painful. `acme` mode avoids it entirely: Caddy obtains a
+A private-CA approach would force every client device to trust a custom root —
+which some platforms (e.g. Android browsers, and Firefox, which uses its own
+store) make painful — so Castle doesn't offer one. `acme` mode avoids it entirely:
+Caddy obtains a
 **real Let's Encrypt wildcard cert** (`*.<domain>`) via a **DNS-01** challenge, so
 every browser trusts it with **zero CA install** — while the services stay
 **internal-only**.

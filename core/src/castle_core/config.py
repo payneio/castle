@@ -114,10 +114,8 @@ class GatewayConfig:
     """Gateway configuration."""
 
     port: int = 9000
-    # None/"off" → HTTP-only gateway. "internal" → Caddy serves host routes over
-    # HTTPS with its local CA (browsers get a secure context; trust the root CA).
-    # "acme" → real Let's Encrypt wildcard cert (*.domain) via a DNS-01 challenge;
-    # publicly trusted, no CA to install.
+    # None/"off" → HTTP-only gateway. "acme" → real Let's Encrypt wildcard cert
+    # (*.domain) via a DNS-01 challenge; publicly trusted, no CA to install.
     tls: str | None = None
     # acme mode only: the zone for the wildcard cert and host-route subdomains
     # (e.g. "civil.payne.io" → host routes become <service>.civil.payne.io).

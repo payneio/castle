@@ -114,7 +114,8 @@ Manages running processes using standard Linux infrastructure.
 
 **Caddy** handles HTTP routing:
 - Reverse proxy on port 9000
-- Path-based routing to services (`/api` → port 9020)
+- Subdomain routing to services (`<service>.<domain>`); the `/api` path is
+  reserved for the dashboard's own backend in no-domain (HTTP-only) mode
 - Static file serving for frontends
 - TLS termination
 
@@ -131,7 +132,7 @@ infrastructure and gets out of the way.
 Systemd units point to installed binaries (on PATH or in `~/.local/bin/`),
 not to repo subdirectories. Frontends are the deliberate exception: rather
 than stage a copy, Caddy serves their built assets **in place** from the repo
-(`<source>/<dist>/`), with the serve prefix baked into the build via `VITE_BASE`.
+(`<source>/<dist>/`) at the root of its own subdomain (`VITE_BASE=/`).
 
 ### Registry Layer
 
@@ -258,7 +259,7 @@ programs on a single node and across multiple Castle nodes.
 
 **Intra-node coordination:**
 - Programs find each other through the gateway or direct port access via env
-  vars. A gateway route maps an address (path prefix or host) to a target of one
+  vars. A gateway route maps a host address (`<name>.<domain>`) to a target of one
   kind: **proxy** (a local service port), **remote** (a service on another
   node), or **static** (a built frontend's `dist/`, served as files). The same
   computed route list drives the Caddyfile, `castle gateway status`, and the
@@ -270,8 +271,9 @@ programs on a single node and across multiple Castle nodes.
 - Each Castle node runs the API, which exposes its program registry.
 - Nodes discover each other via MQTT retained messages and mDNS/DNS-SD
   (python-zeroconf) for LAN environments.
-- The gateway on each node can proxy to services on other nodes,
-  preserving path-based routing. Components don't know which node
+- The gateway on each node can proxy to services on other nodes via
+  host-based routing (`<service>.<domain>` resolves to the local port or,
+  via the remote registry, another node). Components don't know which node
   they're talking to.
 - MQTT provides pub/sub messaging for events, status, and coordination
   across nodes.

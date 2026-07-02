@@ -143,7 +143,7 @@ Reachability is the easy half. Anything public also needs, per service:
 ## Notes
 
 - Requires `gateway.tls: acme` (the tunnel forwards to the gateway's real-cert
-  `:443` host sites). On an `off`/`internal` gateway the origin bridge doesn't apply.
+  `:443` host sites). On an `off` (plain-HTTP) gateway the origin bridge doesn't apply.
 - Cloudflare terminates TLS at the edge (it can see plaintext). For a
   no-third-party-in-path variant, the same `public: true` model can drive a
   self-hosted VPS + WireGuard edge instead — the toggle and generator stay; only the
