@@ -4,7 +4,7 @@ import type { GatewayInfo } from "@/types"
 import { useSaveGatewayConfig } from "@/services/api/hooks"
 
 /** Editable gateway routing + public-exposure settings (domain / public_domain /
- *  tunnel / tls). Saves to castle.yaml; changes take effect on the next deploy. */
+ *  tunnel / tls). Saves to castle.yaml; changes take effect on the next apply. */
 export function GatewaySettings({ gateway }: { gateway: GatewayInfo }) {
   const { mutate: save, isPending, data: saved } = useSaveGatewayConfig()
   const [editing, setEditing] = useState(false)
@@ -44,7 +44,7 @@ export function GatewaySettings({ gateway }: { gateway: GatewayInfo }) {
           <button onClick={() => setEditing(false)} className="flex items-center gap-1 text-xs px-2.5 py-1 rounded bg-[var(--border)] text-[var(--muted)]">
             <X size={12} /> Cancel
           </button>
-          <span className="text-xs text-[var(--muted)]">Run <span className="font-mono">castle deploy</span> to apply.</span>
+          <span className="text-xs text-[var(--muted)]">Run <span className="font-mono">castle apply</span> (or the Apply button) to converge.</span>
         </div>
       </div>
     )

@@ -182,7 +182,7 @@ castle list [--kind K] [--stack S] [--json]   # catalog + every deployment view
 castle status                                 # unified runtime status
 castle doctor                                 # diagnose setup + health, with fix hints
 castle restart [name]                         # imperative bounce (one or all)
-castle gateway reload|status
+castle gateway               # status + route table (inspection)
 ```
 
 To turn a deployment off, set `enabled: false` in its config and `castle apply` —

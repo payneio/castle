@@ -226,16 +226,6 @@ export function useProgramAction() {
   })
 }
 
-export function useGatewayReload() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: () => apiClient.post<{ status: string }>("/gateway/reload"),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["gateway"] })
-    },
-  })
-}
-
 export function useSaveGatewayConfig() {
   const qc = useQueryClient()
   return useMutation({

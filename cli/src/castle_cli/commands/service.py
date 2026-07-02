@@ -14,7 +14,6 @@ from castle_core.manifest import kind_for
 
 from castle_cli.config import (
     CastleConfig,
-    ensure_dirs,
     load_config,
 )
 
@@ -175,30 +174,6 @@ def run_status(args: argparse.Namespace) -> int:
             tag = ", ".join(kinds) if kinds else "program"
             print(f"  {color}{label:10s}\033[0m  {name}  ({tag})")
         print()
-    return 0
-
-
-def _service_enable(config: CastleConfig, name: str) -> int:
-    """Enable a service in its mode (systemd unit / gateway route / PATH install)."""
-    import asyncio
-
-    from castle_core.lifecycle import activate
-
-    ensure_dirs()
-    result = asyncio.run(activate(name, config, config.root))
-    print(result.output)
-    return 0 if result.status == "ok" else 1
-
-
-def _service_disable(config: CastleConfig, name: str) -> int:
-    """Disable a service in its mode (stop unit / drop route / uninstall)."""
-    import asyncio
-
-    from castle_core.lifecycle import deactivate
-
-    print(f"Disabling {name}...")
-    result = asyncio.run(deactivate(name, config, config.root))
-    print(f"  {result.output}")
     return 0
 
 

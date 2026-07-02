@@ -454,4 +454,4 @@ castle program create my-service --stack python-fastapi --description "Does some
 ```
 
 See @docs/registry.md for manifest fields, castle.yaml structure,
-and the full service lifecycle (enable, logs, gateway reload).
+and the full service lifecycle (`castle apply`, logs).

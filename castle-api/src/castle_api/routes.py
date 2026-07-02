@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-import asyncio
 import subprocess
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, status
 
-from castle_core.config import SPECS_DIR
 from castle_core.generators.caddyfile import generate_caddyfile_from_registry
 from castle_core.manifest import (
     ProgramSpec,
@@ -937,7 +935,7 @@ def get_gateway() -> GatewayInfo:
 def save_gateway_config(request: GatewayConfigRequest) -> dict[str, str]:
     """Update the gateway's routing/exposure settings in castle.yaml.
 
-    Saves only; the caller runs deploy to regenerate the Caddyfile + tunnel config.
+    Saves only; the caller runs apply to regenerate the Caddyfile + tunnel config.
     An empty string clears a field.
     """
     root = get_castle_root()
@@ -952,7 +950,7 @@ def save_gateway_config(request: GatewayConfigRequest) -> dict[str, str]:
     config.gateway.public_domain = norm(request.public_domain)
     config.gateway.tunnel_id = norm(request.tunnel_id)
     save_config(config)
-    return {"status": "saved", "message": "Saved. Run deploy to apply."}
+    return {"status": "saved", "message": "Saved. Run apply to converge."}
 
 
 @router.get("/gateway/caddyfile")
@@ -962,35 +960,5 @@ def get_caddyfile() -> dict[str, str]:
     return {"content": generate_caddyfile_from_registry(registry)}
 
 
-@router.post("/gateway/reload")
-async def reload_gateway() -> dict[str, str]:
-    """Regenerate Caddyfile and reload Caddy."""
-    registry = get_registry()
-    SPECS_DIR.mkdir(parents=True, exist_ok=True)
-    caddyfile_path = SPECS_DIR / "Caddyfile"
-
-    # Include remote registries for cross-node routing
-    remote_regs = {h: n.registry for h, n in mesh_state.all_nodes().items()}
-    caddyfile_path.write_text(
-        generate_caddyfile_from_registry(
-            registry, remote_registries=remote_regs or None
-        )
-    )
-
-    proc = await asyncio.create_subprocess_exec(
-        "systemctl",
-        "--user",
-        "reload",
-        "castle-castle-gateway.service",
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    _, stderr = await proc.communicate()
-
-    if proc.returncode != 0:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Reload failed: {(stderr or b'').decode().strip()}",
-        )
-
-    return {"status": "ok"}
+# Note: gateway reload is not a standalone endpoint. Making routes/config live is
+# convergence — POST /apply renders the Caddyfile (+ tunnel) and reloads Caddy.
