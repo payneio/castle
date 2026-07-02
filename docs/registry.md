@@ -225,14 +225,14 @@ declares a **`manager`** — who makes it available and supervises its lifecycle
 ### `manager` — Who realizes it (the discriminant)
 
 A deployment is a *managed materialization* of a program. Its **`manager`** is
-the stored discriminant — the single axis lifecycle, deploy, and status all
-dispatch on:
+the stored discriminant — the single axis `castle apply` and status dispatch on
+(it's what makes activation polymorphic: one verb, kind-specific mechanism):
 
-| Manager | Makes available as | Launch mechanism | start/stop | Kind |
-|---------|--------------------|------------------|------------|------|
-| **systemd** | a running process (or a `.timer` for jobs) | nested `run: { launcher: … }` | `systemctl` | service / job |
-| **caddy** | a gateway static file_server route | *(none — files on disk; `root:`)* | add/remove route + reload | static |
-| **path** | an installed CLI on `PATH` | *(none — `uv tool install`)* | `uv tool install` / `uninstall` | tool |
+| Manager | Makes available as | Launch mechanism | how `apply` activates | Kind |
+|---------|--------------------|------------------|-----------------------|------|
+| **systemd** | a running process (or a `.timer` for jobs) | nested `run: { launcher: … }` | `systemctl enable --now` | service / job |
+| **caddy** | a gateway static file_server route | *(none — files on disk; `root:`)* | wire the route + reload | static |
+| **path** | an installed CLI on `PATH` | *(none — `uv tool install`)* | `uv tool install` | tool |
 | **none** | an external reference | *(none; `base_url:`/`health_url:`)* | *(nothing — not ours)* | reference |
 
 The **kind** (service/job/tool/static/reference) is **derived** from `manager` (+
@@ -630,55 +630,34 @@ manage:
 
 ## Lifecycle
 
-### Service lifecycle
+One flow for every kind — scaffold, implement, **`castle apply`**. Activation is
+polymorphic over the `manager`, so the *verb* never changes; only what apply *does*
+does:
 
 ```bash
-castle program create my-service --stack python-fastapi   # 1. Scaffold + register
-cd /data/repos/my-service && uv sync   # 2. Install deps
-# ... implement ...
-castle program test my-service                    # 3. Run tests
-castle apply my-service          # 4. Render unit + routes and reconcile (start it)
+castle program create my-thing --stack python-fastapi   # scaffold source + deployment
+cd /data/repos/my-thing && uv sync                      # implement
+castle program test my-thing                            # dev verbs (build/test/lint/…)
+castle apply my-thing                                   # converge: render + activate
 ```
 
-`castle apply` renders the systemd unit + Caddy route and starts the service
-(which then runs on boot and restarts on failure). Manage with:
+| kind (manager) | what `castle apply` does |
+|----------------|--------------------------|
+| **service** (systemd) | render the `.service` unit + gateway route, `enable --now` |
+| **job** (systemd + schedule) | render a `.service` (Type=oneshot) **and** a `.timer` |
+| **tool** (path) | `uv tool install` — put the executable on PATH |
+| **static** (caddy) | wire the gateway `file_server` route to `<source>/<root>` |
+
+Manage a running deployment:
 
 ```bash
-castle logs my-service -f         # Tail logs
-castle service run my-service     # Run in foreground (for debugging)
-castle service restart my-service # Imperative bounce
-# To stop it durably: set `enabled: false` in its deployment, then `castle apply`
+castle logs my-thing -f            # Tail logs
+castle program run my-thing        # Run in foreground (for debugging)
+castle restart my-thing            # Imperative bounce — re-actualize current state
 ```
 
-### Tool lifecycle
-
-```bash
-castle program create my-tool --stack python-cli        # 1. Scaffold + register
-cd /data/repos/my-tool && uv sync     # 2. Install deps
-# ... implement ...
-castle program test my-tool                      # 3. Run tests
-castle apply my-tool                             # 4. Install the path deployment on PATH
-```
-
-### Job lifecycle
-
-Jobs are deployments with `manager: systemd` plus a `schedule` — a
-`deployments/my-job.yaml` file with a nested `run:` launch block:
-
-```yaml
-# deployments/my-job.yaml (manager: systemd + schedule → kind: job)
-program: my-job
-manager: systemd
-run:
-  launcher: command
-  argv: ["my-job"]
-schedule: "0 2 * * *"
-manage:
-  systemd: {}
-```
-
-`castle apply my-job` generates both a `.service` (Type=oneshot)
-and a `.timer` file.
+To durably turn something off, set `enabled: false` in its deployment and
+`castle apply` — there is no start/stop/enable/disable/install verb.
 
 ## Infrastructure paths
 
@@ -693,8 +672,8 @@ variable (both expand `~` and resolve relative paths):
 | What | Where |
 |------|-------|
 | Castle home | `$CASTLE_HOME` (default `~/.castle`) |
-| Registry | `$CASTLE_HOME/castle.yaml` |
-| Program source (yours) | `$CASTLE_HOME/code/<name>/` |
+| Config | `$CASTLE_HOME/castle.yaml` + `programs/` + `deployments/` |
+| Program source (yours) | `/data/repos/<name>/` (`$CASTLE_REPOS_DIR`; absolute `source:`) |
 | Program source (castle's) | `<repo>/<name>` (via `source: repo:<name>`) |
 | Secrets | `$CASTLE_HOME/secrets/<NAME>` |
 | Generated Caddyfile | `$CASTLE_HOME/artifacts/specs/Caddyfile` |

@@ -47,15 +47,17 @@ for tools/libraries.
 ## castle-api endpoints (port 9020)
 
 - Core: `GET /health`, `GET /stream` (SSE: health, service-action, mesh)
+- Converge: `POST /apply` (`{name?, plan?}`) — the one lifecycle endpoint
 - Deployments: `GET /deployments[/{name}]`, `GET /status`
-- Catalog + editing: `GET /programs[/{name}]`, `POST /programs/{name}/{action}`,
-  `PUT|DELETE /programs/{name}`; likewise `/services`, `/jobs`
-- Config: `GET|PUT /`, `POST /apply`, `POST /deploy`
-- Gateway: `GET /gateway`, `GET /gateway/caddyfile` (reload is convergence: `POST /apply`)
+- Catalog + editing: `GET /programs[/{name}]`, `POST /programs/{name}/{action}`
+  (dev verbs only), `PUT|DELETE /programs/{name}`; likewise `/services`, `/jobs`
+- Config: `GET|PUT /`, `POST /config/apply`, `PUT /config/deployments/{name}/enabled`
+- Gateway: `GET /gateway`, `GET /gateway/caddyfile`, `PUT /gateway/config` (making
+  routes live is convergence: `POST /apply`)
 - Mesh: `GET /mesh/status`, `GET /nodes[/{hostname}]`
 - Agents (dashboard terminal UX): `GET /agents`, `GET /agents/sessions`,
   `GET /agents/history`, `DELETE /agents/sessions/{id}`, `WS /agents/{name}/session`
-- Service actions: `POST /services/{name}/{action}`, `GET /services/{name}/unit`
+- Service actions: `POST /services/{name}/restart`, `GET /services/{name}/unit`
 
 ## Infrastructure internals
 
