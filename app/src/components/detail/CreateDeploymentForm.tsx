@@ -108,12 +108,9 @@ export function CreateDeploymentForm({
     try {
       setBusy("Saving…")
       await apiClient.put(`/config/deployments/${name}`, { config: buildConfig() })
-      setBusy("Deploying…")
-      await apiClient.post(`/deploy`, { name })
-      if (kind === "service") {
-        setBusy("Starting…")
-        await apiClient.post(`/services/${name}/start`, {})
-      }
+      // Converge: render + activate the new deployment in one step.
+      setBusy("Applying…")
+      await apiClient.post(`/apply`, { name })
       qc.invalidateQueries({ queryKey: ["services"] })
       qc.invalidateQueries({ queryKey: ["jobs"] })
       qc.invalidateQueries({ queryKey: ["programs"] })

@@ -323,6 +323,29 @@ def delete_deployment(name: str) -> dict:
     return _delete_deployment(name)
 
 
+class EnabledRequest(BaseModel):
+    enabled: bool
+
+
+@router.put("/deployments/{name}/enabled")
+def set_deployment_enabled(name: str, request: EnabledRequest) -> dict:
+    """Set a deployment's declared `enabled` state (desired on/off).
+
+    Edits config only — the caller runs `POST /apply` to converge. Keeps the
+    declarative flow: change what you want, then apply.
+    """
+    config = get_config()
+    dep = config.deployments.get(name)
+    if dep is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Deployment '{name}' not found",
+        )
+    dep.enabled = request.enabled
+    save_config(config)
+    return {"ok": True, "deployment": name, "enabled": request.enabled}
+
+
 @router.put("/services/{name}")
 def save_service(name: str, request: ServiceConfigRequest) -> dict:
     """Alias of PUT /deployments/{name} (kept for the existing dashboard)."""

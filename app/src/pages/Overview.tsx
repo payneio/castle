@@ -11,6 +11,7 @@ import {
 } from "@/services/api/hooks"
 import { NodeBar } from "@/components/NodeBar"
 import { PageHeader } from "@/components/PageHeader"
+import { ConvergePanel } from "@/components/ConvergePanel"
 
 export function Overview() {
   const { data: services } = useServices()
@@ -96,6 +97,8 @@ export function Overview() {
           </Link>
         ))}
       </div>
+
+      <ConvergePanel />
     </div>
   )
 }

@@ -1,7 +1,7 @@
-import { Clock, Play, RefreshCw, Square, Terminal } from "lucide-react"
+import { Clock, Power, RefreshCw, Terminal } from "lucide-react"
 import { Link } from "react-router-dom"
 import type { JobSummary, HealthStatus } from "@/types"
-import { useServiceAction } from "@/services/api/hooks"
+import { useServiceAction, useSetEnabled } from "@/services/api/hooks"
 import { launcherLabel } from "@/lib/labels"
 import { StackBadge } from "./StackBadge"
 
@@ -11,12 +11,9 @@ interface JobCardProps {
 }
 
 export function JobCard({ job, health }: JobCardProps) {
-  const { mutate, isPending } = useServiceAction()
-  const isDown = health?.status === "down"
-
-  const doAction = (action: string) => {
-    mutate({ name: job.id, action })
-  }
+  const restart = useServiceAction()
+  const setEnabled = useSetEnabled()
+  const busy = restart.isPending || setEnabled.isPending
 
   return (
     <div className="relative bg-[var(--card)] border border-[var(--border)] rounded-lg p-5 hover:border-[var(--primary)] transition-colors">
@@ -60,32 +57,26 @@ export function JobCard({ job, health }: JobCardProps) {
 
         {job.managed && (
           <div className="relative z-10 flex items-center gap-1">
-            {isDown && (
-              <button
-                onClick={() => doAction("start")}
-                disabled={isPending}
-                className="p-1 rounded hover:bg-green-800/30 text-green-400 transition-colors disabled:opacity-40"
-                title="Start"
-              >
-                <Play size={14} />
-              </button>
-            )}
             <button
-              onClick={() => doAction("restart")}
-              disabled={isPending}
-              className="p-1 rounded hover:bg-blue-800/30 text-blue-400 transition-colors disabled:opacity-40"
-              title="Restart"
+              onClick={() => setEnabled.mutate({ name: job.id, enabled: !job.enabled })}
+              disabled={busy}
+              className={`p-1 rounded transition-colors disabled:opacity-40 ${
+                job.enabled
+                  ? "hover:bg-red-800/30 text-red-400"
+                  : "hover:bg-green-800/30 text-green-400"
+              }`}
+              title={job.enabled ? "Disable" : "Enable"}
             >
-              <RefreshCw size={14} />
+              <Power size={14} />
             </button>
-            {!isDown && (
+            {job.enabled && (
               <button
-                onClick={() => doAction("stop")}
-                disabled={isPending}
-                className="p-1 rounded hover:bg-red-800/30 text-red-400 transition-colors disabled:opacity-40"
-                title="Stop"
+                onClick={() => restart.mutate({ name: job.id, action: "restart" })}
+                disabled={busy}
+                className="p-1 rounded hover:bg-blue-800/30 text-blue-400 transition-colors disabled:opacity-40"
+                title="Restart"
               >
-                <Square size={14} />
+                <RefreshCw size={14} className={restart.isPending ? "animate-spin" : ""} />
               </button>
             )}
           </div>

@@ -1,6 +1,6 @@
 import { useParams } from "react-router-dom"
 import { Clock } from "lucide-react"
-import { useJob, useStatus } from "@/services/api/hooks"
+import { useJob } from "@/services/api/hooks"
 import { LogViewer } from "@/components/LogViewer"
 import { DetailHeader } from "@/components/detail/DetailHeader"
 import { ServiceControls } from "@/components/detail/ServiceControls"
@@ -10,8 +10,6 @@ import { ConfigPanel } from "@/components/detail/ConfigPanel"
 export function ScheduledDetailPage() {
   const { name } = useParams<{ name: string }>()
   const { data: deployment, isLoading, error, refetch } = useJob(name ?? "")
-  const { data: statusResp } = useStatus()
-  const health = statusResp?.statuses.find((s) => s.id === name)
 
   if (isLoading) {
     return (
@@ -38,7 +36,7 @@ export function ScheduledDetailPage() {
         stack={deployment.stack}
         source={deployment.source}
       >
-        <ServiceControls name={deployment.id} health={health} />
+        <ServiceControls name={deployment.id} enabled={deployment.enabled} />
       </DetailHeader>
 
       {deployment.schedule && (

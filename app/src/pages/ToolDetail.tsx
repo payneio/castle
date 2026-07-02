@@ -1,6 +1,6 @@
 import { useParams, Link } from "react-router-dom"
 import { Loader2, Package } from "lucide-react"
-import { useDeployment, useProgramAction } from "@/services/api/hooks"
+import { useDeployment, useSetEnabled } from "@/services/api/hooks"
 import { DetailHeader } from "@/components/detail/DetailHeader"
 import { ConfigPanel } from "@/components/detail/ConfigPanel"
 
@@ -38,9 +38,14 @@ export function ToolDetailPage() {
         <p className="text-sm text-[var(--muted)] -mt-4 mb-6">{deployment.description}</p>
       )}
 
-      {/* A tool's PATH deployment: install/uninstall is its start/stop. Its
-          live state is `installed` (on PATH), which the endpoint sets directly. */}
-      <PathLifecycle name={deployment.id} installed={deployment.installed} onDone={refetch} />
+      {/* A tool's PATH deployment: enabling converges it onto PATH, disabling
+          removes it. `installed` is the live state; `enabled` the desired one. */}
+      <PathLifecycle
+        name={deployment.id}
+        enabled={deployment.enabled}
+        installed={deployment.installed}
+        onDone={refetch}
+      />
 
       <div className="bg-[var(--card)] border border-[var(--border)] rounded-lg p-5 mb-6">
         <h2 className="text-sm font-semibold text-[var(--muted)] uppercase tracking-wider mb-3">
@@ -63,17 +68,19 @@ export function ToolDetailPage() {
   )
 }
 
-/** Install/uninstall a tool on PATH — the path deployment's lifecycle. */
+/** Enable/disable a tool — convergence installs it onto PATH or removes it. */
 function PathLifecycle({
   name,
+  enabled,
   installed: installedState,
   onDone,
 }: {
   name: string
+  enabled: boolean
   installed: boolean | null
   onDone: () => void
 }) {
-  const { mutate, isPending } = useProgramAction()
+  const { mutate, isPending } = useSetEnabled()
   const installed = installedState === true
   const dot =
     installedState === true
@@ -86,21 +93,20 @@ function PathLifecycle({
       <div className="flex items-center gap-2 text-sm">
         <span className={`h-2 w-2 rounded-full shrink-0 ${dot}`} />
         <span>{installed ? "Installed on PATH" : "Not installed"}</span>
+        {!enabled && <span className="text-xs text-amber-400">disabled</span>}
         <span className="text-xs text-[var(--muted)]">manager: path</span>
       </div>
       <button
-        onClick={() =>
-          mutate({ name, action: installed ? "uninstall" : "install" }, { onSuccess: onDone })
-        }
+        onClick={() => mutate({ name, enabled: !enabled }, { onSuccess: onDone })}
         disabled={isPending}
         className={`flex items-center gap-1.5 px-2.5 py-1 text-sm rounded border transition-colors disabled:opacity-40 ${
-          installed
+          enabled
             ? "border-red-800 text-red-400 hover:bg-red-800/30"
             : "border-green-800 text-green-400 hover:bg-green-800/30"
         }`}
       >
         {isPending && <Loader2 size={14} className="animate-spin" />}
-        {installed ? "Uninstall" : "Install"}
+        {enabled ? "Disable" : "Enable"}
       </button>
     </div>
   )
