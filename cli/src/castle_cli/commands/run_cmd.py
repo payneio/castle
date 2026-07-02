@@ -82,12 +82,12 @@ def run_run(args: argparse.Namespace) -> int:
 
     # Service: deployed command from the registry.
     if not REGISTRY_PATH.exists():
-        print("Error: no registry found. Run 'castle deploy' first.")
+        print("Error: no registry found. Run 'castle apply' first.")
         return 1
 
     registry = load_registry()
     if name not in registry.deployed:
-        print(f"Error: '{name}' is not a deployed service. Run 'castle deploy' first.")
+        print(f"Error: '{name}' is not a deployed service. Run 'castle apply' first.")
         return 1
 
     deployed = registry.deployed[name]

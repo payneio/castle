@@ -72,6 +72,9 @@ class Deployment:
     base_url: str | None = None
     schedule: str | None = None
     managed: bool = False
+    # Declared desired state (from the deployment's `enabled:`). `castle apply`
+    # activates enabled deployments and deactivates disabled ones. Default True.
+    enabled: bool = True
 
 
 @dataclass
@@ -155,6 +158,7 @@ def load_registry(path: Path | None = None) -> NodeRegistry:
             base_url=comp_data.get("base_url"),
             schedule=comp_data.get("schedule"),
             managed=comp_data.get("managed", False),
+            enabled=comp_data.get("enabled", True),
         )
 
     return NodeRegistry(node=node, deployed=deployed)
@@ -225,6 +229,10 @@ def save_registry(registry: NodeRegistry, path: Path | None = None) -> None:
             entry["schedule"] = comp.schedule
         if comp.managed:
             entry["managed"] = comp.managed
+        # Only emit when disabled — default-True omission keeps existing
+        # registries byte-identical and matches the load-side default.
+        if not comp.enabled:
+            entry["enabled"] = comp.enabled
         data["deployed"][name] = entry
 
     with open(path, "w") as f:

@@ -88,7 +88,7 @@ def run_service_create(args: argparse.Namespace) -> int:
         print(f"  port:   {args.port}")
     if proxy:
         print(f"  subdomain: {name}.<gateway.domain>")
-    print(f"\nNext: castle service deploy {name} && castle service start {name}")
+    print(f"\nNext: castle apply {name}")
     return 0
 
 
@@ -118,5 +118,5 @@ def run_job_create(args: argparse.Namespace) -> int:
     print(f"Created job '{name}'.")
     print(f"  runs:     {args.launcher} ({args.run or args.program or name})")
     print(f"  schedule: {args.schedule}")
-    print(f"\nNext: castle job deploy {name} && castle job enable {name}")
+    print(f"\nNext: castle apply {name}")
     return 0

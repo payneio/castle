@@ -77,6 +77,10 @@ def _local_routes(
     deployments = getattr(config, "deployments", None)
     if deployments is not None:
         for name, dep in sorted(deployments.items()):
+            # A disabled deployment is defined but not running — no route (else it
+            # would 502). `castle apply` converges it off.
+            if not dep.enabled:
+                continue
             if isinstance(dep, CaddyDeployment):
                 src = _program_source(config, dep.program)
                 if src is not None:
@@ -88,6 +92,8 @@ def _local_routes(
         return out
     # No config → route from the deployed registry snapshot.
     for name, d in sorted(registry.deployed.items()):
+        if not d.enabled:
+            continue
         if d.static_root:
             out.append((name, "static", d.static_root))
         elif d.subdomain and (d.port or d.base_url):

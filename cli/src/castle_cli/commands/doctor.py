@@ -6,7 +6,7 @@ of checks grouped into Environment, Configuration, Runtime, and TLS & exposure;
 each check reports ok / warn / fail with a one-line hint when action is needed.
 
 Exit code: 0 when nothing FAILed (warnings are allowed), 1 otherwise — so it
-doubles as a scriptable smoke test after `./install.sh` or `castle deploy`.
+doubles as a scriptable smoke test after `./install.sh` or `castle apply`.
 """
 
 from __future__ import annotations
@@ -206,7 +206,7 @@ def _check_runtime(config) -> list[Check]:
             Check(
                 FAIL,
                 "gateway not running",
-                hint="castle deploy && castle start",
+                hint="castle apply",
             )
         )
 
@@ -227,7 +227,7 @@ def _check_runtime(config) -> list[Check]:
             checks.append(Check(OK, "castle-api running", detail=detail))
     else:
         checks.append(
-            Check(FAIL, "castle-api not running", hint="castle deploy && castle start")
+            Check(FAIL, "castle-api not running", hint="castle apply")
         )
 
     # Generated artifacts.
@@ -244,7 +244,7 @@ def _check_runtime(config) -> list[Check]:
                 FAIL,
                 "generated specs missing",
                 detail=", ".join(missing),
-                hint="castle deploy",
+                hint="castle apply",
             )
         )
 
@@ -347,7 +347,7 @@ def _check_tls_exposure(config) -> list[Check]:
                     WARN,
                     "castle-tunnel not running",
                     detail="public routes are down",
-                    hint="castle service start castle-tunnel",
+                    hint="enable castle-tunnel in its deployment, then: castle apply",
                 )
             )
         checks.append(_check_public_dns(config))
@@ -364,7 +364,7 @@ def _check_public_dns(config) -> Check:
     records. The required permission is a single DNS:Edit (Cloudflare's 'Edit zone
     DNS' template), which also grants the zone lookup — so a correctly-scoped token
     passes this probe. Write itself isn't exercised (that would mutate); a
-    DNS:Read-only token would false-pass here but `castle deploy` then surfaces a
+    DNS:Read-only token would false-pass here but `castle apply` then surfaces a
     403 with the fix. Absent token → WARN (CNAMEs stay manual), not a failure.
     """
     import urllib.error

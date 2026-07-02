@@ -26,7 +26,7 @@ class TestDoctor:
         assert "repo: not set" in out
         assert "control plane missing" in out
         # Every failing check offers a concrete next command.
-        assert "castle deploy" in out
+        assert "castle apply" in out
 
     def test_load_failure_is_first_fail(self, capsys: object) -> None:
         """A castle.yaml that won't load is surfaced as a FAIL, not a traceback."""

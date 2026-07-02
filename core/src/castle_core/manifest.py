@@ -311,6 +311,11 @@ class DeploymentBase(BaseModel):
     )
     description: str | None = None
     defaults: DefaultsSpec | None = None
+    # Declared on/off state. `castle apply` converges reality to this: enabled
+    # deployments are activated (service started, tool installed, route served),
+    # disabled ones are deactivated but kept in the catalog. This is *desired
+    # state*, not a runtime toggle — the only way to durably stop something.
+    enabled: bool = True
 
 
 class SystemdDeployment(DeploymentBase):

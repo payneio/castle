@@ -20,7 +20,7 @@ def _write_generated_files() -> None:
     ensure_dirs()
 
     if not REGISTRY_PATH.exists():
-        print("Error: no registry found. Run 'castle deploy' first.")
+        print("Error: no registry found. Run 'castle apply' first.")
         return
 
     registry = load_registry()
@@ -56,7 +56,7 @@ def run_gateway(args: argparse.Namespace) -> int:
 def _gateway_dry_run() -> int:
     """Print generated Caddyfile without applying."""
     if not REGISTRY_PATH.exists():
-        print("Error: no registry found. Run 'castle deploy' first.")
+        print("Error: no registry found. Run 'castle apply' first.")
         return 1
 
     registry = load_registry()
@@ -126,7 +126,7 @@ def _gateway_status() -> int:
     print(f"Gateway: {'running' if status == 'active' else status}")
 
     if not REGISTRY_PATH.exists():
-        print("  (no registry — run 'castle deploy')")
+        print("  (no registry — run 'castle apply')")
         return 0
 
     from castle_core.generators.caddyfile import compute_routes

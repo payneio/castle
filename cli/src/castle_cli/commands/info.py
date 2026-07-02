@@ -147,7 +147,7 @@ def run_info(args: argparse.Namespace) -> int:
         if deployed.secret_env_keys:
             print(f"  {BOLD}secrets{RESET}:    {', '.join(deployed.secret_env_keys)}")
     else:
-        print(f"\n  {DIM}not deployed (run 'castle deploy'){RESET}")
+        print(f"\n  {DIM}not applied (run 'castle apply'){RESET}")
 
     # Show CLAUDE.md if it exists
     source_dir = None

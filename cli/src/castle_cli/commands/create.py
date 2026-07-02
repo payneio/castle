@@ -158,12 +158,12 @@ def run_create(args: argparse.Namespace) -> int:
     if stack == "supabase":
         print("  # edit migrations/, functions/, public/ — targets the shared substrate")
         print(f"  castle program build {name}   # apply migrations to the substrate")
-        print(f"  castle deploy && castle gateway reload   # serve at /{name}/")
+        print(f"  castle apply   # serve at {name}.<gateway.domain>")
     elif stack:
         print("  uv sync")
         if kind == "service":
             print(f"  uv run {name}  # starts on port {port}")
-            print(f"  castle deploy {name}")
+            print(f"  castle apply {name}")
         print(f"  castle test {name}")
     else:
         print("  # add code, then declare commands: in castle.yaml")

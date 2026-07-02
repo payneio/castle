@@ -70,13 +70,6 @@ def _build_program_group(subparsers: argparse._SubParsersAction) -> None:
     _add_name(p, "Program name")
     p.add_argument("extra", nargs=argparse.REMAINDER, help="Extra args passed to the program")
 
-    sub.add_parser("install", help="Activate a program (tool→PATH, static→served)").add_argument(
-        "name", nargs="?", help="Program (default: all)"
-    )
-    sub.add_parser("uninstall", help="Deactivate a program").add_argument(
-        "name", nargs="?", help="Program"
-    )
-
     for verb in DEV_VERBS:
         p = sub.add_parser(verb, help=f"Run {verb}")
         _add_name(p, "Program (default: all)", optional=True)
@@ -94,11 +87,6 @@ def _build_tool_group(subparsers: argparse._SubParsersAction) -> None:
     p = sub.add_parser("info", help="Show a tool's executable, description, install state")
     _add_name(p, "Tool name")
     p.add_argument("--json", action="store_true", help="Machine-readable output")
-
-    sub.add_parser("install", help="Install a tool on PATH").add_argument("name", help="Tool name")
-    sub.add_parser("uninstall", help="Remove a tool from PATH").add_argument(
-        "name", help="Tool name"
-    )
 
 
 def _add_service_create(sub: argparse._SubParsersAction, kind: str) -> None:
@@ -148,16 +136,9 @@ def _build_deployment_group(subparsers: argparse._SubParsersAction, kind: str) -
     p.add_argument("--purge-data", action="store_true", help=argparse.SUPPRESS)
 
     cap = f"{kind.capitalize()} name"
-    _add_name(sub.add_parser("deploy", help=f"Deploy this {kind} (unit + gateway)"), cap)
-
-    p = sub.add_parser("enable", help=f"Enable and start the {kind}")
-    _add_name(p, cap)
-    if kind == "service":
-        p.add_argument("--dry-run", action="store_true", help="Print the unit without installing")
-    _add_name(sub.add_parser("disable", help=f"Stop and disable the {kind}"), cap)
-    _add_name(sub.add_parser("start", help=f"Start the {kind}"), cap)
-    _add_name(sub.add_parser("stop", help=f"Stop the {kind}"), cap)
-    _add_name(sub.add_parser("restart", help=f"Restart the {kind}"), cap)
+    # Lifecycle is convergence: `castle apply [name]`. `restart` stays as the one
+    # imperative bounce that doesn't change desired state.
+    _add_name(sub.add_parser("restart", help=f"Restart the {kind} (imperative bounce)"), cap)
 
     p = sub.add_parser("logs", help=f"View {kind} logs")
     _add_name(p, f"{kind.capitalize()} name")
@@ -188,16 +169,23 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--dry-run", action="store_true")
     gw_sub.add_parser("status", help="Show gateway status")
 
-    # Platform-wide lifecycle (top-level)
-    subparsers.add_parser("start", help="Start all services and the gateway")
-    subparsers.add_parser("stop", help="Stop all services and the gateway")
-    subparsers.add_parser("restart", help="Restart all services and jobs")
+    # Convergence — the one lifecycle verb. Renders units/Caddyfile/tunnel, then
+    # reconciles the runtime to match config (activate/restart/deactivate).
+    p = subparsers.add_parser(
+        "apply", help="Converge the running system to match config (render + reconcile)"
+    )
+    p.add_argument("name", nargs="?", help="Single deployment to converge (default: all)")
+    p.add_argument(
+        "--plan", action="store_true", help="Show the diff without changing anything"
+    )
+
+    # Imperative ops (don't change desired state)
+    p = subparsers.add_parser("restart", help="Restart deployment(s) — an imperative bounce")
+    p.add_argument("name", nargs="?", help="Deployment to restart (default: all)")
     subparsers.add_parser("status", help="Show status across the platform")
     subparsers.add_parser(
         "doctor", help="Diagnose setup + runtime health, with next-step hints"
     )
-    p = subparsers.add_parser("deploy", help="Apply config to runtime (units + Caddyfile)")
-    p.add_argument("name", nargs="?", help="Service/job to deploy (default: all)")
 
     # Cross-resource overview
     p = subparsers.add_parser("list", help="List programs, services, jobs, and tools")
@@ -215,7 +203,7 @@ def build_parser() -> argparse.ArgumentParser:
 def _dispatch_program(args: argparse.Namespace) -> int:
     sub = args.program_command
     if not sub:
-        verbs = "list|info|create|add|clone|delete|run|install|uninstall|" + "|".join(DEV_VERBS)
+        verbs = "list|info|create|add|clone|delete|run|" + "|".join(DEV_VERBS)
         print(f"Usage: castle program {{{verbs}}}")
         return 1
     if sub == "list":
@@ -246,14 +234,6 @@ def _dispatch_program(args: argparse.Namespace) -> int:
         from castle_cli.commands.run_cmd import run_run
 
         return run_run(args)
-    if sub == "install":
-        from castle_cli.commands.dev import run_install
-
-        return run_install(args)
-    if sub == "uninstall":
-        from castle_cli.commands.dev import run_uninstall
-
-        return run_uninstall(args)
     if sub in DEV_VERBS:
         from castle_cli.commands.dev import run_verb
 
@@ -264,7 +244,7 @@ def _dispatch_program(args: argparse.Namespace) -> int:
 def _dispatch_tool(args: argparse.Namespace) -> int:
     sub = args.tool_command
     if not sub:
-        print("Usage: castle tool {list|info|install|uninstall}")
+        print("Usage: castle tool {list|info}  (install/uninstall → edit config + castle apply)")
         return 1
     if sub == "list":
         from castle_cli.commands.tool import run_tool_list
@@ -274,21 +254,13 @@ def _dispatch_tool(args: argparse.Namespace) -> int:
         from castle_cli.commands.tool import run_tool_info
 
         return run_tool_info(args)
-    if sub == "install":
-        from castle_cli.commands.dev import run_install
-
-        return run_install(args)
-    if sub == "uninstall":
-        from castle_cli.commands.dev import run_uninstall
-
-        return run_uninstall(args)
     return 1
 
 
 def _dispatch_deployment(args: argparse.Namespace, kind: str) -> int:
     sub = getattr(args, f"{kind}_command")
     if not sub:
-        verbs = "list|info|create|delete|deploy|enable|disable|start|stop|restart|logs"
+        verbs = "list|info|create|delete|restart|logs  (deploy/enable/... → castle apply)"
         print(f"Usage: castle {kind} {{{verbs}}}")
         return 1
     if sub == "list":
@@ -307,11 +279,7 @@ def _dispatch_deployment(args: argparse.Namespace, kind: str) -> int:
         from castle_cli.commands.delete import run_delete
 
         return run_delete(args)
-    if sub == "deploy":
-        from castle_cli.commands.deploy import run_deploy
-
-        return run_deploy(args)
-    if sub in ("enable", "disable", "start", "stop", "restart"):
+    if sub == "restart":
         from castle_cli.commands.service import run_job_cmd, run_service_cmd
 
         return run_service_cmd(args) if kind == "service" else run_job_cmd(args)
@@ -341,10 +309,14 @@ def main() -> int:
         from castle_cli.commands.gateway import run_gateway
 
         return run_gateway(args)
-    if cmd in ("start", "stop", "restart"):
-        from castle_cli.commands.service import run_platform
+    if cmd == "apply":
+        from castle_cli.commands.apply import run_apply
 
-        return run_platform(args)
+        return run_apply(args)
+    if cmd == "restart":
+        from castle_cli.commands.service import run_restart
+
+        return run_restart(args)
     if cmd == "status":
         from castle_cli.commands.service import run_status
 
@@ -353,10 +325,6 @@ def main() -> int:
         from castle_cli.commands.doctor import run_doctor
 
         return run_doctor(args)
-    if cmd == "deploy":
-        from castle_cli.commands.deploy import run_deploy
-
-        return run_deploy(args)
     if cmd == "list":
         from castle_cli.commands.list_cmd import run_list
 
