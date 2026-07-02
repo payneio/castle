@@ -159,15 +159,11 @@ def build_parser() -> argparse.ArgumentParser:
     _build_deployment_group(subparsers, "job")
     _build_tool_group(subparsers)
 
-    # Gateway (infrastructure)
-    gw = subparsers.add_parser("gateway", help="Manage the Caddy gateway")
+    # Gateway (inspection). The gateway is a deployment — start/stop/reload it via
+    # `castle apply` / `castle restart castle-gateway`; this lens just shows routes.
+    gw = subparsers.add_parser("gateway", help="Show the gateway's status + route table")
     gw_sub = gw.add_subparsers(dest="gateway_command")
-    p = gw_sub.add_parser("start", help="Start the gateway")
-    p.add_argument("--dry-run", action="store_true")
-    gw_sub.add_parser("stop", help="Stop the gateway")
-    p = gw_sub.add_parser("reload", help="Reload gateway configuration")
-    p.add_argument("--dry-run", action="store_true")
-    gw_sub.add_parser("status", help="Show gateway status")
+    gw_sub.add_parser("status", help="Show gateway status + routes (the default)")
 
     # Convergence — the one lifecycle verb. Renders units/Caddyfile/tunnel, then
     # reconciles the runtime to match config (activate/restart/deactivate).

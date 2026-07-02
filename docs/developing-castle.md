@@ -51,7 +51,7 @@ for tools/libraries.
 - Catalog + editing: `GET /programs[/{name}]`, `POST /programs/{name}/{action}`,
   `PUT|DELETE /programs/{name}`; likewise `/services`, `/jobs`
 - Config: `GET|PUT /`, `POST /apply`, `POST /deploy`
-- Gateway: `GET /gateway`, `GET /gateway/caddyfile`, `POST /gateway/reload`
+- Gateway: `GET /gateway`, `GET /gateway/caddyfile` (reload is convergence: `POST /apply`)
 - Mesh: `GET /mesh/status`, `GET /nodes[/{hostname}]`
 - Agents (dashboard terminal UX): `GET /agents`, `GET /agents/sessions`,
   `GET /agents/history`, `DELETE /agents/sessions/{id}`, `WS /agents/{name}/session`

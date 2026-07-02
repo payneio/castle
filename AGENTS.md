@@ -81,7 +81,7 @@ castle list [--kind ...] [--stack ...] [--json]    # all deployments
 castle status                                      # unified health/status
 castle doctor                                      # diagnose setup + runtime, with fix hints
 castle restart [name]                              # imperative bounce (one or all)
-castle gateway reload|status                       # the Caddy gateway
+castle gateway                                     # gateway status + route table (inspection)
 ```
 
 `castle service`/`job`/`tool` are **views** over the one deployment set, filtered
@@ -184,8 +184,8 @@ public: true   # ALSO expose to the internet via Cloudflare tunnel (requires pro
 - There are **no path-prefix routes** — a whole subdomain maps to the backend
   root, so root-relative assets and `window.location` WebSocket URLs just work.
 
-Inspect routes: `castle gateway status` (or `GET /gateway`). Regenerate + reload:
-`castle gateway reload`. → Field-level detail: **`docs/registry.md`**.
+Inspect routes: `castle gateway` / `GET /gateway`. Regenerate routes + reload the
+gateway: `castle apply` (converge). → Field-level detail: **`docs/registry.md`**.
 
 ---
 

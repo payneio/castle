@@ -2,7 +2,7 @@ import { useMemo, useState } from "react"
 import { Link } from "react-router-dom"
 import { Globe, RefreshCw, FileText, ExternalLink, Cable } from "lucide-react"
 import type { GatewayInfo, HealthStatus } from "@/types"
-import { useGatewayReload, useCaddyfile } from "@/services/api/hooks"
+import { useApply, useCaddyfile } from "@/services/api/hooks"
 import { subdomainUrl } from "@/lib/labels"
 import { HealthBadge } from "./HealthBadge"
 import { GatewaySettings } from "./GatewaySettings"
@@ -14,7 +14,7 @@ interface GatewayPanelProps {
 
 export function GatewayPanel({ gateway, statuses }: GatewayPanelProps) {
   const statusMap = new Map(statuses.map((s) => [s.id, s]))
-  const { mutate: reload, isPending: reloading } = useGatewayReload()
+  const { mutate: apply, isPending: applying } = useApply()
   const [showCaddyfile, setShowCaddyfile] = useState(false)
   const { data: caddyfileData } = useCaddyfile(showCaddyfile)
 
@@ -36,13 +36,13 @@ export function GatewayPanel({ gateway, statuses }: GatewayPanelProps) {
         </div>
         <div className="flex items-center gap-1">
           <button
-            onClick={() => reload()}
-            disabled={reloading}
+            onClick={() => apply({})}
+            disabled={applying}
             className="flex items-center gap-1 text-xs px-2.5 py-1 rounded bg-[var(--border)] hover:bg-[var(--border)]/80 text-[var(--muted)] hover:text-[var(--foreground)] transition-colors disabled:opacity-40"
-            title="Regenerate Caddyfile and reload Caddy"
+            title="Converge: regenerate routes and reload the gateway"
           >
-            <RefreshCw size={12} className={reloading ? "animate-spin" : ""} />
-            Reload
+            <RefreshCw size={12} className={applying ? "animate-spin" : ""} />
+            Apply
           </button>
           <button
             onClick={() => setShowCaddyfile((v) => !v)}
