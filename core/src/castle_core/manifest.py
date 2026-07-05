@@ -16,6 +16,47 @@ class RestartPolicy(str, Enum):
     ALWAYS = "always"
 
 
+class Reach(str, Enum):
+    """How far a deployment is exposed — a protocol-agnostic ladder.
+
+    ``off``      → reachable only at its own host:port (no gateway route).
+    ``internal`` → reachable at ``<name>.<domain>`` (HTTP via the gateway, or TCP
+                   via bind + wildcard DNS).
+    ``public``   → *also* projected to the internet (HTTP via the tunnel origin;
+                   TCP via ``cloudflared access tcp``). Implies ``internal``.
+
+    Replaces the old ``proxy``/``public`` booleans; ``proxy``/``public`` survive as
+    derived read-only accessors and as accepted *legacy input* (normalized below).
+    """
+
+    OFF = "off"
+    INTERNAL = "internal"
+    PUBLIC = "public"
+
+
+def _reach_from_legacy(data: object, default: Reach) -> object:
+    """Map legacy ``proxy``/``public`` booleans on a raw deployment dict to ``reach``.
+
+    Runs as a ``mode="before"`` validator. When ``reach`` is given explicitly it
+    wins (legacy keys are dropped); otherwise ``reach`` is derived from the old
+    booleans: ``public`` → PUBLIC, ``proxy`` → INTERNAL, else ``default``. Non-dict
+    input (e.g. model re-validation) passes through untouched.
+    """
+    if not isinstance(data, dict):
+        return data
+    d = dict(data)
+    proxy = bool(d.pop("proxy", False))
+    public = bool(d.pop("public", False))
+    if "reach" not in d:
+        if public:
+            d["reach"] = Reach.PUBLIC
+        elif proxy:
+            d["reach"] = Reach.INTERNAL
+        else:
+            d["reach"] = default
+    return d
+
+
 # ---------------------
 # Launch specs — how systemd starts a process (discriminated union on `launcher`)
 # ---------------------
@@ -51,6 +92,13 @@ class RunContainer(LaunchBase):
     volumes: list[str] = Field(default_factory=list)
     env: EnvMap = Field(default_factory=dict)
     workdir: str | None = None
+    # Run the container as this uid[:gid] (e.g. "${uid}:${gid}"). Running as the
+    # invoking user makes bind-mounted data/secrets/certs readable with no chown —
+    # see docs/tcp-exposure.md §4. None → the image's own default user.
+    user: str | None = None
+    # tmpfs mounts (e.g. ["/var/run/postgresql"]) for image runtime dirs that must
+    # be writable when the container runs as a non-default uid.
+    tmpfs: list[str] = Field(default_factory=list)
 
 
 class RunNode(LaunchBase):
@@ -119,7 +167,7 @@ class ManageSpec(BaseModel):
 
 
 # ---------------------
-# HTTP exposure + proxy
+# Exposure — HTTP (via the gateway) or raw TCP (bind + DNS)
 # ---------------------
 
 
@@ -134,8 +182,55 @@ class HttpExposeSpec(BaseModel):
     health_path: str | None = None
 
 
+class TlsMaterial(str, Enum):
+    """What cert files castle materializes onto a service from the wildcard cert.
+
+    ``off``      → the service does its own TLS (or none); castle stays out of it.
+    ``pair``     → cert.pem + key.pem (postgres, redis, most daemons).
+    ``combined`` → one file: key+cert concatenated (mongodb, haproxy, …).
+    """
+
+    OFF = "off"
+    PAIR = "pair"
+    COMBINED = "combined"
+
+
+class TlsSpec(BaseModel):
+    """Castle-managed TLS material for a raw-TCP service, cut from the gateway's
+    ACME wildcard cert (valid for ``<name>.<domain>``) and refreshed on renewal.
+    The service consumes the materialized files via the ``${tls_*}`` placeholders.
+    """
+
+    material: TlsMaterial = TlsMaterial.OFF
+    # Optional zero-downtime reload argv (a single command) run after the cert is
+    # re-materialized on renewal — e.g. ["systemctl", "--user", "reload", "castle-postgres"].
+    # Default (None): castle restarts the deployment (fine at a ~60-day cadence).
+    reload: list[str] | None = None
+
+
+class TcpExposeSpec(BaseModel):
+    """A raw-TCP service (postgres, redis, …). It doesn't ride the HTTP gateway:
+    with ``reach: internal`` it's reachable at ``<name>.<domain>:<port>`` via the
+    wildcard DNS record + the bound port (no Caddy route). Publishing the port on
+    the LAN is the deployment's own job (a container's ``run.ports``, or a native
+    service binding ``0.0.0.0``); castle doesn't rebind it, so there's no bind-host
+    field here to imply otherwise. ``tls`` (optional) has castle drop the wildcard
+    cert onto the service so it presents a trusted cert for ``<name>.<domain>``.
+    """
+
+    port: int = Field(ge=1, le=65535)
+    tls: TlsSpec | None = None
+
+
 class ExposeSpec(BaseModel):
     http: HttpExposeSpec | None = None
+    tcp: TcpExposeSpec | None = None
+
+    @model_validator(mode="after")
+    def _one_protocol(self) -> ExposeSpec:
+        if self.http and self.tcp:
+            raise ValueError("a deployment exposes http OR tcp, not both")
+        return self
 
 
 # ---------------------
@@ -327,18 +422,67 @@ class SystemdDeployment(DeploymentBase):
     schedule: str | None = None
     timezone: str = "America/Los_Angeles"
     expose: ExposeSpec | None = None
-    # Route <name>.<gateway.domain> to this process. False → host:port only.
-    proxy: bool = False
-    # Also publish to the public internet via the Cloudflare tunnel, at
-    # <name>.<gateway.public_domain>. Opt-in; requires `proxy`.
-    public: bool = False
+    # How far this process is exposed (off | internal | public). See `Reach`.
+    reach: Reach = Reach.OFF
     manage: ManageSpec | None = None
 
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_reach(cls, data: object) -> object:
+        return _reach_from_legacy(data, default=Reach.OFF)
+
     @model_validator(mode="after")
-    def _validate(self) -> SystemdDeployment:
-        if self.public and not self.proxy:
-            raise ValueError("public requires proxy (an exposed process).")
+    def _validate_reach(self) -> SystemdDeployment:
+        # An exposed reach needs a port to expose. Without an `expose` block the
+        # reach silently no-ops — no route, no subdomain, no tunnel entry — so a
+        # typo'd/omitted `expose` reads as success while the service is unreachable.
+        # Reject it at load so the mistake surfaces (replaces the old
+        # "public requires proxy" guard, now that reach is the canonical field).
+        # Static frontends (manager: caddy) are inherently exposed and validated
+        # elsewhere; this is a supervised process, which needs an explicit port.
+        if self.reach != Reach.OFF and not self.expose:
+            raise ValueError(
+                f"reach: {self.reach.value} requires an `expose` block "
+                "(expose.http or expose.tcp); a port-only process uses reach: off"
+            )
+        # Public raw-TCP (tunnel + Access) is a later step; guard it explicitly
+        # rather than silently no-op'ing when a TCP service asks for it.
+        if (
+            self.reach == Reach.PUBLIC
+            and self.expose
+            and self.expose.tcp
+            and not self.expose.http
+        ):
+            raise ValueError(
+                "reach: public for a raw-TCP service isn't supported yet "
+                "(see docs/tcp-exposure.md step 5); use reach: internal"
+            )
         return self
+
+    # Derived, read-only back-compat accessors (not serialized) so existing
+    # readers keep working while the stored/authored field is `reach`.
+    @property
+    def proxy(self) -> bool:
+        return self.reach != Reach.OFF
+
+    @property
+    def public(self) -> bool:
+        return self.reach == Reach.PUBLIC
+
+    @property
+    def http_exposed(self) -> bool:
+        """Exposed through the HTTP gateway at ``<name>.<domain>`` — the predicate
+        for a Caddy route / subdomain. Requires ``reach != off`` *and* an HTTP
+        port; a raw-TCP service (``expose.tcp``) is never HTTP-exposed."""
+        return self.reach != Reach.OFF and bool(self.expose and self.expose.http)
+
+    @property
+    def tcp_port(self) -> int | None:
+        """The raw-TCP port this service is exposed on, or None. Reachable at
+        ``<name>.<domain>:<port>`` when ``reach != off`` (bind + wildcard DNS)."""
+        if self.reach != Reach.OFF and self.expose and self.expose.tcp:
+            return self.expose.tcp.port
+        return None
 
 
 class CaddyDeployment(DeploymentBase):
@@ -350,8 +494,24 @@ class CaddyDeployment(DeploymentBase):
 
     manager: Literal["caddy"]
     root: str = "dist"
-    # Inherently exposed at its subdomain; `public` = also project via the tunnel.
-    public: bool = False
+    # A static site is inherently served at its subdomain, so `reach` is
+    # `internal` or `public` (never `off`). `public` = also project via the tunnel.
+    reach: Reach = Reach.INTERNAL
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_reach(cls, data: object) -> object:
+        return _reach_from_legacy(data, default=Reach.INTERNAL)
+
+    @model_validator(mode="after")
+    def _validate_reach(self) -> CaddyDeployment:
+        if self.reach == Reach.OFF:
+            raise ValueError("a static (caddy) deployment is always served; reach must be internal|public")
+        return self
+
+    @property
+    def public(self) -> bool:
+        return self.reach == Reach.PUBLIC
 
 
 class PathDeployment(DeploymentBase):

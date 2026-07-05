@@ -202,15 +202,21 @@ ensure_caddy_dns_plugin() {
             || log_fail "xcaddy install failed"
     fi
 
-    log_info "Building Caddy $CADDY_DNS_VERSION with $module (~1 min)..."
+    # events-exec: lets the gateway run `castle tls reconcile` on cert issuance/
+    # renewal (the cert_obtained hook), so certs materialized onto raw-TCP services
+    # refresh automatically. See docs/tcp-exposure.md §5.
+    local events_module="github.com/mholt/caddy-events-exec"
+    log_info "Building Caddy $CADDY_DNS_VERSION with $module + events-exec (~1 min)..."
     local tmp; tmp="$(mktemp -d)"
-    ( cd "$tmp" && "$gobin/xcaddy" build "$CADDY_DNS_VERSION" --with "$module" ) \
+    ( cd "$tmp" && "$gobin/xcaddy" build "$CADDY_DNS_VERSION" --with "$module" --with "$events_module" ) \
         || { rm -rf "$tmp"; log_fail "xcaddy build failed"; }
     sudo install -m 0755 "$tmp/caddy" /usr/local/bin/caddy || { rm -rf "$tmp"; log_fail "install failed"; }
     rm -rf "$tmp"
 
     /usr/local/bin/caddy list-modules 2>/dev/null | grep -q "dns.providers.$provider" \
         || log_fail "built caddy is missing dns.providers.$provider"
+    /usr/local/bin/caddy list-modules 2>/dev/null | grep -q "events.handlers.exec" \
+        || log_fail "built caddy is missing events.handlers.exec"
     log_info "Built /usr/local/bin/caddy — run 'castle apply' to use it."
     log_ok
 }

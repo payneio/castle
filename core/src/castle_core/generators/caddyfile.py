@@ -54,13 +54,14 @@ def service_proxy_targets(name: str, dep: SystemdDeployment) -> ProxyTargets:
     """Derive a systemd deployment's gateway exposure from its spec.
 
     The single source of truth shared by the registry build (``deploy``) and
-    route computation (``compute_routes``), so they never disagree. ``expose`` is
-    the checkbox (``proxy: true``); the subdomain is always the deployment name.
+    route computation (``compute_routes``), so they never disagree. A gateway
+    route is HTTP-only: ``http_exposed`` requires ``reach != off`` *and* an HTTP
+    port, so a raw-TCP service (``expose.tcp``) never yields a route here.
     """
     port = None
     if dep.expose and dep.expose.http:
         port = dep.expose.http.internal.port
-    return bool(dep.proxy), port, None
+    return dep.http_exposed, port, None
 
 
 def _local_routes(
@@ -214,6 +215,18 @@ def generate_caddyfile_from_registry(
         lines.append(f"    acme_dns {provider} {{env.{token_env}}}")
         if os.environ.get("CASTLE_ACME_STAGING") == "1":
             lines.append(f"    acme_ca {_ACME_STAGING_CA}")
+        # On issuance/renewal, refresh certs materialized onto raw-TCP services and
+        # reload them (idempotent — a no-op when nothing rotated). Requires the
+        # events-exec plugin in the gateway's Caddy build, so it's gated on the
+        # durable `gateway.cert_hook` flag, set only once that Caddy is in place;
+        # false → the block is omitted and a plugin-less gateway parses fine. See
+        # docs/tcp-exposure.md §5.
+        if getattr(node, "cert_hook", False):
+            lines += [
+                "    events {",
+                "        on cert_obtained exec castle tls reconcile",
+                "    }",
+            ]
         lines += ["}", ""]
         # One wildcard site → a single cert covers every subdomain; a new service
         # needs no new cert or challenge.

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 from castle_core.manifest import (
+    Reach,
     BuildSpec,
     CaddyDeployment,
     ExposeSpec,
@@ -110,14 +111,78 @@ class TestSystemdDeployment:
         )
         assert s.manage.systemd.enable is True
 
-    def test_public_requires_proxy(self) -> None:
-        """public without proxy is invalid (public needs an exposed process)."""
-        with pytest.raises(ValueError, match="public requires proxy"):
-            SystemdDeployment(
-                id="bad",
-                manager="systemd",
-                run=RunPython(launcher="python", program="svc"),
-                public=True,
+    def test_reach_ladder_and_legacy_mapping(self) -> None:
+        """`reach` is canonical; legacy proxy/public map to it, and the derived
+        proxy/public accessors reflect it (public implies internal)."""
+        # An exposed reach needs an expose block (see test_reach_requires_expose),
+        # so give the base one; reach off doesn't, tested separately below.
+        base = dict(
+            id="svc",
+            manager="systemd",
+            run=RunPython(launcher="python", program="svc"),
+            expose={"http": {"internal": {"port": 9001}}},
+        )
+        # legacy input still parses
+        s_proxy = SystemdDeployment.model_validate({**base, "proxy": True})
+        assert s_proxy.reach == Reach.INTERNAL
+        assert s_proxy.proxy is True and s_proxy.public is False
+        s_pub = SystemdDeployment.model_validate({**base, "proxy": True, "public": True})
+        assert s_pub.reach == Reach.PUBLIC
+        assert s_pub.proxy is True and s_pub.public is True
+        # legacy public alone now simply means public (which implies internal)
+        assert SystemdDeployment.model_validate({**base, "public": True}).reach == Reach.PUBLIC
+        # new canonical field (reach off needs no expose block)
+        no_expose = dict(
+            id="svc", manager="systemd", run=RunPython(launcher="python", program="svc")
+        )
+        assert SystemdDeployment(**no_expose, reach=Reach.OFF).reach == Reach.OFF
+        assert SystemdDeployment(**base, reach=Reach.PUBLIC).public is True
+
+    def test_reach_requires_expose(self) -> None:
+        """An exposed reach with no expose block is rejected (it would otherwise
+        silently no-op — no route, no subdomain, no tunnel). Replaces the old
+        'public requires proxy' guard."""
+        base = dict(manager="systemd", run=RunPython(launcher="python", program="svc"))
+        for reach in ("internal", "public"):
+            with pytest.raises(ValueError, match="requires an `expose` block"):
+                SystemdDeployment.model_validate({**base, "reach": reach})
+        # legacy public: true with no expose maps to reach public → same rejection
+        with pytest.raises(ValueError, match="requires an `expose` block"):
+            SystemdDeployment.model_validate({**base, "public": True})
+
+    def test_tcp_exposure_is_not_http_exposed(self) -> None:
+        """A raw-TCP service is reachable by name+port but never HTTP-routed."""
+        base = dict(manager="systemd", run=RunCommand(launcher="command", argv=["pg"]))
+        tcp = SystemdDeployment.model_validate(
+            {**base, "reach": "internal", "expose": {"tcp": {"port": 5432}}}
+        )
+        assert tcp.tcp_port == 5432
+        assert tcp.http_exposed is False  # <-- no Caddy route
+        http = SystemdDeployment.model_validate(
+            {**base, "reach": "internal", "expose": {"http": {"internal": {"port": 9001}}}}
+        )
+        assert http.http_exposed is True and http.tcp_port is None
+
+    def test_expose_is_one_protocol(self) -> None:
+        with pytest.raises(ValueError, match="http OR tcp"):
+            SystemdDeployment.model_validate(
+                {
+                    "manager": "systemd",
+                    "run": RunCommand(launcher="command", argv=["x"]),
+                    "expose": {"http": {"internal": {"port": 1}}, "tcp": {"port": 2}},
+                }
+            )
+
+    def test_public_tcp_guarded(self) -> None:
+        """reach: public on a raw-TCP service is rejected until step 5 lands."""
+        with pytest.raises(ValueError, match="public for a raw-TCP"):
+            SystemdDeployment.model_validate(
+                {
+                    "manager": "systemd",
+                    "run": RunCommand(launcher="command", argv=["x"]),
+                    "reach": "public",
+                    "expose": {"tcp": {"port": 5432}},
+                }
             )
 
     def test_no_run_is_invalid(self) -> None:
@@ -166,11 +231,12 @@ class TestModelSerialization:
                     internal=HttpInternal(port=9001), health_path="/health"
                 )
             ),
-            proxy=True,
+            reach=Reach.INTERNAL,
             manage=ManageSpec(systemd=SystemdSpec()),
         )
         data = s.model_dump(exclude_none=True, exclude={"id"})
         assert data["manager"] == "systemd"
         assert data["run"]["launcher"] == "python"
         assert data["expose"]["http"]["internal"]["port"] == 9001
-        assert data["proxy"] is True
+        assert data["reach"] == "internal"
+        assert "proxy" not in data  # derived accessor, not serialized

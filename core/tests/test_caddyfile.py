@@ -185,6 +185,21 @@ class TestConfigSourceOfTruth:
         routes = compute_routes(_make_registry(), _config({"pg": _service(5432, expose=False)}))
         assert not [r for r in routes if r.name == "pg"]
 
+    def test_tcp_service_has_no_http_route(self) -> None:
+        """A raw-TCP service (reach: internal + expose.tcp) is reachable by
+        name+port via DNS, but must NOT get an HTTP gateway route."""
+        tcp = SystemdDeployment.model_validate(
+            {
+                "manager": "systemd",
+                "run": RunPython(launcher="python", program="pg"),
+                "reach": "internal",
+                "expose": {"tcp": {"port": 5432}},
+            }
+        )
+        assert tcp.tcp_port == 5432 and tcp.http_exposed is False
+        routes = compute_routes(_make_registry(), _config({"pg": tcp}))
+        assert not [r for r in routes if r.name == "pg"]
+
     def test_config_port_overrides_stale_registry(self) -> None:
         registry = _make_registry(
             deployed={"claw": _dep(8001, expose=True, name="claw")}

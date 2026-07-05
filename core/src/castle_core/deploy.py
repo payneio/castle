@@ -22,6 +22,7 @@ from castle_core.config import (
     ensure_dirs,
     load_config,
     resolve_env_split,
+    resolve_placeholders,
 )
 from castle_core.generators.caddyfile import (
     _DNS_TOKEN_ENV,
@@ -47,6 +48,7 @@ from castle_core.manifest import (
     DeploymentSpec,
     PathDeployment,
     RemoteDeployment,
+    TlsMaterial,
     kind_for,
 )
 from castle_core.registry import (
@@ -184,6 +186,7 @@ def _node_config(config: CastleConfig) -> NodeConfig:
         acme_dns_provider=config.gateway.acme_dns_provider,
         public_domain=config.gateway.public_domain,
         tunnel_id=config.gateway.tunnel_id,
+        cert_hook=config.gateway.cert_hook,
     )
 
 
@@ -257,6 +260,19 @@ def apply(
     deploy_result = deploy(target_name, root)
     result.messages = list(deploy_result.messages)
     result.registry = deploy_result.registry
+
+    # Materialize TLS cert files before (re)starting so a TLS service finds them on
+    # start. On a fresh node the gateway reload above only kicks off ACME issuance,
+    # so wait (bounded) for the wildcard first — otherwise the service would start
+    # without its cert and, with cert_hook off (the default), never recover. Scope
+    # materialization to the deployments being applied so a scoped apply doesn't
+    # rewrite an unrelated service's cert without reloading it. No reload here — the
+    # activation loop below starts/restarts as needed; rotation-driven reloads are
+    # the `castle tls reconcile` / cert_obtained path.
+    from castle_core.tls import materialize_all, wait_for_wildcard
+
+    wait_for_wildcard(config, names, result.messages)
+    materialize_all(config, result.messages, only=names)
 
     for name in names:
         after_unit = _unit_bytes(name, is_job[name])
@@ -387,6 +403,28 @@ def _write_tunnel_config(registry: NodeRegistry, messages: list[str]) -> None:
 def _reload_gateway(messages: list[str]) -> None:
     """Reload Caddy if the gateway is running, so new routes take effect."""
     gw_unit = unit_name(_GATEWAY_NAME)
+    # Validate the generated Caddyfile before reloading. An invalid config (most
+    # often gateway.cert_hook enabled while the running Caddy lacks the events-exec
+    # plugin, so the `events {}` block fails to adapt) must not be pushed: a bad
+    # reload leaves stale routing and a later cold start would refuse to load. Skip
+    # the reload and point at the likely cause instead of silently degrading.
+    caddyfile = SPECS_DIR / "Caddyfile"
+    caddy = shutil.which("caddy")
+    if caddy and caddyfile.exists():
+        check = subprocess.run(
+            [caddy, "validate", "--adapter", "caddyfile", "--config", str(caddyfile)],
+            capture_output=True,
+            text=True,
+        )
+        if check.returncode != 0:
+            messages.append(
+                "Warning: generated Caddyfile is invalid — gateway NOT reloaded (the "
+                "running config is left untouched). If gateway.cert_hook is enabled, "
+                "the gateway's Caddy build needs the events-exec plugin; rebuild it "
+                "(install.sh) or set cert_hook: false.\n"
+                + (check.stderr.strip() or check.stdout.strip())
+            )
+            return
     active = subprocess.run(
         ["systemctl", "--user", "is-active", gw_unit],
         capture_output=True,
@@ -459,7 +497,12 @@ def _env_context(
 ) -> dict[str, str]:
     """Placeholder values for defaults.env: ${name}/${data_dir}/${port}/${public_url}/
     ${supabase_app_schemas}."""
-    ctx = {"name": name, "data_dir": str(DATA_DIR / config_key)}
+    ctx = {
+        "name": name,
+        "data_dir": str(DATA_DIR / config_key),
+        "uid": str(os.getuid()),
+        "gid": str(os.getgid()),
+    }
     if port is not None:
         ctx["port"] = str(port)
     if public_url is not None:
@@ -562,13 +605,16 @@ def _build_deployed(
     if dep.manage and dep.manage.systemd and not dep.manage.systemd.enable:
         managed = False
 
-    # `proxy` is the exposure checkbox; the subdomain is the deployment name.
-    expose = bool(dep.proxy)
+    # `http_exposed` is the HTTP-gateway checkbox (reach != off AND an http port);
+    # the subdomain is the deployment name. A raw-TCP service is not http_exposed —
+    # it's reachable at <name>.<domain>:<tcp_port> via bind + wildcard DNS.
+    expose = dep.http_exposed
     port = None
     health_path = None
     if dep.expose and dep.expose.http:
         port = dep.expose.http.internal.port
         health_path = dep.expose.http.health_path
+    tcp_port = dep.tcp_port
 
     # Env is exactly what's in defaults.env — no hidden convention injection.
     # ${port}/${data_dir}/${name}/${public_url} map the program's own env var
@@ -576,10 +622,23 @@ def _build_deployed(
     # mode-0600 file (never in the unit or argv).
     raw_env = dict(dep.defaults.env) if (dep.defaults and dep.defaults.env) else {}
     public_url = _public_url(config, name, expose, port)
-    env, secret_env = resolve_env_split(
-        raw_env,
-        _env_context(name, config_key, port, public_url, _supabase_app_schemas(config)),
-    )
+    ctx = _env_context(name, config_key, port, public_url, _supabase_app_schemas(config))
+    # ${tls_*}: paths to castle-materialized cert files for a TLS-material TCP
+    # service. The deployment maps them into its own config (mount ${tls_dir} for a
+    # container, or reference ${tls_cert}/${tls_key} directly for a native service).
+    tls = dep.expose.tcp.tls if (dep.expose and dep.expose.tcp) else None
+    if tls and tls.material != TlsMaterial.OFF:
+        tls_dir = DATA_DIR / config_key / "tls"
+        ctx.update(
+            {
+                "tls_dir": str(tls_dir),
+                "tls_cert": str(tls_dir / "cert.pem"),
+                "tls_key": str(tls_dir / "key.pem"),
+                "tls_pem": str(tls_dir / "combined.pem"),
+                "tls_ca": str(tls_dir / "chain.pem"),
+            }
+        )
+    env, secret_env = resolve_env_split(raw_env, ctx)
     secret_env_file = _write_secret_env_file(name, secret_env)
 
     # `command` launchers resolve a tool on PATH → ensure it's installed.
@@ -588,7 +647,8 @@ def _build_deployed(
         _ensure_python_tool(config, dep.program, messages)
 
     run_cmd = _build_run_cmd(
-        name, run, env, messages, source_dir, secret_env_file=secret_env_file
+        name, run, env, messages, source_dir, secret_env_file=secret_env_file,
+        placeholders=ctx,
     )
     stop_cmd = _build_stop_cmd(name, run, source_dir)
 
@@ -606,6 +666,7 @@ def _build_deployed(
         health_path=health_path,
         subdomain=(name if expose else None),
         public=bool(dep.public and expose),
+        tcp_port=tcp_port,
         schedule=getattr(dep, "schedule", None),
         managed=managed,
         enabled=dep.enabled,
@@ -680,6 +741,15 @@ def _ensure_python_tool(
         messages.append(f"Installed {program}")
 
 
+def _subst(value: str, placeholders: dict[str, str] | None) -> str:
+    """Expand ``${key}`` in a run-spec string field from castle's computed values
+    (``${uid}``/``${gid}``/``${data_dir}``/``${tls_dir}``/…), via the one shared
+    ``${...}`` resolver (:func:`resolve_placeholders`). Unknown refs pass through
+    unchanged (secrets never belong in argv — they go via --env-file); write
+    ``$${key}`` to pass a literal ``${key}`` to a container's own shell/env."""
+    return resolve_placeholders(value, placeholders)
+
+
 def _build_run_cmd(
     name: str,
     run: object,
@@ -687,6 +757,7 @@ def _build_run_cmd(
     messages: list[str],
     source_dir: Path | None = None,
     secret_env_file: Path | None = None,
+    placeholders: dict[str, str] | None = None,
 ) -> list[str]:
     """Build a run command list from a LaunchSpec (a systemd deployment's `run`).
 
@@ -729,24 +800,31 @@ def _build_run_cmd(
             # Container name derives from the SERVICE name (matches the systemd unit),
             # not the image name — so `castle-<service>` is stable and collision-free.
             cmd = [runtime, "run", "--rm", f"--name=castle-{name}"]
+            if run.user:  # type: ignore[union-attr]
+                # Run as the invoking user (uid uniformity → bind-mounted
+                # certs/data/secrets readable with no chown). ${uid}/${gid} expand
+                # to the castle process's own ids.
+                cmd.extend(["--user", _subst(run.user, placeholders)])  # type: ignore[union-attr]
+            for tp in run.tmpfs:  # type: ignore[union-attr]
+                cmd.extend(["--tmpfs", _subst(tp, placeholders)])
             for container_port, host_port in run.ports.items():  # type: ignore[union-attr]
                 cmd.extend(["-p", f"{host_port}:{container_port}"])
             for vol in run.volumes:  # type: ignore[union-attr]
-                cmd.extend(["-v", vol])
+                cmd.extend(["-v", _subst(vol, placeholders)])
             for key, val in run.env.items():  # type: ignore[union-attr]
-                cmd.extend(["-e", f"{key}={val}"])
+                cmd.extend(["-e", f"{key}={_subst(val, placeholders)}"])
             # env is plain-only; secrets go via --env-file so they never hit argv.
             for key, val in env.items():
                 cmd.extend(["-e", f"{key}={val}"])
             if secret_env_file is not None:
                 cmd.extend(["--env-file", str(secret_env_file)])
             if run.workdir:  # type: ignore[union-attr]
-                cmd.extend(["-w", run.workdir])  # type: ignore[union-attr]
+                cmd.extend(["-w", _subst(run.workdir, placeholders)])  # type: ignore[union-attr]
             cmd.append(run.image)  # type: ignore[union-attr]
             if run.command:  # type: ignore[union-attr]
-                cmd.extend(run.command)  # type: ignore[union-attr]
+                cmd.extend(_subst(c, placeholders) for c in run.command)  # type: ignore[union-attr]
             if run.args:  # type: ignore[union-attr]
-                cmd.extend(run.args)  # type: ignore[union-attr]
+                cmd.extend(_subst(a, placeholders) for a in run.args)  # type: ignore[union-attr]
             return cmd
         case "compose":
             # A whole docker-compose stack supervised as one unit. `up` runs

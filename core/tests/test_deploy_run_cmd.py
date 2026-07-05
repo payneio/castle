@@ -107,6 +107,45 @@ def test_container_without_secrets_has_no_env_file() -> None:
     assert "--env-file" not in cmd
 
 
+def test_container_placeholders_expand_in_run_fields() -> None:
+    """${key} placeholders expand consistently across a container's env, volumes,
+    and args — env used to be the odd one out that passed through literally."""
+    run = RunContainer(
+        launcher="container",
+        image="img:latest",
+        env={"DATA": "${data_dir}/x"},
+        volumes=["${tls_dir}:/tls:ro"],
+        args=["--advertise", "${name}:${port}"],
+    )
+    ph = {
+        "name": "svc",
+        "port": "5432",
+        "data_dir": "/data/castle/svc",
+        "tls_dir": "/data/castle/svc/tls",
+    }
+    with patch("castle_core.deploy.shutil.which", return_value="/usr/bin/docker"):
+        cmd = _build_run_cmd("svc", run, {}, [], placeholders=ph)
+    joined = " ".join(cmd)
+    assert "DATA=/data/castle/svc/x" in joined       # env expanded
+    assert "/data/castle/svc/tls:/tls:ro" in joined  # volume expanded
+    assert "svc:5432" in cmd                          # arg expanded
+
+
+def test_container_double_dollar_escapes_placeholder() -> None:
+    """$${key} passes a literal ${key} through to the container's own shell/env
+    instead of castle expanding it (docker-compose-style escape)."""
+    run = RunContainer(
+        launcher="container",
+        image="img:latest",
+        args=["sh", "-c", "exec myd --advertise $${name}:${port}"],
+    )
+    ph = {"name": "svc", "port": "5432"}
+    with patch("castle_core.deploy.shutil.which", return_value="/usr/bin/docker"):
+        cmd = _build_run_cmd("svc", run, {}, [], placeholders=ph)
+    # castle expands ${port} but leaves $${name} as a literal ${name} for the shell
+    assert "exec myd --advertise ${name}:5432" in cmd
+
+
 def test_compose_runner_up_with_resolved_file(tmp_path: Path) -> None:
     """A compose service runs `docker compose -p <project> -f <abs-file> up`."""
     run = RunCompose(launcher="compose", file="docker-compose.yml")

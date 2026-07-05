@@ -30,6 +30,8 @@ class NodeConfig:
     # Cloudflare tunnel: public services publish at <subdomain>.<public_domain>.
     public_domain: str | None = None
     tunnel_id: str | None = None
+    # Emit the cert_obtained → `castle tls reconcile` hook (needs events-exec plugin).
+    cert_hook: bool = False
 
     def __post_init__(self) -> None:
         if not self.hostname:
@@ -66,6 +68,9 @@ class Deployment:
     # Also projected to the public internet via the tunnel at
     # <subdomain>.<gateway.public_domain>. Requires subdomain.
     public: bool = False
+    # Raw-TCP exposure port (postgres, redis, …). Set → reachable at
+    # <name>.<gateway.domain>:<tcp_port> via bind + wildcard DNS (no Caddy route).
+    tcp_port: int | None = None
     # For `static` runner services: the absolute dir the gateway file_servers.
     # Set → the route is `static` (file_server) rather than `proxy` (reverse_proxy).
     static_root: str | None = None
@@ -113,6 +118,7 @@ def load_registry(path: Path | None = None) -> NodeRegistry:
         acme_dns_provider=node_data.get("acme_dns_provider", "cloudflare"),
         public_domain=node_data.get("public_domain"),
         tunnel_id=node_data.get("tunnel_id"),
+        cert_hook=node_data.get("cert_hook", False),
     )
 
     deployed: dict[str, Deployment] = {}
@@ -154,6 +160,7 @@ def load_registry(path: Path | None = None) -> NodeRegistry:
             health_path=comp_data.get("health_path"),
             subdomain=comp_data.get("subdomain"),
             public=comp_data.get("public", False),
+            tcp_port=comp_data.get("tcp_port"),
             static_root=comp_data.get("static_root"),
             base_url=comp_data.get("base_url"),
             schedule=comp_data.get("schedule"),
@@ -194,6 +201,8 @@ def save_registry(registry: NodeRegistry, path: Path | None = None) -> None:
         data["node"]["public_domain"] = registry.node.public_domain
     if registry.node.tunnel_id:
         data["node"]["tunnel_id"] = registry.node.tunnel_id
+    if registry.node.cert_hook:
+        data["node"]["cert_hook"] = registry.node.cert_hook
 
     for name, comp in registry.deployed.items():
         entry: dict = {
@@ -221,6 +230,8 @@ def save_registry(registry: NodeRegistry, path: Path | None = None) -> None:
             entry["subdomain"] = comp.subdomain
         if comp.public:
             entry["public"] = comp.public
+        if comp.tcp_port is not None:
+            entry["tcp_port"] = comp.tcp_port
         if comp.static_root:
             entry["static_root"] = comp.static_root
         if comp.base_url:

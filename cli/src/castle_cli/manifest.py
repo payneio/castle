@@ -18,6 +18,7 @@ from castle_core.manifest import (  # noqa: F401 — explicit re-exports for typ
     ManageSpec,
     PathDeployment,
     ProgramSpec,
+    Reach,
     ReadinessHttpGet,
     RemoteDeployment,
     RestartPolicy,

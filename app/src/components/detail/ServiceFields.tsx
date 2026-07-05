@@ -42,6 +42,14 @@ export function ServiceFields({ service, onSave, onDelete }: Props) {
   const run = obj(m.run)
   const internal = obj(obj(obj(m.expose).http).internal)
   const httpExpose = obj(obj(m.expose).http)
+  // A raw-TCP service (postgres, redis, …) exposes `expose.tcp`, not `expose.http`.
+  // It's reachable at <name>.<domain>:<port> via DNS (no gateway HTTP route), so the
+  // HTTP port/health/reach controls below don't apply — show its exposure read-only
+  // and never rebuild `expose` on save (that would nuke expose.tcp). Edit TCP/TLS in
+  // deployments/<name>.yaml for now.
+  const tcp = obj(obj(m.expose).tcp)
+  const tcpTls = obj(tcp.tls)
+  const isTcp = tcp.port != null
 
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -58,8 +66,11 @@ export function ServiceFields({ service, onSave, onDelete }: Props) {
   )
   const [port, setPort] = useState(internal.port != null ? String(internal.port) : "")
   const [health, setHealth] = useState((httpExpose.health_path as string) ?? "")
-  // Exposed at <service-name>.<gateway.domain> when proxy is true.
-  const [expose, setExpose] = useState(m.proxy === true)
+  // How far the service reaches: off | internal | public. Falls back to the
+  // legacy proxy/public booleans for any deployment not yet re-saved.
+  const [reach, setReach] = useState(
+    (m.reach as string) ?? (m.public === true ? "public" : m.proxy === true ? "internal" : "off"),
+  )
 
   const { element: envEditor, merged } = useEnvSecrets(obj(obj(m.defaults).env) as Record<string, string>)
 
@@ -74,19 +85,24 @@ export function ServiceFields({ service, onSave, onDelete }: Props) {
       // Rebuild the run block for the chosen launcher, preserving other fields.
       config.run = applyLauncher(obj(config.run), launcher, runProgram)
 
-      if (port) {
-        config.expose = {
-          http: {
-            internal: { port: parseInt(port, 10) },
-            ...(health ? { health_path: health } : {}),
-          },
+      // For a TCP service, leave expose.tcp + reach exactly as-is (they're already
+      // in the cloned config) — only the HTTP path rebuilds expose from the form.
+      if (!isTcp) {
+        if (port) {
+          config.expose = {
+            http: {
+              internal: { port: parseInt(port, 10) },
+              ...(health ? { health_path: health } : {}),
+            },
+          }
+        } else {
+          delete config.expose
         }
-      } else {
-        delete config.expose
+        // reach needs a port to route through the gateway; without one it's off.
+        config.reach = port ? reach : "off"
       }
-
-      if (expose) config.proxy = true
-      else delete config.proxy
+      delete config.proxy
+      delete config.public
 
       const env = merged()
       if (Object.keys(env).length > 0) config.defaults = { ...obj(config.defaults), env }
@@ -127,39 +143,77 @@ export function ServiceFields({ service, onSave, onDelete }: Props) {
           />
         </div>
       </Field>
-      <TextField
-        label="Port"
-        value={port}
-        onChange={setPort}
-        width="w-32"
-        mono
-        placeholder="9001"
-        hint="The port the service listens on. Castle health-checks and proxies this port; map it to the program's own var with ${port} in Environment."
-      />
-      <TextField
-        label="Health path"
-        value={health}
-        onChange={setHealth}
-        width="w-48"
-        mono
-        placeholder="/health"
-        hint="HTTP path castle polls to report up/down."
-      />
-      <Field
-        label="Expose"
-        hint="Route this service through the gateway at <service-name>.<gateway.domain>. Unchecked: reachable only at its own host:port."
-      >
-        <label className="flex items-center gap-2 text-sm cursor-pointer">
-          <input
-            type="checkbox"
-            checked={expose}
-            onChange={(e) => setExpose(e.target.checked)}
+      {isTcp ? (
+        <Field
+          label="Exposure"
+          hint="A raw-TCP service — reachable by name + port via DNS, not the HTTP gateway. Edit its port/TLS in deployments/<name>.yaml for now."
+        >
+          <div className="font-mono text-xs text-[var(--muted)] space-y-1">
+            <div>
+              <span className="text-[var(--fg)]">tcp</span> · port{" "}
+              <span className="text-[var(--fg)]">{String(tcp.port)}</span>
+              {tcpTls.material && tcpTls.material !== "off" ? (
+                <>
+                  {" "}
+                  · tls <span className="text-[var(--fg)]">{String(tcpTls.material)}</span>
+                </>
+              ) : null}
+            </div>
+            <div>
+              reach{" "}
+              <span className="text-[var(--fg)]">{String(m.reach ?? "internal")}</span> —{" "}
+              {service.id}.&lt;gateway.domain&gt;:{String(tcp.port)}
+            </div>
+          </div>
+        </Field>
+      ) : (
+        <>
+          <TextField
+            label="Port"
+            value={port}
+            onChange={setPort}
+            width="w-32"
+            mono
+            placeholder="9001"
+            hint="The port the service listens on. Castle health-checks and proxies this port; map it to the program's own var with ${port} in Environment."
           />
-          <span className="font-mono text-[var(--muted)]">
-            {expose ? `${service.id}.<gateway.domain>` : "off (host:port only)"}
-          </span>
-        </label>
-      </Field>
+          <TextField
+            label="Health path"
+            value={health}
+            onChange={setHealth}
+            width="w-48"
+            mono
+            placeholder="/health"
+            hint="HTTP path castle polls to report up/down."
+          />
+          <Field
+            label="Reach"
+            hint="How far this service is exposed. off: host:port only. internal: <service-name>.<gateway.domain> via the gateway. public: also to the internet via the Cloudflare tunnel."
+          >
+            <div className="flex items-center gap-2">
+              <select
+                value={reach}
+                onChange={(e) => setReach(e.target.value)}
+                disabled={!port}
+                className="bg-black/30 border border-[var(--border)] rounded px-2 py-1 text-xs font-mono focus:outline-none focus:border-[var(--primary)] disabled:opacity-50"
+              >
+                <option value="off">off</option>
+                <option value="internal">internal</option>
+                <option value="public">public</option>
+              </select>
+              <span className="font-mono text-[var(--muted)] text-xs">
+                {!port
+                  ? "set a port to expose"
+                  : reach === "off"
+                    ? "host:port only"
+                    : reach === "public"
+                      ? `${service.id}.<gateway.public_domain>`
+                      : `${service.id}.<gateway.domain>`}
+              </span>
+            </div>
+          </Field>
+        </>
+      )}
       {envEditor}
       <FormFooter
         saving={saving}

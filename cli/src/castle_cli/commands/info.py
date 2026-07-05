@@ -121,8 +121,12 @@ def run_info(args: argparse.Namespace) -> int:
             print(f"  {BOLD}port{RESET}:        {http.internal.port}")
             if http.health_path:
                 print(f"  {BOLD}health{RESET}:      {http.health_path}")
-        if service.proxy:
+        if service.http_exposed:
             print(f"  {BOLD}subdomain{RESET}:   {name}.<gateway.domain>")
+        if service.tcp_port is not None:
+            # Raw-TCP reach is internal-only (public TCP is rejected at load, see
+            # SystemdDeployment._validate_reach), so there's no "public" state here.
+            print(f"  {BOLD}tcp{RESET}:         {name}.<gateway.domain>:{service.tcp_port} (internal)")
         if service.manage and service.manage.systemd:
             sd = service.manage.systemd
             print(f"  {BOLD}systemd{RESET}:     enabled={sd.enable}, restart={sd.restart.value}")

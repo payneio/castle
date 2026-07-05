@@ -165,6 +165,16 @@ def build_parser() -> argparse.ArgumentParser:
     gw_sub = gw.add_subparsers(dest="gateway_command")
     gw_sub.add_parser("status", help="Show gateway status + routes (the default)")
 
+    # TLS material for raw-TCP services (cert cut from the gateway wildcard).
+    tls = subparsers.add_parser(
+        "tls", help="Manage castle-materialized TLS certs for raw-TCP services"
+    )
+    tls_sub = tls.add_subparsers(dest="tls_command")
+    tls_sub.add_parser(
+        "reconcile", help="Refresh materialized certs from the wildcard + reload changed"
+    )
+    tls_sub.add_parser("status", help="Show each TLS service's cert fingerprint + expiry")
+
     # Convergence — the one lifecycle verb. Renders units/Caddyfile/tunnel, then
     # reconciles the runtime to match config (activate/restart/deactivate).
     p = subparsers.add_parser(
@@ -305,6 +315,10 @@ def main() -> int:
         from castle_cli.commands.gateway import run_gateway
 
         return run_gateway(args)
+    if cmd == "tls":
+        from castle_cli.commands.tls import run_tls
+
+        return run_tls(args)
     if cmd == "apply":
         from castle_cli.commands.apply import run_apply
 

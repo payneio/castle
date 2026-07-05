@@ -16,6 +16,7 @@ from castle_cli.manifest import (
     HttpExposeSpec,
     HttpInternal,
     ManageSpec,
+    Reach,
     RunCommand,
     RunPython,
     SystemdDeployment,
@@ -58,7 +59,7 @@ def run_service_create(args: argparse.Namespace) -> int:
     run = _run_spec(args.launcher, args.run or args.program or name, name)
 
     expose = None
-    proxy = False
+    reach = Reach.OFF
     if args.port is not None:
         expose = ExposeSpec(
             http=HttpExposeSpec(
@@ -67,7 +68,7 @@ def run_service_create(args: argparse.Namespace) -> int:
             )
         )
         # Expose at <name>.<gateway.domain> (the subdomain is the service name).
-        proxy = not args.no_proxy
+        reach = Reach.OFF if args.no_proxy else Reach.INTERNAL
 
     config.deployments[name] = SystemdDeployment(
         id=name,
@@ -76,7 +77,7 @@ def run_service_create(args: argparse.Namespace) -> int:
         description=args.description or None,
         run=run,
         expose=expose,
-        proxy=proxy,
+        reach=reach,
         manage=ManageSpec(systemd=SystemdSpec()),
         defaults=_defaults(args.env),
     )
@@ -86,7 +87,7 @@ def run_service_create(args: argparse.Namespace) -> int:
     print(f"  runs:   {args.launcher} ({args.run or args.program or name})")
     if expose:
         print(f"  port:   {args.port}")
-    if proxy:
+    if reach != Reach.OFF:
         print(f"  subdomain: {name}.<gateway.domain>")
     print(f"\nNext: castle apply {name}")
     return 0

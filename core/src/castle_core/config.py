@@ -128,6 +128,12 @@ class GatewayConfig:
     # names never appear in public DNS. `tunnel_id` is the cloudflared tunnel UUID.
     public_domain: str | None = None
     tunnel_id: str | None = None
+    # acme mode only: emit the `events { on cert_obtained exec castle tls reconcile }`
+    # hook so certs materialized onto raw-TCP services refresh on renewal. Requires
+    # the events-exec plugin in the gateway's Caddy build — set true only once that
+    # Caddy is installed (see docs/tcp-exposure.md §5). Default false keeps a
+    # plugin-less gateway parseable.
+    cert_hook: bool = False
 
 
 @dataclass
@@ -226,6 +232,30 @@ def resolve_env_split(
         else:
             plain[key] = resolved
     return plain, secret
+
+
+def resolve_placeholders(value: str, context: dict[str, str] | None) -> str:
+    """Expand ``${key}`` refs in a single string from ``context``.
+
+    The one ``${...}`` grammar shared by env resolution (:func:`resolve_env_split`)
+    and run-spec expansion (argv/volumes/env in a container launch), so a new
+    placeholder only has to be added to the context dict, never to a second engine.
+    Unknown refs — including ``${secret:...}`` — pass through untouched (secrets
+    never belong in argv; they go via ``--env-file``). Write ``$${key}`` to emit a
+    literal ``${key}`` (e.g. a container arg the container's own shell must expand).
+    """
+    if not context:
+        return value
+
+    def replace_var(match: re.Match[str]) -> str:
+        ref = match.group(1)
+        return context.get(ref, match.group(0))
+
+    # Split on the `$$` escape so an escaped `$${x}` never reaches the substitution
+    # regex, then rejoin with a literal `$`.
+    return "$".join(
+        re.sub(r"\$\{([^}]+)\}", replace_var, part) for part in value.split("$$")
+    )
 
 
 def resolve_env_vars(
@@ -335,6 +365,7 @@ def load_config(root: Path | None = None) -> CastleConfig:
         acme_dns_provider=gateway_data.get("acme_dns_provider", "cloudflare"),
         public_domain=gateway_data.get("public_domain"),
         tunnel_id=gateway_data.get("tunnel_id"),
+        cert_hook=gateway_data.get("cert_hook", False),
     )
 
     # repo: field points to the git repo for repo-relative sources
@@ -410,7 +441,6 @@ _STRUCTURAL_KEYS = {
     "manage",
     "systemd",
     "expose",
-    "proxy",
 }
 
 
@@ -494,12 +524,17 @@ def save_config(config: CastleConfig) -> None:
     if config.gateway.acme_email:
         gateway_data["acme_email"] = config.gateway.acme_email
     # Only persist the provider when non-default, to keep castle.yaml minimal.
-    if config.gateway.acme_dns_provider and config.gateway.acme_dns_provider != "cloudflare":
+    if (
+        config.gateway.acme_dns_provider
+        and config.gateway.acme_dns_provider != "cloudflare"
+    ):
         gateway_data["acme_dns_provider"] = config.gateway.acme_dns_provider
     if config.gateway.public_domain:
         gateway_data["public_domain"] = config.gateway.public_domain
     if config.gateway.tunnel_id:
         gateway_data["tunnel_id"] = config.gateway.tunnel_id
+    if config.gateway.cert_hook:
+        gateway_data["cert_hook"] = config.gateway.cert_hook
     data: dict = {"gateway": gateway_data}
     if config.repo:
         data["repo"] = str(config.repo)
