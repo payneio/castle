@@ -126,7 +126,10 @@ def run_info(args: argparse.Namespace) -> int:
         if service.tcp_port is not None:
             # Raw-TCP reach is internal-only (public TCP is rejected at load, see
             # SystemdDeployment._validate_reach), so there's no "public" state here.
-            print(f"  {BOLD}tcp{RESET}:         {name}.<gateway.domain>:{service.tcp_port} (internal)")
+            print(
+                f"  {BOLD}tcp{RESET}:         "
+                f"{name}.<gateway.domain>:{service.tcp_port} (internal)"
+            )
         if service.manage and service.manage.systemd:
             sd = service.manage.systemd
             print(f"  {BOLD}systemd{RESET}:     enabled={sd.enable}, restart={sd.restart.value}")

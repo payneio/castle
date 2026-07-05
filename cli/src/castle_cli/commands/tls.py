@@ -13,8 +13,9 @@ import argparse
 import hashlib
 from datetime import datetime, timezone
 
-from castle_cli.config import load_config
 from castle_core.tls import _tls_of, reconcile_tls, tls_dir_for, wildcard_cert
+
+from castle_cli.config import load_config
 
 
 def run_tls(args: argparse.Namespace) -> int:

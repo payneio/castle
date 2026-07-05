@@ -149,7 +149,10 @@ def _build_deployment_group(subparsers: argparse._SubParsersAction, kind: str) -
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="castle",
-        description="Castle platform CLI — programs, deployments (services, jobs, tools), and infrastructure",
+        description=(
+            "Castle platform CLI — programs, deployments "
+            "(services, jobs, tools), and infrastructure"
+        ),
     )
     parser.add_argument("--version", action="version", version=f"castle {__version__}")
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
