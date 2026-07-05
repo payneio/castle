@@ -74,6 +74,85 @@ export interface ProgramDetail extends ProgramSummary {
   manifest: Record<string, unknown>
 }
 
+// Git state of a program's source working copy (GET /programs/{name}/git).
+// ahead/behind are relative to the upstream tracking branch (null = no upstream);
+// behind reflects the fetch the status call performed.
+export interface GitStatus {
+  is_repo: boolean
+  branch: string | null
+  upstream: string | null
+  dirty: boolean
+  ahead: number | null
+  behind: number | null
+  detached: boolean
+  error: string | null
+  // The repo (git working copy) this program's source lives in. `multi` marks a
+  // monorepo shared by several programs — sync operates on the whole repo.
+  repo?: {
+    key: string
+    programs: string[]
+    multi: boolean
+    deployments: string[]
+  } | null
+}
+
+// GET /repos — a repo (git working copy) with its members and last-known git state.
+export interface RepoSummary {
+  key: string
+  path: string
+  url: string | null
+  ref: string | null
+  programs: string[]
+  deployments: string[]
+  branch: string | null
+  behind: number | null
+  dirty: boolean
+}
+
+// GET /graph — the derived relationship model (docs/relationships.md).
+export interface GraphRepo {
+  key: string
+  path: string
+  url: string | null
+  ref: string | null
+  programs: string[]
+  deployments: string[]
+  behind: number | null
+  dirty: boolean
+  fresh: boolean | null
+}
+export interface GraphNode {
+  name: string
+  program: string | null
+  kind: string
+  repo: string | null
+  depended_on_by: number
+  unmet: string[]
+  functional: boolean
+  fresh: boolean | null
+  deployed: boolean | null
+}
+export interface GraphEdge {
+  src: string
+  dst: string
+  kind: "system" | "deployment"
+  bind: string | null
+}
+export interface GraphModel {
+  repos: GraphRepo[]
+  nodes: GraphNode[]
+  edges: GraphEdge[]
+}
+
+// POST /programs/{name}/sync — a fast-forward pull (no build/apply/restart).
+export interface ProgramSyncResponse {
+  program: string
+  status: string
+  output: string
+  pulled: boolean
+  deployments: string[] // affected deployments that may need restart/apply
+}
+
 // Union for the shared ConfigPanel (ProgramFields / ServiceFields / JobFields)
 export type AnyDetail = ServiceDetail | JobDetail | ProgramDetail
 

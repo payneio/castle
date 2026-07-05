@@ -9,6 +9,10 @@ import type {
   JobDetail,
   ProgramSummary,
   ProgramDetail,
+  GitStatus,
+  GraphModel,
+  RepoSummary,
+  ProgramSyncResponse,
   StatusResponse,
   GatewayInfo,
   GatewayConfigRequest,
@@ -226,6 +230,67 @@ export function useProgramAction() {
   })
 }
 
+// Git status of a program's working copy. The backend fetches from the remote,
+// so this call is comparatively slow — hence its own query (not part of the
+// program detail) with a short staleTime. `enabled` lets the caller skip it for
+// programs with no repo.
+export function useProgramGit(name: string, enabled = true) {
+  return useQuery({
+    queryKey: ["programs", name, "git"],
+    queryFn: () => apiClient.get<GitStatus>(`/programs/${name}/git`),
+    enabled: enabled && !!name,
+    staleTime: 30_000,
+  })
+}
+
+// Fast-forward a program's source (git pull). Pull-only — converge (restart/apply)
+// stays a separate, explicit step. Refreshes the program and its git status.
+export function useProgramSync() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (name: string) =>
+      apiClient.post<ProgramSyncResponse>(`/programs/${name}/sync`),
+    onSuccess: (_data, name) => {
+      qc.invalidateQueries({ queryKey: ["programs", name, "git"] })
+      qc.invalidateQueries({ queryKey: ["programs"] })
+    },
+  })
+}
+
+export function useRepos() {
+  return useQuery({
+    queryKey: ["repos"],
+    queryFn: () => apiClient.get<RepoSummary[]>("/repos"),
+    staleTime: 30_000,
+  })
+}
+
+// Fast-forward a whole repo (git pull the working copy). Pull-only — converge is
+// separate. Refreshes repos, programs, and their git status.
+export function useRepoSync() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (key: string) =>
+      apiClient.post<ProgramSyncResponse>(`/repos/${key}/sync`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["repos"] })
+      qc.invalidateQueries({ queryKey: ["programs"] })
+      qc.invalidateQueries({ queryKey: ["graph"] })
+    },
+  })
+}
+
+// The derived relationship model (repos, requires edges, functional/fresh status).
+// Fetches git status per repo server-side, so it's comparatively slow — its own
+// query with a modest staleTime.
+export function useGraph() {
+  return useQuery({
+    queryKey: ["graph"],
+    queryFn: () => apiClient.get<GraphModel>("/graph"),
+    staleTime: 30_000,
+  })
+}
+
 export function useSaveGatewayConfig() {
   const qc = useQueryClient()
   return useMutation({
@@ -310,6 +375,12 @@ export function useEventStream() {
       // in case the action changed what's available
       qc.invalidateQueries({ queryKey: ["services"] })
       qc.invalidateQueries({ queryKey: ["jobs"] })
+    })
+
+    es.addEventListener("program-sync", () => {
+      // A program's source was pulled (possibly by another client) — refresh
+      // programs and their git status.
+      qc.invalidateQueries({ queryKey: ["programs"] })
     })
 
     es.addEventListener("mesh", () => {

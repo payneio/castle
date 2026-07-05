@@ -7,6 +7,7 @@ import { Tools } from "@/pages/Tools"
 import { Programs } from "@/pages/Programs"
 import { GatewayPage } from "@/pages/GatewayPage"
 import { MeshPage } from "@/pages/MeshPage"
+import { GraphPage } from "@/pages/GraphPage"
 import { ServiceDetailPage } from "@/pages/ServiceDetail"
 import { ScheduledDetailPage } from "@/pages/ScheduledDetail"
 import { ToolDetailPage } from "@/pages/ToolDetail"
@@ -26,6 +27,7 @@ export const router = createBrowserRouter([
       { path: "programs", element: <Programs /> },
       { path: "gateway", element: <GatewayPage /> },
       { path: "mesh", element: <MeshPage /> },
+      { path: "graph", element: <GraphPage /> },
       { path: "services/:name", element: <ServiceDetailPage /> },
       { path: "jobs/:name", element: <ScheduledDetailPage /> },
       { path: "tools/:name", element: <ToolDetailPage /> },

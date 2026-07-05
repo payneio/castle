@@ -1,16 +1,42 @@
 import { useState } from "react"
 import { useParams } from "react-router-dom"
-import { useProgram } from "@/services/api/hooks"
+import { useProgram, useProgramGit, useProgramSync } from "@/services/api/hooks"
 import { subdomainUrl } from "@/lib/labels"
 import { DetailHeader } from "@/components/detail/DetailHeader"
 import { ConfigPanel } from "@/components/detail/ConfigPanel"
 import { DeploymentsSection } from "@/components/detail/DeploymentsSection"
 import { ProgramActions, ActionOutputPanel, type ActionOutput } from "@/components/ProgramActions"
+import { GitSyncRow } from "@/components/detail/GitSyncRow"
 
 export function ProgramDetailPage() {
   const { name } = useParams<{ name: string }>()
   const { data: deployment, isLoading, error, refetch } = useProgram(name ?? "")
+  const git = useProgramGit(name ?? "", !!deployment?.repo)
+  const sync = useProgramSync()
   const [actionOutput, setActionOutput] = useState<ActionOutput | null>(null)
+
+  const handleSync = () => {
+    if (!deployment) return
+    setActionOutput(null)
+    sync.mutate(deployment.id, {
+      onSuccess: (data) => {
+        const lines = [data.output || (data.pulled ? "Pulled." : "Already up to date.")]
+        if (data.pulled && data.deployments.length) {
+          lines.push("", `May need a restart/apply: ${data.deployments.join(", ")}`)
+        }
+        setActionOutput({ action: "sync", text: lines.join("\n"), ok: true })
+      },
+      onError: (err) => {
+        let text = String(err)
+        try {
+          text = JSON.parse((err as Error).message).detail ?? text
+        } catch {
+          text = (err as Error).message ?? text
+        }
+        setActionOutput({ action: "sync", text, ok: false })
+      },
+    })
+  }
 
   if (isLoading) {
     return (
@@ -83,6 +109,18 @@ export function ProgramDetailPage() {
                 {deployment.repo}
                 {deployment.ref ? ` @ ${deployment.ref}` : ""}
               </span>
+            </>
+          )}
+          {deployment.repo && git.data?.is_repo && (
+            <>
+              <span className="text-[var(--muted)]">Git</span>
+              <GitSyncRow
+                status={git.data}
+                program={deployment.id}
+                loading={git.isFetching}
+                syncing={sync.isPending}
+                onSync={handleSync}
+              />
             </>
           )}
           {deployment.version && (

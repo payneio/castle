@@ -12,6 +12,7 @@ import {
   Package,
   Server,
   Share2,
+  Network,
   Wrench,
   X,
   type LucideIcon,
@@ -38,6 +39,7 @@ const NAV: (NavLeaf | NavGroup)[] = [
     ],
   },
   { to: "/programs", label: "Programs", icon: Package },
+  { to: "/graph", label: "Graph", icon: Network },
   { to: "/mesh", label: "Mesh", icon: Share2 },
 ]
 

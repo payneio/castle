@@ -283,6 +283,27 @@ class Capability(BaseModel):
     meta: dict[str, str] = Field(default_factory=dict)
 
 
+class Requirement(BaseModel):
+    """A precondition — something that must be true for a program/deployment to be
+    *functional*. The ``kind`` fixes both the meaning and how it's checked (there is
+    no separate purpose tag):
+
+    - ``system``     — a host package/binary must be installed (``ref`` = package).
+    - ``deployment`` — another deployment must exist/run (``ref`` = its name).
+
+    ``version`` is reserved for a future constraint (unused now). ``bind`` (for a
+    ``deployment`` requirement) names the env var castle projects the target's URL
+    into — env is derived *from* the requirement, never scraped back into it.
+
+    See docs/relationships.md. ``system_dependencies`` is the ``kind: system`` case.
+    """
+
+    kind: Literal["system", "deployment"]
+    ref: str
+    version: str | None = None
+    bind: str | None = None
+
+
 # ---------------------
 # Defaults
 # ---------------------
@@ -363,6 +384,10 @@ class ProgramSpec(BaseModel):
     # Per-program dev verb overrides (declared verbs override the stack default).
     commands: CommandsSpec | None = None
 
+    # `requires` is the general precondition relation (see docs/relationships.md).
+    # `system_dependencies` is kept as the `{kind: system}` alias/back-compat; both
+    # are merged when evaluating what a program requires.
+    requires: list[Requirement] = Field(default_factory=list)
     system_dependencies: list[str] = Field(default_factory=list)
     install_extras: list[str] = Field(default_factory=list)
     version: str | None = None
@@ -406,6 +431,9 @@ class DeploymentBase(BaseModel):
     )
     description: str | None = None
     defaults: DefaultsSpec | None = None
+    # Runtime preconditions (e.g. another deployment that must exist). See
+    # docs/relationships.md; merged with the program's `requires` when evaluated.
+    requires: list[Requirement] = Field(default_factory=list)
     # Declared on/off state. `castle apply` converges reality to this: enabled
     # deployments are activated (service started, tool installed, route served),
     # disabled ones are deactivated but kept in the catalog. This is *desired

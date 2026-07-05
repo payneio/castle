@@ -244,7 +244,9 @@ def apply(
             return "restart"
         return "unchanged"
 
-    result = ApplyResult(registry=NodeRegistry(node=_node_config(config), deployed=desired))
+    result = ApplyResult(
+        registry=NodeRegistry(node=_node_config(config), deployed=desired)
+    )
 
     if plan:
         # No writes: for systemd, predict the new unit bytes by rendering to a string
@@ -469,6 +471,36 @@ def _public_url(
     return None
 
 
+def _target_url(config: CastleConfig, target_name: str) -> str | None:
+    """The base URL another deployment is reachable at — how a ``{kind: deployment,
+    bind: VAR}`` requirement projects its target into the consumer's env."""
+    dep = config.deployments.get(target_name)
+    if dep is None:
+        return None
+    expose = getattr(dep, "expose", None)
+    http = getattr(expose, "http", None) if expose else None
+    tport = http.internal.port if http else None
+    return _public_url(config, target_name, getattr(dep, "http_exposed", False), tport)
+
+
+def _requires_env(config: CastleConfig, name: str, config_key: str) -> dict[str, str]:
+    """Env generated FROM a deployment's ``requires`` — a ``{kind: deployment,
+    bind: VAR}`` requirement sets ``VAR`` to the target's URL. Env is derived from
+    the dependency, never scraped back into one (see docs/relationships.md)."""
+    dep = config.deployments[name]
+    prog = config.programs.get(config_key)
+    reqs = list(getattr(dep, "requires", []) or [])
+    if prog:
+        reqs += list(prog.requires)
+    out: dict[str, str] = {}
+    for r in reqs:
+        if r.kind == "deployment" and r.bind:
+            url = _target_url(config, r.ref)
+            if url:
+                out[r.bind] = url
+    return out
+
+
 def _supabase_app_schemas(config: CastleConfig) -> str:
     """The ``${supabase_app_schemas}`` placeholder: each registered supabase app's
     own schema, comma-prefixed and joined (or '' when there are none).
@@ -621,8 +653,14 @@ def _build_deployed(
     # names to castle's computed values. Secret-bearing vars split out to a
     # mode-0600 file (never in the unit or argv).
     raw_env = dict(dep.defaults.env) if (dep.defaults and dep.defaults.env) else {}
+    # Env generated from `requires` ({kind: deployment, bind: VAR} → target URL).
+    # An explicit defaults.env value always wins — a hand-set var is never clobbered.
+    for var, url in _requires_env(config, name, config_key).items():
+        raw_env.setdefault(var, url)
     public_url = _public_url(config, name, expose, port)
-    ctx = _env_context(name, config_key, port, public_url, _supabase_app_schemas(config))
+    ctx = _env_context(
+        name, config_key, port, public_url, _supabase_app_schemas(config)
+    )
     # ${tls_*}: paths to castle-materialized cert files for a TLS-material TCP
     # service. The deployment maps them into its own config (mount ${tls_dir} for a
     # container, or reference ${tls_cert}/${tls_key} directly for a native service).
@@ -647,7 +685,12 @@ def _build_deployed(
         _ensure_python_tool(config, dep.program, messages)
 
     run_cmd = _build_run_cmd(
-        name, run, env, messages, source_dir, secret_env_file=secret_env_file,
+        name,
+        run,
+        env,
+        messages,
+        source_dir,
+        secret_env_file=secret_env_file,
         placeholders=ctx,
     )
     stop_cmd = _build_stop_cmd(name, run, source_dir)

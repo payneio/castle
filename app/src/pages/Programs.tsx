@@ -1,5 +1,6 @@
 import { usePrograms } from "@/services/api/hooks"
 import { ProgramList } from "@/components/ProgramList"
+import { MonorepoBanner } from "@/components/MonorepoBanner"
 import { PageHeader } from "@/components/PageHeader"
 
 export function Programs() {
@@ -8,6 +9,8 @@ export function Programs() {
   return (
     <div className="max-w-6xl mx-auto px-6 py-8">
       <PageHeader title="Programs" subtitle="Software catalog" />
+
+      <MonorepoBanner />
 
       {isLoading ? (
         <p className="text-[var(--muted)]">Loading...</p>

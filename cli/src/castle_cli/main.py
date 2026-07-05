@@ -193,6 +193,12 @@ def build_parser() -> argparse.ArgumentParser:
         "doctor", help="Diagnose setup + runtime health, with next-step hints"
     )
 
+    # Relationship model — repos, requires edges, and derived status.
+    p = subparsers.add_parser(
+        "graph", help="Show how programs/deployments relate (repos, requires, status)"
+    )
+    p.add_argument("--json", action="store_true", help="Output as JSON")
+
     # Cross-resource overview
     p = subparsers.add_parser("list", help="List programs, services, jobs, and tools")
     p.add_argument(
@@ -335,6 +341,10 @@ def main() -> int:
         from castle_cli.commands.doctor import run_doctor
 
         return run_doctor(args)
+    if cmd == "graph":
+        from castle_cli.commands.graph import run_graph
+
+        return run_graph(args)
     if cmd == "list":
         from castle_cli.commands.list_cmd import run_list
 
