@@ -16,6 +16,7 @@ from castle_cli.manifest import (
     ManageSpec,
     PathDeployment,
     ProgramSpec,
+    Requirement,
     RunPython,
     SystemdDeployment,
     SystemdSpec,
@@ -36,6 +37,14 @@ STACK_DEFAULTS: dict[str, str] = {
 STACK_BUILD_OUTPUTS: dict[str, str] = {
     "supabase": "public",
     "react-vite": "dist",
+}
+
+# Substrate a stack's apps depend on — seeded as a `requires` at creation so the
+# relationship graph shows it. This keeps `stack` uncoupled from the runtime model:
+# the stack declares the edge once here; the graph only ever reads the encoded
+# `requires`, never the stack. See docs/relationships.md.
+STACK_REQUIRES: dict[str, list[Requirement]] = {
+    "supabase": [Requirement(kind="deployment", ref="supabase")],
 }
 
 
@@ -111,6 +120,8 @@ def run_create(args: argparse.Namespace) -> int:
         source=str(project_dir),
         stack=stack,
         build=build,
+        # Seed the stack's substrate dependency (e.g. supabase) as a real `requires`.
+        requires=list(STACK_REQUIRES.get(stack or "", [])),
     )
     if kind == "tool":
         # A PATH-managed deployment: installed via `uv tool install`, no unit/route.
@@ -120,7 +131,10 @@ def run_create(args: argparse.Namespace) -> int:
     elif kind == "static":
         # A caddy-managed static deployment: no systemd unit, served from the build dir.
         config.deployments[name] = CaddyDeployment(
-            id=name, manager="caddy", program=name, root=static_root or "dist",
+            id=name,
+            manager="caddy",
+            program=name,
+            root=static_root or "dist",
             description=description,
         )
     elif kind == "service":

@@ -107,6 +107,9 @@ class TestCreateCommand:
         comp = config.programs["guestbook"]
         assert comp.stack == "supabase"
         assert comp.build is not None and comp.build.outputs == ["public"]
+        # The supabase stack seeds a `requires` on the substrate so the graph shows
+        # the dependency (stack stays uncoupled — it just declares the edge once).
+        assert [(r.kind, r.ref) for r in comp.requires] == [("deployment", "supabase")]
         dep = config.deployments["guestbook"]
         assert dep.manager == "caddy"
         assert dep.root == "public"
