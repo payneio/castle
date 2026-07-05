@@ -15,6 +15,7 @@ dependencies — env is generated *from* requirements, not the reverse.
 from __future__ import annotations
 
 import shutil
+import subprocess
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -134,10 +135,25 @@ def requirements_of(config: CastleConfig, dep_name: str) -> list[Requirement]:
     return out
 
 
+def _dpkg_installed(pkg: str) -> bool:
+    """Whether a dpkg package is installed (the authoritative 'installed' check on
+    Debian/Ubuntu). Returns False where dpkg isn't available."""
+    dpkg = shutil.which("dpkg")
+    if not dpkg:
+        return False
+    r = subprocess.run([dpkg, "-s", pkg], capture_output=True, text=True)
+    return r.returncode == 0 and "install ok installed" in r.stdout
+
+
 def _check(config: CastleConfig, req: Requirement) -> bool:
     """Is a single requirement satisfied? (The check is fixed by its kind.)"""
     if req.kind == "system":
-        return shutil.which(req.ref) is not None
+        # `system_dependencies` holds PACKAGE names, not executables. A PATH lookup
+        # only coincides with 'installed' when the package name equals its command
+        # (pandoc, rsync) — for names like poppler-utils / texlive-latex-base /
+        # docker-compose-plugin it never matches. Fast-path `which`, then ask the
+        # package manager (the real meaning of 'installed').
+        return shutil.which(req.ref) is not None or _dpkg_installed(req.ref)
     if req.kind == "deployment":
         return req.ref in config.deployments
     return True

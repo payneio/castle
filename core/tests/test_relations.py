@@ -91,11 +91,25 @@ def test_functional_predicate_reports_unmet(monkeypatch: pytest.MonkeyPatch) -> 
         {"web": prog, "api": ProgramSpec(id="api")},
         {"web": _dep("web"), "api": _dep("api")},
     )
-    monkeypatch.setattr(R.shutil, "which", lambda _: None)  # nothing installed
+    monkeypatch.setattr(R.shutil, "which", lambda _: None)  # not on PATH
+    monkeypatch.setattr(R, "_dpkg_installed", lambda _: False)  # nor as a package
     m = R.build_model(cfg, check=True)
     web = next(n for n in m.nodes if n.name == "web")
     assert web.unmet == ["system:pandoc"]  # deployment:api exists → satisfied
     assert web.functional is False
+
+
+def test_system_requirement_satisfied_by_package_not_on_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A package name that isn't a command (poppler-utils) is satisfied when the
+    package is installed — a PATH lookup alone would wrongly report it unmet."""
+    prog = ProgramSpec(id="t", system_dependencies=["poppler-utils"])
+    cfg = _cfg({"t": prog}, {"t": _dep("t")})
+    monkeypatch.setattr(R.shutil, "which", lambda _: None)  # no `poppler-utils` binary
+    monkeypatch.setattr(R, "_dpkg_installed", lambda pkg: pkg == "poppler-utils")
+    t = next(n for n in R.build_model(cfg, check=True).nodes if n.name == "t")
+    assert t.functional is True and t.unmet == []
 
 
 def test_missing_deployment_requirement_is_unmet() -> None:
