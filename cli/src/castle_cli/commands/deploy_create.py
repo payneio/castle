@@ -43,7 +43,7 @@ def _run_spec(launcher: str, target: str, name: str) -> RunPython | RunCommand:
 
 def _check_new(config: object, name: str, label: str) -> str | None:
     """Return an error message if the deployment name is taken, else None."""
-    if name in config.deployments:  # type: ignore[attr-defined]
+    if config.deployments_named(name):
         return f"Error: {label} '{name}' already exists."
     return None
 
@@ -70,7 +70,7 @@ def run_service_create(args: argparse.Namespace) -> int:
         # Expose at <name>.<gateway.domain> (the subdomain is the service name).
         reach = Reach.OFF if args.no_proxy else Reach.INTERNAL
 
-    config.deployments[name] = SystemdDeployment(
+    config.services[name] = SystemdDeployment(
         id=name,
         manager="systemd",
         program=args.program,
@@ -104,7 +104,7 @@ def run_job_create(args: argparse.Namespace) -> int:
     run = _run_spec(args.launcher, args.run or args.program or name, name)
 
     # A job is a systemd deployment with a schedule (→ a .timer).
-    config.deployments[name] = SystemdDeployment(
+    config.jobs[name] = SystemdDeployment(
         id=name,
         manager="systemd",
         program=args.program,

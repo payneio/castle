@@ -86,11 +86,13 @@ def run_run(args: argparse.Namespace) -> int:
         return 1
 
     registry = load_registry()
-    if name not in registry.deployed:
+    matches = registry.named(name)
+    if not matches:
         print(f"Error: '{name}' is not a deployed service. Run 'castle apply' first.")
         return 1
 
-    deployed = registry.deployed[name]
+    # A name may span kinds; run the one that has a run command (service/job).
+    deployed = next((d for d in matches if d.run_cmd), matches[0])
     cmd = list(deployed.run_cmd) + extra_args
     env = dict(os.environ)
     env.update(deployed.env)

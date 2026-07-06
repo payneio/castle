@@ -51,7 +51,7 @@ STACK_REQUIRES: dict[str, list[Requirement]] = {
 def next_available_port(config: object) -> int:
     """Find the next available port starting from 9001 (9000 is reserved for gateway)."""
     used_ports = set()
-    for dep in config.deployments.values():
+    for _k, _n, dep in config.all_deployments():
         expose = getattr(dep, "expose", None)
         if expose and expose.http:
             used_ports.add(expose.http.internal.port)
@@ -71,7 +71,7 @@ def run_create(args: argparse.Namespace) -> int:
     stack = args.stack
     kind = STACK_DEFAULTS.get(stack) if stack else None
 
-    if name in config.programs or name in config.deployments:
+    if name in config.programs or config.deployments_named(name):
         print(f"Error: '{name}' already exists in castle.yaml")
         return 1
 
@@ -125,12 +125,12 @@ def run_create(args: argparse.Namespace) -> int:
     )
     if kind == "tool":
         # A PATH-managed deployment: installed via `uv tool install`, no unit/route.
-        config.deployments[name] = PathDeployment(
+        config.tools[name] = PathDeployment(
             id=name, manager="path", program=name, description=description
         )
     elif kind == "static":
         # A caddy-managed static deployment: no systemd unit, served from the build dir.
-        config.deployments[name] = CaddyDeployment(
+        config.statics[name] = CaddyDeployment(
             id=name,
             manager="caddy",
             program=name,
@@ -139,7 +139,7 @@ def run_create(args: argparse.Namespace) -> int:
         )
     elif kind == "service":
         prefix = name.replace("-", "_").upper()
-        config.deployments[name] = SystemdDeployment(
+        config.services[name] = SystemdDeployment(
             id=name,
             manager="systemd",
             program=name,

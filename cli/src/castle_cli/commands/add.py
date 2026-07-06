@@ -16,10 +16,7 @@ from castle_cli.manifest import BuildSpec, CommandsSpec, ProgramSpec
 
 
 def _is_git_url(s: str) -> bool:
-    return (
-        s.startswith(("http://", "https://", "git@", "ssh://"))
-        or s.endswith(".git")
-    )
+    return s.startswith(("http://", "https://", "git@", "ssh://")) or s.endswith(".git")
 
 
 def _detect(src: Path) -> tuple[str | None, dict[str, list[list[str]]]]:
@@ -87,7 +84,7 @@ def run_add(args: argparse.Namespace) -> int:
         source = str(src_path)
         name = args.name or src_path.name
 
-    if name in config.programs or name in config.deployments:
+    if name in config.programs or config.deployments_named(name):
         print(f"Error: '{name}' already exists in castle.yaml")
         return 1
 

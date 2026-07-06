@@ -74,7 +74,7 @@ class TestCreateCommand:
         assert (project_dir / "CLAUDE.md").exists()
         assert "my-tool2" in config.programs
         # A tool is a PATH deployment: manager=path, derived kind=tool.
-        assert config.deployments["my-tool2"].manager == "path"
+        assert config.tools["my-tool2"].manager == "path"
         assert config.deployments_of("my-tool2") == [("my-tool2", "tool")]
 
     def test_create_supabase_app(self, castle_root: Path, tmp_path: Path) -> None:
@@ -91,9 +91,7 @@ class TestCreateCommand:
 
             from castle_cli.commands.create import run_create
 
-            args = Namespace(
-                name="guestbook", stack="supabase", description="Guestbook", port=None
-            )
+            args = Namespace(name="guestbook", stack="supabase", description="Guestbook", port=None)
             result = run_create(args)
 
         assert result == 0
@@ -110,7 +108,7 @@ class TestCreateCommand:
         # The supabase stack seeds a `requires` on the substrate so the graph shows
         # the dependency (stack stays uncoupled — it just declares the edge once).
         assert [(r.kind, r.ref) for r in comp.requires] == [("deployment", "supabase")]
-        dep = config.deployments["guestbook"]
+        dep = config.statics["guestbook"]
         assert dep.manager == "caddy"
         assert dep.root == "public"
         assert config.deployments_of("guestbook") == [("guestbook", "static")]

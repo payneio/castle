@@ -31,7 +31,8 @@ def run_delete(args: argparse.Namespace) -> int:
     # single deployments/ collection — the kind is derived, not a separate section.
     _DEPLOY_RESOURCES = (None, "service", "job", "tool", "static", "deployment")
     in_programs = name in config.programs and resource in (None, "program")
-    in_deployment = name in config.deployments and resource in _DEPLOY_RESOURCES
+    named = config.deployments_named(name)  # [(kind, spec), ...] sharing this name
+    in_deployment = bool(named) and resource in _DEPLOY_RESOURCES
     if not (in_programs or in_deployment):
         where = f" {resource}" if resource else ""
         print(f"Error: no{where} '{name}' in castle.yaml")
@@ -44,13 +45,16 @@ def run_delete(args: argparse.Namespace) -> int:
     # Cascade: every deployment referencing this program is torn down and removed
     # (a program and its 1:1 service/tool/static are one thing to the user). A
     # deployment-only delete targets just the co-named deployment.
-    deployments_to_remove: list[str] = []
+    # Each entry is (kind, name) — the deployment's identity.
+    deployments_to_remove: list[tuple[str, str]] = []
     if in_programs:
         deployments_to_remove = [
-            d for d, spec in config.deployments.items() if spec.program == name
+            (kind, n) for kind, n, spec in config.all_deployments() if spec.program == name
         ]
-    if in_deployment and name not in deployments_to_remove:
-        deployments_to_remove.append(name)
+    if in_deployment:
+        for kind, _spec in named:
+            if (kind, name) not in deployments_to_remove:
+                deployments_to_remove.append((kind, name))
 
     # Capture remnant facts BEFORE mutating config: public CNAMEs, and the program
     # entry itself — its stack may own persistent data (a DB schema) that survives
@@ -71,7 +75,10 @@ def run_delete(args: argparse.Namespace) -> int:
     purge_data = getattr(args, "purge_data", False)
     print(f"Will remove '{name}' from castle.yaml ({', '.join(where)}).")
     if deployments_to_remove:
-        print(f"Will tear down deployment(s): {', '.join(deployments_to_remove)}")
+        print(
+            "Will tear down deployment(s): "
+            + ", ".join(f"{n} ({k})" for k, n in deployments_to_remove)
+        )
     if args.source and source_dir:
         print(f"Will ALSO delete source directory: {source_dir}")
     if owns_data and purge_data:
@@ -95,14 +102,14 @@ def run_delete(args: argparse.Namespace) -> int:
 
         from castle_core.lifecycle import deactivate
 
-        for d in deployments_to_remove:
+        for kind, d in deployments_to_remove:
             try:
-                res = asyncio.run(deactivate(d, config, config.root))
+                res = asyncio.run(deactivate(d, kind, config, config.root))
                 if getattr(res, "message", None):
                     print(f"  {res.message}")
             except Exception as e:
                 print(f"  warning: teardown of '{d}' failed: {e}")
-            del config.deployments[d]
+            config.store_for(kind).pop(d, None)
 
     if in_programs:
         del config.programs[name]
@@ -155,7 +162,7 @@ def run_delete(args: argparse.Namespace) -> int:
     return 0
 
 
-def _public_hosts(config, deployment_names: list[str]) -> list[str]:
+def _public_hosts(config, deployments: list[tuple[str, str]]) -> list[str]:
     """The Cloudflare CNAMEs (<subdomain>.<public_domain>) of any public deployments
     being removed — surfaced so the operator can clean up DNS."""
     gw = getattr(config, "gateway", None)
@@ -163,8 +170,8 @@ def _public_hosts(config, deployment_names: list[str]) -> list[str]:
     if not public_domain:
         return []
     hosts: list[str] = []
-    for d in deployment_names:
-        spec = config.deployments.get(d)
+    for kind, d in deployments:
+        spec = config.deployment(kind, d)
         if spec is None or not getattr(spec, "public", False):
             continue
         sub = getattr(spec, "subdomain", None) or d

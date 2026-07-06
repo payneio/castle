@@ -13,9 +13,9 @@ from __future__ import annotations
 import argparse
 
 _C = {
-    "activate": "\033[32m",   # green
-    "restart": "\033[33m",    # yellow
-    "deactivate": "\033[31m", # red
+    "activate": "\033[32m",  # green
+    "restart": "\033[33m",  # yellow
+    "deactivate": "\033[31m",  # red
     "reset": "\033[0m",
     "dim": "\033[90m",
 }

@@ -136,11 +136,9 @@ def _check_configuration(config) -> list[Check]:
             )
         )
 
-    missing = [n for n in (_GATEWAY, _API, _DASHBOARD) if n not in config.deployments]
+    missing = [n for n in (_GATEWAY, _API, _DASHBOARD) if not config.deployments_named(n)]
     if not missing:
-        checks.append(
-            Check(OK, "control plane registered", detail="gateway, api, dashboard")
-        )
+        checks.append(Check(OK, "control plane registered", detail="gateway, api, dashboard"))
     else:
         checks.append(
             Check(
@@ -158,7 +156,7 @@ def _check_configuration(config) -> list[Check]:
 def _check_dashboard_built(config) -> Check:
     from castle_core.lifecycle import _static_built
 
-    if _DASHBOARD not in config.deployments:
+    if not config.deployments_named(_DASHBOARD):
         return Check(WARN, "dashboard not registered", detail="skipping build check")
     if _static_built(_DASHBOARD, config):
         return Check(OK, "dashboard built", detail="app/dist/")
@@ -174,7 +172,7 @@ def _check_dashboard_built(config) -> Check:
 
 
 def _deployment_port(config, name: str) -> int | None:
-    dep = config.deployments.get(name)
+    dep = next((d for _k, d in config.deployments_named(name)), None)
     expose = getattr(dep, "expose", None)
     http = getattr(expose, "http", None)
     internal = getattr(http, "internal", None)
@@ -189,7 +187,7 @@ def _check_runtime(config) -> list[Check]:
 
     # Gateway: active + actually listening on its port.
     gw_port = config.gateway.port
-    if is_active(_GATEWAY, config):
+    if is_active(_GATEWAY, "service", config):
         if _port_open(gw_port):
             checks.append(Check(OK, "gateway running", detail=f"listening on :{gw_port}"))
         else:
@@ -212,7 +210,7 @@ def _check_runtime(config) -> list[Check]:
 
     # API: active + listening on its port.
     api_port = _deployment_port(config, _API)
-    if is_active(_API, config):
+    if is_active(_API, "service", config):
         if api_port and not _port_open(api_port):
             checks.append(
                 Check(
@@ -226,9 +224,7 @@ def _check_runtime(config) -> list[Check]:
             detail = f"listening on :{api_port}" if api_port else ""
             checks.append(Check(OK, "castle-api running", detail=detail))
     else:
-        checks.append(
-            Check(FAIL, "castle-api not running", hint="castle apply")
-        )
+        checks.append(Check(FAIL, "castle-api not running", hint="castle apply"))
 
     # Generated artifacts.
     registry = SPECS_DIR / "registry.yaml"
@@ -236,9 +232,7 @@ def _check_runtime(config) -> list[Check]:
     if registry.exists() and caddyfile.exists():
         checks.append(Check(OK, "registry + Caddyfile generated"))
     else:
-        missing = [
-            p.name for p in (registry, caddyfile) if not p.exists()
-        ]
+        missing = [p.name for p in (registry, caddyfile) if not p.exists()]
         checks.append(
             Check(
                 FAIL,
@@ -319,14 +313,12 @@ def _check_tls_exposure(config) -> list[Check]:
         checks.append(_check_privileged_ports())
 
     # Public exposure (only relevant if a deployment opts in).
-    public = [n for n, d in config.deployments.items() if getattr(d, "public", False)]
+    public = [n for _k, n, d in config.all_deployments() if getattr(d, "public", False)]
     if public:
         from castle_core.lifecycle import is_active
 
         if gw.public_domain and gw.tunnel_id:
-            checks.append(
-                Check(OK, "tunnel configured", detail=f"{len(public)} public service(s)")
-            )
+            checks.append(Check(OK, "tunnel configured", detail=f"{len(public)} public service(s)"))
         else:
             missing = []
             if not gw.public_domain:
@@ -341,7 +333,7 @@ def _check_tls_exposure(config) -> list[Check]:
                     hint="see docs/tunnel-setup.md",
                 )
             )
-        if not is_active("castle-tunnel", config):
+        if not is_active("castle-tunnel", "service", config):
             checks.append(
                 Check(
                     WARN,
@@ -418,9 +410,7 @@ def _check_public_dns(config) -> Check:
 
 def _check_privileged_ports() -> Check:
     try:
-        val = int(
-            Path("/proc/sys/net/ipv4/ip_unprivileged_port_start").read_text().strip()
-        )
+        val = int(Path("/proc/sys/net/ipv4/ip_unprivileged_port_start").read_text().strip())
     except (OSError, ValueError):
         return Check(WARN, "cannot read unprivileged port floor")
     if val <= 80:

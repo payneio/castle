@@ -30,11 +30,7 @@ def _is_tool(config: object, name: str) -> bool:
 
 def _tool_programs(config: object) -> dict:
     """Programs with a tool (path) deployment, name-sorted."""
-    return {
-        name: comp
-        for name, comp in sorted(config.programs.items())
-        if _is_tool(config, name)
-    }
+    return {name: comp for name, comp in sorted(config.programs.items()) if _is_tool(config, name)}
 
 
 def _executables(comp: object) -> list[str]:
@@ -77,8 +73,7 @@ def run_tool_list(args: argparse.Namespace) -> int:
     config = load_config()
     tools = _tool_programs(config)
     records = [
-        _tool_record(config, name, comp, tool_installed(name))
-        for name, comp in tools.items()
+        _tool_record(config, name, comp, tool_installed(name)) for name, comp in tools.items()
     ]
 
     if getattr(args, "json", False):

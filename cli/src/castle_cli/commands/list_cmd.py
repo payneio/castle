@@ -7,8 +7,6 @@ import argparse
 import json
 import logging
 
-from castle_core.manifest import kind_for
-
 from castle_cli.config import load_config
 
 log = logging.getLogger(__name__)
@@ -16,7 +14,8 @@ log = logging.getLogger(__name__)
 
 def _deployments_of_kind(config: object, kind: str) -> dict:
     """The deployments whose derived kind matches (a lens over config.deployments)."""
-    return {n: d for n, d in config.deployments.items() if kind_for(d) == kind}
+    return config.store_for(kind)
+
 
 # Terminal colors
 BOLD = "\033[1m"
@@ -87,8 +86,8 @@ def run_list(args: argparse.Namespace) -> int:
     if getattr(args, "json", False):
         return _list_json(config, filter_kind, filter_stack)
 
-    def dot(name: str) -> str:
-        return f"{GREEN}●{RESET}" if is_active(name, config) else f"{RED}○{RESET}"
+    def dot(name: str, kind: str = "service") -> str:
+        return f"{GREEN}●{RESET}" if is_active(name, kind, config) else f"{RED}○{RESET}"
 
     any_output = False
 
@@ -114,12 +113,11 @@ def run_list(args: argparse.Namespace) -> int:
         print(f"{CYAN}{'─' * 40}{RESET}")
         for name, comp in progs.items():
             kinds = prog_kinds(name)
-            kinds_str = "".join(
-                f"  {KIND_COLORS.get(k, '')}{k}{RESET}" for k in kinds
-            )
+            kinds_str = "".join(f"  {KIND_COLORS.get(k, '')}{k}{RESET}" for k in kinds)
             stack_str = f"  {DIM}{comp.stack}{RESET}" if comp.stack else ""
             desc = f"  {DIM}{comp.description}{RESET}" if comp.description else ""
-            print(f"  {dot(name)} {BOLD}{name}{RESET}{kinds_str}{stack_str}{desc}")
+            pk = (prog_kinds(name) or ["service"])[0]
+            print(f"  {dot(name, pk)} {BOLD}{name}{RESET}{kinds_str}{stack_str}{desc}")
 
     # Services + Jobs (deployment views) — independent of behavior, so only shown
     # when no behavior filter is applied. Each gated by its own resource scope.
@@ -137,7 +135,7 @@ def run_list(args: argparse.Namespace) -> int:
                 stack = _resolve_stack(config, name)
                 stack_str = f"  {DIM}{stack}{RESET}" if stack else ""
                 desc = f"  {DIM}{svc.description}{RESET}" if svc.description else ""
-                print(f"  {dot(name)} {BOLD}{name}{RESET}{port_str}{stack_str}{desc}")
+                print(f"  {dot(name, 'service')} {BOLD}{name}{RESET}{port_str}{stack_str}{desc}")
 
     if not filter_kind and resource in (None, "job"):
         jobs = _filter_by_stack(config.jobs, config, filter_stack)
@@ -148,7 +146,7 @@ def run_list(args: argparse.Namespace) -> int:
             for name, job in jobs.items():
                 sched = f"  {DIM}[{job.schedule}]{RESET}"
                 desc = f"  {DIM}{job.description}{RESET}" if job.description else ""
-                print(f"  {dot(name)} {BOLD}{name}{RESET}{sched}{desc}")
+                print(f"  {dot(name, 'job')} {BOLD}{name}{RESET}{sched}{desc}")
 
     if not filter_kind and resource in (None, "tool"):
         tools = _filter_by_stack(_deployments_of_kind(config, "tool"), config, filter_stack)
@@ -161,7 +159,7 @@ def run_list(args: argparse.Namespace) -> int:
                 stack = _resolve_stack(config, name)
                 stack_str = f"  {DIM}{stack}{RESET}" if stack else ""
                 desc = f"  {DIM}{d.description}{RESET}" if d.description else ""
-                print(f"  {dot(name)} {BOLD}{name}{RESET}{stack_str}{desc}")
+                print(f"  {dot(name, 'tool')} {BOLD}{name}{RESET}{stack_str}{desc}")
 
     if not filter_kind and resource in (None, "static"):
         statics = _filter_by_stack(_deployments_of_kind(config, "static"), config, filter_stack)
@@ -173,7 +171,7 @@ def run_list(args: argparse.Namespace) -> int:
             for name, d in statics.items():
                 sub = f"  {DIM}{name}.<domain>{RESET}"
                 desc = f"  {DIM}{d.description}{RESET}" if d.description else ""
-                print(f"  {dot(name)} {BOLD}{name}{RESET}{sub}{desc}")
+                print(f"  {dot(name, 'static')} {BOLD}{name}{RESET}{sub}{desc}")
 
     if not any_output:
         print(f"No {resource or 'program'}s found.")
@@ -191,9 +189,7 @@ def _filter_by_stack(
     if not filter_stack:
         return items
     return {
-        name: item
-        for name, item in items.items()
-        if _resolve_stack(config, name) == filter_stack
+        name: item for name, item in items.items() if _resolve_stack(config, name) == filter_stack
     }
 
 
@@ -217,7 +213,7 @@ def _list_json(
         entry: dict = {
             "name": name,
             "kinds": kinds,
-            "active": is_active(name, config),
+            "active": is_active(name, (kinds or ["service"])[0], config),
         }
         if comp.stack:
             entry["stack"] = comp.stack
@@ -231,7 +227,7 @@ def _list_json(
             stack = _resolve_stack(config, name)
             if filter_stack and stack != filter_stack:
                 continue
-            entry = {"name": name, "kind": "service", "active": is_active(name, config)}
+            entry = {"name": name, "kind": "service", "active": is_active(name, "service", config)}
             if stack:
                 entry["stack"] = stack
             if svc.description:
@@ -247,7 +243,7 @@ def _list_json(
             entry = {
                 "name": name,
                 "kind": "job",
-                "active": is_active(name, config),
+                "active": is_active(name, "job", config),
                 "schedule": job.schedule,
             }
             if stack:
@@ -261,7 +257,7 @@ def _list_json(
                 stack = _resolve_stack(config, name)
                 if filter_stack and stack != filter_stack:
                     continue
-                entry = {"name": name, "kind": kind, "active": is_active(name, config)}
+                entry = {"name": name, "kind": kind, "active": is_active(name, kind, config)}
                 if stack:
                     entry["stack"] = stack
                 if d.description:

@@ -10,7 +10,6 @@ from castle_core.generators.systemd import (
     timer_name,
     unit_name,
 )
-from castle_core.manifest import kind_for
 
 from castle_cli.config import (
     CastleConfig,
@@ -46,50 +45,53 @@ def run_service_cmd(args: argparse.Namespace) -> int:
     Lifecycle (deploy/enable/disable/start/stop) is now convergence: `castle apply`.
     """
     config = load_config()
-    return _unit_action(config, args.name, "restart", is_job=False)
+    return _unit_action(config, args.name, "restart", "service")
 
 
 def run_job_cmd(args: argparse.Namespace) -> int:
     """`castle job restart <name>` — bounce the job's timer."""
     config = load_config()
-    return _unit_action(config, args.name, "restart", is_job=True)
+    return _unit_action(config, args.name, "restart", "job")
 
 
 def run_restart(args: argparse.Namespace) -> int:
     """Top-level `castle restart [name]` — bounce one deployment, or all of them.
 
     An imperative op: it re-actualizes current desired state, it does not change it
-    (that's `castle apply`).
+    (that's `castle apply`). A bare name bounces every kind sharing it.
     """
     config = load_config()
     name = getattr(args, "name", None)
     if not name:
         return _services_restart(config)
-    dep = config.deployments.get(name)
-    if dep is None:
+    named = config.deployments_named(name)
+    if not named:
         print(f"Error: no deployment '{name}'.")
         return 1
-    return _unit_action(config, name, "restart", is_job=(kind_for(dep) == "job"))
+    rc = 0
+    for kind, _spec in named:
+        rc |= _unit_action(config, name, "restart", kind)
+    return rc
 
 
 _GATEWAY_NAME = "castle-gateway"
 
 
-def _unit_action(config: CastleConfig, name: str, action: str, is_job: bool) -> int:
-    """start/stop/restart one service or job, dispatched by its manager.
+def _unit_action(config: CastleConfig, name: str, action: str, kind: str) -> int:
+    """start/stop/restart one deployment (name, kind), dispatched by its manager.
 
     systemd (a process/timer) → `systemctl`; caddy (static) → reload the gateway;
     path (a tool) → install/uninstall; none (remote) → nothing to do.
     """
-    dep = config.deployments.get(name)
+    dep = config.deployment(kind, name)
     if dep is None:
-        print(f"Error: no deployment '{name}'.")
+        print(f"Error: no {kind} '{name}'.")
         return 1
     manager = dep.manager
     if manager != "systemd":
-        return _managed_lifecycle(config, name, action, manager)
+        return _managed_lifecycle(config, name, action, manager, kind)
     # A scheduled systemd deployment (a job) is driven by its .timer.
-    unit = timer_name(name) if kind_for(dep) == "job" else unit_name(name)
+    unit = timer_name(name) if kind == "job" else unit_name(name, kind)
     result = subprocess.run(["systemctl", "--user", action, unit], check=False)
     if result.returncode != 0:
         print(f"Error: failed to {action} {unit}")
@@ -98,26 +100,26 @@ def _unit_action(config: CastleConfig, name: str, action: str, is_job: bool) -> 
     return 0
 
 
-def _managed_lifecycle(config: CastleConfig, name: str, action: str, manager: str) -> int:
+def _managed_lifecycle(
+    config: CastleConfig, name: str, action: str, manager: str, kind: str
+) -> int:
     """Lifecycle for non-systemd managers (no unit to systemctl)."""
     if manager == "caddy":
         if action == "stop":
             print(f"  {name}: gateway-served — disable or remove it to drop the route.")
             return 0
         # start/restart → reload the gateway so current routes take effect.
-        subprocess.run(
-            ["systemctl", "--user", "reload", unit_name(_GATEWAY_NAME)], check=False
-        )
+        subprocess.run(["systemctl", "--user", "reload", unit_name(_GATEWAY_NAME)], check=False)
         print(f"  {name}: gateway reloaded ({_PAST[action]}).")
         return 0
     if manager == "path":
-        return _path_lifecycle(config, name, action)
+        return _path_lifecycle(config, name, action, kind)
     # none (remote): external, nothing local to act on.
     print(f"  {name}: external ({manager}) — nothing to {action}.")
     return 0
 
 
-def _path_lifecycle(config: CastleConfig, name: str, action: str) -> int:
+def _path_lifecycle(config: CastleConfig, name: str, action: str, kind: str) -> int:
     """A `path` (tool) deployment's lifecycle is install/uninstall on PATH."""
     import asyncio
 
@@ -125,7 +127,7 @@ def _path_lifecycle(config: CastleConfig, name: str, action: str) -> int:
 
     # stop → uninstall; start/restart → ensure installed (activate skips if on PATH).
     coro = deactivate if action == "stop" else activate
-    res = asyncio.run(coro(name, config, config.root))
+    res = asyncio.run(coro(name, kind, config, config.root))
     print(f"  {res.output}")
     return 0 if res.status == "ok" else 1
 
@@ -136,14 +138,14 @@ def _services_restart(config: CastleConfig) -> int:
     caddy/path/none deployments have no unit — they ride along with the gateway
     restart (static) or are stateless (remote), so we don't systemctl them here.
     """
-    for name, dep in config.deployments.items():
+    for kind, name, dep in config.all_deployments():
         if dep.manager != "systemd":
             continue
-        if kind_for(dep) == "job":
+        if kind == "job":
             subprocess.run(["systemctl", "--user", "restart", timer_name(name)], check=False)
             print(f"  {name}: restarted (timer)")
         else:
-            subprocess.run(["systemctl", "--user", "restart", unit_name(name)], check=False)
+            subprocess.run(["systemctl", "--user", "restart", unit_name(name, kind)], check=False)
             print(f"  {name}: restarted")
     return 0
 
@@ -166,8 +168,9 @@ def run_status(args: argparse.Namespace) -> int:
     if catalog:
         print(f"{'─' * 50}")
         print("Programs")
-        for name, comp in catalog.items():
-            on = is_active(name, config)
+        for name, _comp in catalog.items():
+            _pk = sorted({k for _, k in config.deployments_of(name)})
+            on = is_active(name, _pk[0] if _pk else "tool", config)
             color = "\033[92m" if on else "\033[90m"
             label = "active" if on else "inactive"
             kinds = sorted({k for _, k in config.deployments_of(name)})
@@ -185,7 +188,7 @@ def _service_status(config: CastleConfig) -> int:
     print("=" * 50)
 
     for name, svc in config.services.items():
-        active = is_active(name, config)  # manager-aware (systemd/caddy/path/none)
+        active = is_active(name, "service", config)  # manager-aware
         manager = svc.manager
         color = "\033[92m" if active else "\033[90m"
         reset = "\033[0m"
@@ -218,4 +221,3 @@ def _service_status(config: CastleConfig) -> int:
 
     print()
     return 0
-

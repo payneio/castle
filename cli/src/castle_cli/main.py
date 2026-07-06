@@ -184,17 +184,13 @@ def build_parser() -> argparse.ArgumentParser:
         "apply", help="Converge the running system to match config (render + reconcile)"
     )
     p.add_argument("name", nargs="?", help="Single deployment to converge (default: all)")
-    p.add_argument(
-        "--plan", action="store_true", help="Show the diff without changing anything"
-    )
+    p.add_argument("--plan", action="store_true", help="Show the diff without changing anything")
 
     # Imperative ops (don't change desired state)
     p = subparsers.add_parser("restart", help="Restart deployment(s) — an imperative bounce")
     p.add_argument("name", nargs="?", help="Deployment to restart (default: all)")
     subparsers.add_parser("status", help="Show status across the platform")
-    subparsers.add_parser(
-        "doctor", help="Diagnose setup + runtime health, with next-step hints"
-    )
+    subparsers.add_parser("doctor", help="Diagnose setup + runtime health, with next-step hints")
 
     # Relationship model — repos, requires edges, and derived status.
     p = subparsers.add_parser(

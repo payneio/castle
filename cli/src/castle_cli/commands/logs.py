@@ -14,7 +14,7 @@ def run_logs(args: argparse.Namespace) -> int:
     config = load_config()
     name = args.name
 
-    dep = config.deployments.get(name)
+    dep = next((d for _k, d in config.deployments_named(name)), None)
     if dep is not None and dep.manager == "systemd":
         if dep.run.launcher == "container":
             return _container_logs(name, args)

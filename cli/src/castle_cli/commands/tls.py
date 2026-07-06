@@ -55,7 +55,7 @@ def _tls_status() -> int:
     print(f"wildcard source: *.{domain} " + (f"[{src_fp}]" if src_fp else "(not found)"))
 
     rows = []
-    for name, dep in sorted(config.deployments.items()):
+    for _kind, name, dep in config.all_deployments():
         if _tls_of(dep) is None:
             continue
         config_key = dep.program or name

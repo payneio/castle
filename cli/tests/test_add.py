@@ -50,7 +50,7 @@ class TestAdd:
     def test_adopt_rust_declares_commands(self, castle_root: Path, tmp_path: Path) -> None:
         repo = tmp_path / "rusty"
         repo.mkdir()
-        (repo / "Cargo.toml").write_text("[package]\nname = \"rusty\"\n")
+        (repo / "Cargo.toml").write_text('[package]\nname = "rusty"\n')
         rc, config = _run_add(castle_root, target=str(repo))
         assert rc == 0
         prog = config.programs["rusty"]
@@ -62,9 +62,7 @@ class TestAdd:
         assert prog.commands.run == [["cargo", "run"]]
 
     def test_adopt_git_url_records_repo(self, castle_root: Path) -> None:
-        rc, config = _run_add(
-            castle_root, target="https://github.com/someone/widget.git"
-        )
+        rc, config = _run_add(castle_root, target="https://github.com/someone/widget.git")
         assert rc == 0
         prog = config.programs["widget"]
         assert prog.repo == "https://github.com/someone/widget.git"

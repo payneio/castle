@@ -23,7 +23,7 @@ def _load_deployed_program(name: str) -> object | None:
         from castle_core.registry import load_registry
 
         registry = load_registry()
-        return registry.deployed.get(name)
+        return next(iter(registry.named(name)), None)
     except (FileNotFoundError, ValueError):
         return None
 
@@ -127,8 +127,7 @@ def run_info(args: argparse.Namespace) -> int:
             # Raw-TCP reach is internal-only (public TCP is rejected at load, see
             # SystemdDeployment._validate_reach), so there's no "public" state here.
             print(
-                f"  {BOLD}tcp{RESET}:         "
-                f"{name}.<gateway.domain>:{service.tcp_port} (internal)"
+                f"  {BOLD}tcp{RESET}:         {name}.<gateway.domain>:{service.tcp_port} (internal)"
             )
         if service.manage and service.manage.systemd:
             sd = service.manage.systemd
