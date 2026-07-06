@@ -783,39 +783,49 @@ def get_component(name: str) -> DeploymentDetail:
         deployed = registry.deployed[name]
         summary = _summary_from_deployed(name, deployed)
 
-        # Backfill source from castle.yaml program ref
         root = get_castle_root()
-        if root and summary.source is None:
+        config = None
+        if root:
             try:
                 from castle_core.config import load_config
 
                 config = load_config(root)
-                if name in config.programs:
-                    summary.source = config.programs[name].source
-                else:
-                    ref = None
-                    if name in config.services:
-                        ref = config.services[name].program
-                    elif name in config.jobs:
-                        ref = config.jobs[name].program
-                    if ref and ref in config.programs:
-                        summary.source = config.programs[ref].source
             except FileNotFoundError:
-                pass
+                config = None
 
-        raw = {
-            "manager": deployed.manager,
-            "launcher": deployed.launcher,
-            "run_cmd": deployed.run_cmd,
-            "env": deployed.env,
-            "secret_env_keys": deployed.secret_env_keys,
-            "port": deployed.port,
-            "health_path": deployed.health_path,
-            "subdomain": deployed.subdomain,
-            "managed": deployed.managed,
-            "kind": deployed.kind,
-            "stack": deployed.stack,
-        }
+        # Backfill source from castle.yaml program ref
+        if config and summary.source is None:
+            if name in config.programs:
+                summary.source = config.programs[name].source
+            else:
+                ref = None
+                if name in config.services:
+                    ref = config.services[name].program
+                elif name in config.jobs:
+                    ref = config.jobs[name].program
+                if ref and ref in config.programs:
+                    summary.source = config.programs[ref].source
+
+        # The edit form needs the *editable source spec* (reach/program/root/expose/
+        # defaults), not the runtime view — serve the castle.yaml spec whenever the
+        # deployment is defined there. Fall back to the runtime dict only for a
+        # deployed-but-not-in-config item (e.g. a discovered remote reference).
+        if config and name in config.deployments:
+            raw = config.deployments[name].model_dump(mode="json", exclude_none=True)
+        else:
+            raw = {
+                "manager": deployed.manager,
+                "launcher": deployed.launcher,
+                "run_cmd": deployed.run_cmd,
+                "env": deployed.env,
+                "secret_env_keys": deployed.secret_env_keys,
+                "port": deployed.port,
+                "health_path": deployed.health_path,
+                "subdomain": deployed.subdomain,
+                "managed": deployed.managed,
+                "kind": deployed.kind,
+                "stack": deployed.stack,
+            }
         return DeploymentDetail(**summary.model_dump(), manifest=raw)
 
     # Fall back to castle.yaml

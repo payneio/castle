@@ -1,5 +1,7 @@
 import { useState } from "react"
 import type { ServiceDetail } from "@/types"
+import { useGateway } from "@/services/api/hooks"
+import { gatewayHost, publicGatewayHost } from "@/lib/labels"
 import { Field, TextField, FormFooter, useEnvSecrets } from "./fields"
 
 interface Props {
@@ -38,6 +40,9 @@ function applyLauncher(run: Obj, launcher: string, target: string): Obj {
 
 /** Edit a service's deployment config (run / expose / proxy / env). */
 export function ServiceFields({ service, onSave, onDelete }: Props) {
+  const { data: gateway } = useGateway()
+  const domain = gateway?.domain
+  const publicDomain = gateway?.public_domain
   const m = service.manifest
   const run = obj(m.run)
   const internal = obj(obj(obj(m.expose).http).internal)
@@ -80,7 +85,9 @@ export function ServiceFields({ service, onSave, onDelete }: Props) {
     try {
       const config: Record<string, unknown> = JSON.parse(JSON.stringify(m))
       delete config.id
-      config.description = description || undefined
+      // The API merges (PATCH): omit = preserve, null = clear. So to CLEAR a field
+      // we must send an explicit null, not drop it — otherwise the old value sticks.
+      config.description = description || null
 
       // Rebuild the run block for the chosen launcher, preserving other fields.
       config.run = applyLauncher(obj(config.run), launcher, runProgram)
@@ -96,7 +103,7 @@ export function ServiceFields({ service, onSave, onDelete }: Props) {
             },
           }
         } else {
-          delete config.expose
+          config.expose = null // explicit clear (merge: omit would preserve the old port)
         }
         // reach needs a port to route through the gateway; without one it's off.
         config.reach = port ? reach : "off"
@@ -146,7 +153,7 @@ export function ServiceFields({ service, onSave, onDelete }: Props) {
       {isTcp ? (
         <Field
           label="Exposure"
-          hint="A raw-TCP service — reachable by name + port via DNS, not the HTTP gateway. Edit its port/TLS in deployments/<name>.yaml for now."
+          hint={`A raw-TCP service — reachable by name + port via DNS, not the HTTP gateway. Edit its port/TLS in deployments/${service.id}.yaml for now.`}
         >
           <div className="font-mono text-xs text-[var(--muted)] space-y-1">
             <div>
@@ -162,7 +169,7 @@ export function ServiceFields({ service, onSave, onDelete }: Props) {
             <div>
               reach{" "}
               <span className="text-[var(--fg)]">{String(m.reach ?? "internal")}</span> —{" "}
-              {service.id}.&lt;gateway.domain&gt;:{String(tcp.port)}
+              {gatewayHost(service.id, domain)}:{String(tcp.port)}
             </div>
           </div>
         </Field>
@@ -188,7 +195,7 @@ export function ServiceFields({ service, onSave, onDelete }: Props) {
           />
           <Field
             label="Reach"
-            hint="How far this service is exposed. off: host:port only. internal: <service-name>.<gateway.domain> via the gateway. public: also to the internet via the Cloudflare tunnel."
+            hint={`How far this service is exposed. off: host:port only. internal: ${gatewayHost(service.id, domain)} via the gateway. public: also to the internet via the Cloudflare tunnel.`}
           >
             <div className="flex items-center gap-2">
               <select
@@ -207,8 +214,8 @@ export function ServiceFields({ service, onSave, onDelete }: Props) {
                   : reach === "off"
                     ? "host:port only"
                     : reach === "public"
-                      ? `${service.id}.<gateway.public_domain>`
-                      : `${service.id}.<gateway.domain>`}
+                      ? publicGatewayHost(service.id, publicDomain)
+                      : gatewayHost(service.id, domain)}
               </span>
             </div>
           </Field>

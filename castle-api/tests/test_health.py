@@ -63,7 +63,10 @@ class TestDeploymentDetail:
         data = response.json()
         assert data["id"] == "test-svc"
         assert "manifest" in data
-        assert data["manifest"]["launcher"] == "python"
+        # A deployed deployment that's defined in castle.yaml serves its editable
+        # source spec (launcher nested under `run`), not the runtime view — so the
+        # dashboard edit form gets reach/expose/defaults and can't strip them.
+        assert data["manifest"]["run"]["launcher"] == "python"
 
     def test_not_found(self, client: TestClient) -> None:
         """Returns 404 for unknown component."""

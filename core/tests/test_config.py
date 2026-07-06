@@ -248,3 +248,84 @@ class TestResolveEnvSplit:
         flat = resolve_env_vars(env, {"port": "9001"})
         assert flat == {"PORT": "9001", "K": "v", "Z": "lit"}
         assert list(flat.keys()) == ["PORT", "K", "Z"]
+
+
+class TestConfigRoundTrip:
+    """save_config → load_config must preserve every field. A field missing from
+    the save path (the `cert_hook` regression) or the serializer silently drops on
+    the next write — these lock the full round-trip for the reach/TCP-TLS fields."""
+
+    def test_gateway_and_tcp_tls_survive_save_load(self, tmp_path: Path) -> None:
+        from castle_core.config import GatewayConfig
+        from castle_core.manifest import (
+            ExposeSpec,
+            Reach,
+            RunContainer,
+            SystemdDeployment,
+            TcpExposeSpec,
+            TlsMaterial,
+            TlsSpec,
+        )
+
+        pg = SystemdDeployment(
+            id="pg",
+            manager="systemd",
+            program="pg",
+            reach=Reach.INTERNAL,
+            run=RunContainer(
+                launcher="container",
+                image="postgres:17",
+                user="${uid}:${gid}",
+                tmpfs=["/var/run/postgresql"],
+            ),
+            expose=ExposeSpec(
+                tcp=TcpExposeSpec(port=5432, tls=TlsSpec(material=TlsMaterial.PAIR))
+            ),
+        )
+        config = CastleConfig(
+            root=tmp_path,
+            gateway=GatewayConfig(
+                port=9000, tls="acme", domain="civil.payne.io", cert_hook=True
+            ),
+            repo=None,
+            programs={},
+            deployments={"pg": pg},
+        )
+        save_config(config)
+        loaded = load_config(tmp_path)
+
+        # Gateway: cert_hook must survive (the field that got dropped in prod).
+        assert loaded.gateway.cert_hook is True
+        assert loaded.gateway.tls == "acme"
+        assert loaded.gateway.domain == "civil.payne.io"
+
+        # Deployment: reach + full TCP/TLS + container user/tmpfs must survive.
+        d = loaded.deployments["pg"]
+        assert d.reach == Reach.INTERNAL
+        assert d.expose.tcp.port == 5432
+        assert d.expose.tcp.tls.material == TlsMaterial.PAIR
+        assert d.run.user == "${uid}:${gid}"
+        assert d.run.tmpfs == ["/var/run/postgresql"]
+
+    def test_parse_gateway_preserves_all_fields(self) -> None:
+        """The shared gateway parser must honor every field — `save_yaml` used to
+        read only `port`, wiping tls/domain/tunnel/cert_hook on a whole-file save."""
+        from castle_core.config import parse_gateway
+
+        g = parse_gateway(
+            {
+                "port": 9000,
+                "tls": "acme",
+                "domain": "civil.payne.io",
+                "acme_email": "a@b.co",
+                "public_domain": "pub.io",
+                "tunnel_id": "uuid-123",
+                "cert_hook": True,
+            }
+        )
+        assert g.tls == "acme"
+        assert g.domain == "civil.payne.io"
+        assert g.acme_email == "a@b.co"
+        assert g.public_domain == "pub.io"
+        assert g.tunnel_id == "uuid-123"
+        assert g.cert_hook is True

@@ -3,6 +3,8 @@ import { useQueryClient } from "@tanstack/react-query"
 import { useNavigate } from "react-router-dom"
 import { X } from "lucide-react"
 import { apiClient } from "@/services/api/client"
+import { useGateway } from "@/services/api/hooks"
+import { gatewayHost, publicGatewayHost } from "@/lib/labels"
 import { Field, TextField } from "./fields"
 
 const SELECT =
@@ -40,6 +42,9 @@ export function CreateDeploymentForm({
 }) {
   const qc = useQueryClient()
   const navigate = useNavigate()
+  const { data: gateway } = useGateway()
+  const domain = gateway?.domain
+  const publicDomain = gateway?.public_domain
 
   const [kind, setKind] = useState<DeploymentKind>(initialKind ?? "service")
   const [name, setName] = useState(prefill?.name ?? "")
@@ -207,16 +212,16 @@ export function CreateDeploymentForm({
         <>
           <TextField label="Port" value={port} onChange={setPort} width="w-32" mono placeholder="9001" />
           <TextField label="Health path" value={health} onChange={setHealth} width="w-48" mono />
-          <Field label="Expose" hint="Route through the gateway at <name>.<gateway.domain>. Off: reachable only at host:port.">
+          <Field label="Expose" hint={`Route through the gateway at ${gatewayHost("<name>", domain)}. Off: reachable only at host:port.`}>
             <label className="flex items-center gap-2 text-sm cursor-pointer">
               <input type="checkbox" checked={proxy} onChange={(e) => setProxy(e.target.checked)} />
               <span className="font-mono text-[var(--muted)]">
-                {proxy ? `${name || "name"}.<gateway.domain>` : "off (host:port only)"}
+                {proxy ? gatewayHost(name || "name", domain) : "off (host:port only)"}
               </span>
             </label>
           </Field>
           {proxy && (
-            <Field label="Public" hint="Also publish to the internet via the Cloudflare tunnel at <name>.<gateway.public_domain>.">
+            <Field label="Public" hint={`Also publish to the internet via the Cloudflare tunnel at ${publicGatewayHost("<name>", publicDomain)}.`}>
               <label className="flex items-center gap-2 text-sm cursor-pointer">
                 <input type="checkbox" checked={isPublic} onChange={(e) => setIsPublic(e.target.checked)} />
                 <span className="font-mono text-[var(--muted)]">{isPublic ? "public (via tunnel)" : "internal only"}</span>

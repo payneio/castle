@@ -60,3 +60,18 @@ export function subdomainUrl(subdomain: string): string | null {
   if (labels.length <= 2) return null
   return `${protocol}//${subdomain}.${labels.slice(1).join(".")}`
 }
+
+/**
+ * The concrete host a subdomain is exposed at — `<subdomain>.<domain>` — using
+ * this node's configured gateway domain. Falls back to the literal
+ * `<subdomain>.<gateway.domain>` placeholder only when no domain is configured
+ * (off mode), so hints and previews show real values wherever one exists.
+ */
+export function gatewayHost(subdomain: string, domain?: string | null): string {
+  return domain ? `${subdomain}.${domain}` : `${subdomain}.<gateway.domain>`
+}
+
+/** Same as {@link gatewayHost}, for the public (Cloudflare tunnel) zone. */
+export function publicGatewayHost(subdomain: string, publicDomain?: string | null): string {
+  return publicDomain ? `${subdomain}.${publicDomain}` : `${subdomain}.<gateway.public_domain>`
+}

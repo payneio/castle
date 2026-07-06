@@ -347,6 +347,26 @@ def _load_resource_dir(directory: Path) -> dict[str, dict]:
     return result
 
 
+def parse_gateway(gateway_data: dict) -> GatewayConfig:
+    """Build a GatewayConfig from a castle.yaml ``gateway:`` mapping.
+
+    The single parser shared by ``load_config`` and the API's whole-file editor,
+    so a newly added gateway field can't be honored in one place and silently
+    dropped in the other (which is exactly how ``cert_hook`` got wiped on a
+    full-config save).
+    """
+    return GatewayConfig(
+        port=gateway_data.get("port", 9000),
+        tls=gateway_data.get("tls"),
+        domain=gateway_data.get("domain"),
+        acme_email=gateway_data.get("acme_email"),
+        acme_dns_provider=gateway_data.get("acme_dns_provider", "cloudflare"),
+        public_domain=gateway_data.get("public_domain"),
+        tunnel_id=gateway_data.get("tunnel_id"),
+        cert_hook=gateway_data.get("cert_hook", False),
+    )
+
+
 def load_config(root: Path | None = None) -> CastleConfig:
     """Load castle config: global castle.yaml + programs/ and deployments/ dirs."""
     if root is None:
@@ -359,17 +379,7 @@ def load_config(root: Path | None = None) -> CastleConfig:
     with open(config_path) as f:
         data = yaml.safe_load(f) or {}
 
-    gateway_data = data.get("gateway", {})
-    gateway = GatewayConfig(
-        port=gateway_data.get("port", 9000),
-        tls=gateway_data.get("tls"),
-        domain=gateway_data.get("domain"),
-        acme_email=gateway_data.get("acme_email"),
-        acme_dns_provider=gateway_data.get("acme_dns_provider", "cloudflare"),
-        public_domain=gateway_data.get("public_domain"),
-        tunnel_id=gateway_data.get("tunnel_id"),
-        cert_hook=gateway_data.get("cert_hook", False),
-    )
+    gateway = parse_gateway(data.get("gateway", {}))
 
     # repo: field points to the git repo for repo-relative sources
     repo_path: Path | None = None

@@ -1,5 +1,7 @@
 import { useState } from "react"
 import type { DeploymentDetail } from "@/types"
+import { useGateway } from "@/services/api/hooks"
+import { gatewayHost, publicGatewayHost } from "@/lib/labels"
 import { Field, TextField, FormFooter, useEnvSecrets } from "./fields"
 
 interface Props {
@@ -14,6 +16,9 @@ const obj = (v: unknown): Obj => (v as Obj) ?? {}
 /** Edit a static (caddy) deployment: the built dir it serves (`root`), whether it's
  * also public (via the tunnel), a description, and env. No launcher/port/schedule. */
 export function StaticFields({ static_: dep, onSave, onDelete }: Props) {
+  const { data: gateway } = useGateway()
+  const domain = gateway?.domain
+  const publicDomain = gateway?.public_domain
   const m = dep.manifest
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -33,7 +38,8 @@ export function StaticFields({ static_: dep, onSave, onDelete }: Props) {
     try {
       const config: Record<string, unknown> = JSON.parse(JSON.stringify(m))
       delete config.id
-      config.description = description || undefined
+      // Merge (PATCH) semantics: null clears, omit preserves — send null to clear.
+      config.description = description || null
       config.root = root || "dist"
       config.reach = isPublic ? "public" : "internal"
       delete config.public
@@ -62,7 +68,7 @@ export function StaticFields({ static_: dep, onSave, onDelete }: Props) {
       />
       <Field
         label="Reach"
-        hint="How far this static site is served. internal: <name>.<gateway.domain>. public: also to the internet via the Cloudflare tunnel. (A static site is always served, so there's no 'off'.)"
+        hint={`How far this static site is served. internal: ${gatewayHost(dep.id, domain)}. public: also to the internet via the Cloudflare tunnel. (A static site is always served, so there's no 'off'.)`}
       >
         <div className="flex items-center gap-2">
           <select
@@ -74,7 +80,7 @@ export function StaticFields({ static_: dep, onSave, onDelete }: Props) {
             <option value="public">public</option>
           </select>
           <span className="font-mono text-[var(--muted)] text-xs">
-            {isPublic ? `${dep.id}.<gateway.public_domain>` : `${dep.id}.<gateway.domain>`}
+            {isPublic ? publicGatewayHost(dep.id, publicDomain) : gatewayHost(dep.id, domain)}
           </span>
         </div>
       </Field>

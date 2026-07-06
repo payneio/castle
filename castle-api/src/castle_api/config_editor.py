@@ -11,12 +11,12 @@ from pydantic import BaseModel
 
 from castle_core.config import (
     CastleConfig,
-    GatewayConfig,
     _DEPLOYMENT_ADAPTER,
     _normalize_deployment_dict,
     _program_to_yaml_dict,
     _spec_to_yaml_dict,
     load_config,
+    parse_gateway,
     save_config,
 )
 from castle_core.manifest import ProgramSpec, kind_for
@@ -173,11 +173,12 @@ def save_yaml(request: ConfigSaveRequest) -> ConfigSaveResponse:
     svc_count = sum(1 for d in deployments.values() if kind_for(d) == "service")
     job_count = sum(1 for d in deployments.values() if kind_for(d) == "job")
 
-    gateway_data = data.get("gateway", {})
     config = CastleConfig(
         root=root,
         repo=repo_path,
-        gateway=GatewayConfig(port=gateway_data.get("port", 9000)),
+        # Parse the FULL gateway block (tls/domain/tunnel/cert_hook/…), not just
+        # port — otherwise a whole-file save silently wipes the gateway config.
+        gateway=parse_gateway(data.get("gateway", {})),
         programs=programs,
         deployments=deployments,
     )
@@ -194,21 +195,32 @@ def save_yaml(request: ConfigSaveRequest) -> ConfigSaveResponse:
 
 @router.put("/programs/{name}")
 def save_program(name: str, request: ProgramConfigRequest) -> dict:
-    """Update a single program's config in castle.yaml."""
+    """Update a single program's config in castle.yaml (PATCH semantics).
+
+    Like deployments: the incoming config is shallow-merged over the existing
+    program spec, so a partial save can't drop source/stack/commands/build/… that
+    the client didn't send. Omitted keys are preserved; an explicit ``null`` clears.
+    """
     _require_repo()
+    config = get_config()
+    incoming = dict(request.config)
+
+    if name in config.programs:
+        base = config.programs[name].model_dump(mode="json", exclude_none=True)
+        merged = {**base, **incoming, "id": name}
+        merged = {k: v for k, v in merged.items() if v is not None}
+    else:
+        merged = {**incoming, "id": name}
 
     try:
-        prog_data = dict(request.config)
-        prog_data["id"] = name
-        ProgramSpec.model_validate(prog_data)
+        spec = ProgramSpec.model_validate(merged)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"Invalid program config: {e}",
         )
 
-    config = get_config()
-    config.programs[name] = ProgramSpec.model_validate({**request.config, "id": name})
+    config.programs[name] = spec
     save_config(config)
     return {"ok": True, "program": name}
 
@@ -271,23 +283,33 @@ async def delete_program(name: str, cascade: bool = False) -> dict:
 
 
 def _save_deployment(name: str, config_dict: dict) -> dict:
-    """Validate a deployment (any manager) and persist it to config.deployments."""
+    """Create/update a deployment (any manager) with PATCH semantics.
+
+    The incoming config is shallow-merged over the existing spec, so a save can
+    never silently drop a field the client didn't send (the astro/postgres bug):
+    a present key replaces wholesale, an **omitted** key is preserved, and an
+    explicit ``null`` clears the key (back to its default). On CREATE there's no
+    base, so the incoming config stands alone.
+    """
     _require_repo()
     config = get_config()
-    config_dict = dict(config_dict)
+    incoming = dict(config_dict)
 
-    # On CREATE (a new deployment) with no description of its own, inherit the
-    # referenced program's description — a deployment reads as its program by
-    # default. Edits keep whatever the user set (including a cleared field).
-    if name not in config.deployments and not config_dict.get("description"):
-        prog = config_dict.get("program")
-        if prog and prog in config.programs and config.programs[prog].description:
-            config_dict["description"] = config.programs[prog].description
+    if name in config.deployments:
+        base = config.deployments[name].model_dump(mode="json", exclude_none=True)
+        merged = {**base, **incoming, "id": name}
+        # An explicit null means "clear" — drop the key so its default applies.
+        merged = {k: v for k, v in merged.items() if v is not None}
+    else:
+        merged = {**incoming, "id": name}
+        # On CREATE with no description, inherit the referenced program's.
+        if not merged.get("description"):
+            prog = merged.get("program")
+            if prog and prog in config.programs and config.programs[prog].description:
+                merged["description"] = config.programs[prog].description
 
     try:
-        dep = _DEPLOYMENT_ADAPTER.validate_python(
-            _normalize_deployment_dict({**config_dict, "id": name})
-        )
+        dep = _DEPLOYMENT_ADAPTER.validate_python(_normalize_deployment_dict(merged))
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
