@@ -172,7 +172,7 @@ def deploy(target_name: str | None = None, root: Path | None = None) -> DeployRe
     # Reload the gateway so the freshly written Caddyfile takes effect. Without
     # this, new/changed proxy routes sit on disk but the running Caddy keeps the
     # old config (a deployed service's route is silently dead until reload).
-    _reload_gateway(result.messages)
+    _reload_gateway(config, result.messages)
 
     result.registry = registry
     return result
@@ -418,7 +418,23 @@ def _write_tunnel_config(registry: NodeRegistry, messages: list[str]) -> None:
         )
 
 
-def _reload_gateway(messages: list[str]) -> None:
+def _gateway_env(config: CastleConfig) -> dict[str, str]:
+    """The process env for validating/handling the gateway's Caddyfile — the
+    current environment plus the castle-gateway service's own resolved env.
+
+    Under acme the Caddyfile references ``{env.CLOUDFLARE_API_TOKEN}`` (or another
+    DNS-provider token). `caddy validate` provisions the acme module and rejects an
+    empty token, so validating in castle-api's bare environment always fails and the
+    reload is skipped. Injecting the gateway service's env (secrets resolved) gives
+    validate the same token the running service starts with."""
+    svc = config.services.get(_GATEWAY_NAME)
+    raw = dict(svc.defaults.env) if (svc and svc.defaults and svc.defaults.env) else {}
+    plain, secret = resolve_env_split(raw, None)
+    resolved = {k: secret.get(k, plain.get(k, "")) for k in raw}
+    return {**os.environ, **resolved}
+
+
+def _reload_gateway(config: CastleConfig, messages: list[str]) -> None:
     """Reload Caddy if the gateway is running, so new routes take effect."""
     gw_unit = unit_name(_GATEWAY_NAME)
     # Validate the generated Caddyfile before reloading. An invalid config (most
@@ -426,6 +442,8 @@ def _reload_gateway(messages: list[str]) -> None:
     # plugin, so the `events {}` block fails to adapt) must not be pushed: a bad
     # reload leaves stale routing and a later cold start would refuse to load. Skip
     # the reload and point at the likely cause instead of silently degrading.
+    # Validate with the gateway's own env so acme's DNS-provider token resolves —
+    # otherwise validation fails on an empty token and every reload is skipped.
     caddyfile = SPECS_DIR / "Caddyfile"
     caddy = shutil.which("caddy")
     if caddy and caddyfile.exists():
@@ -433,6 +451,7 @@ def _reload_gateway(messages: list[str]) -> None:
             [caddy, "validate", "--adapter", "caddyfile", "--config", str(caddyfile)],
             capture_output=True,
             text=True,
+            env=_gateway_env(config),
         )
         if check.returncode != 0:
             messages.append(
