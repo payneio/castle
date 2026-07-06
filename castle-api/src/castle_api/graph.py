@@ -11,6 +11,7 @@ import dataclasses
 
 from fastapi import APIRouter
 
+from castle_core.audit import suggest_consumption
 from castle_core.relations import build_model
 
 from castle_api.config import get_config
@@ -28,3 +29,11 @@ def get_graph() -> dict:
         "nodes": [dataclasses.asdict(n) for n in model.nodes],
         "edges": [dataclasses.asdict(e) for e in model.edges],
     }
+
+
+@graph_router.get("/graph/suggestions")
+def get_suggestions() -> dict:
+    """Undeclared-consumption *suggestions* — an opt-in advisory that matches each
+    deployment's env endpoint values against provider sockets. Never writes; the
+    graph itself stays declaration-derived. Accept one by declaring the `requires`."""
+    return {"suggestions": [dataclasses.asdict(s) for s in suggest_consumption(get_config())]}

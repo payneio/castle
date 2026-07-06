@@ -458,6 +458,18 @@ def delete_static(name: str) -> dict:
     return _delete_deployment(name, kind="static")
 
 
+@router.put("/references/{name}")
+def save_reference(name: str, request: ServiceConfigRequest) -> dict:
+    """Create/update an external *reference* (manager: none, base_url) — an
+    endpoint castle doesn't run (a SaaS API, a remote/external service)."""
+    return _save_deployment(name, request.config, kind="reference")
+
+
+@router.delete("/references/{name}")
+def delete_reference(name: str) -> dict:
+    return _delete_deployment(name, kind="reference")
+
+
 @router.post("/apply", response_model=ApplyResponse)
 async def apply_config() -> ApplyResponse:
     """Converge the running system to match castle.yaml (a thin wrapper on core

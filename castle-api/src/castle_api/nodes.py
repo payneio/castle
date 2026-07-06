@@ -93,6 +93,44 @@ def list_nodes() -> list[NodeSummary]:
     return nodes
 
 
+_TCP_PROTOCOL = {5432: "pg", 7687: "bolt", 1883: "mqtt", 6379: "redis"}
+
+
+def _endpoints_of_registry(d: object) -> list[dict]:
+    """Derive display endpoints from a registry deployment (mirrors relations)."""
+    eps: list[dict] = []
+    port = getattr(d, "port", None)
+    if port is not None:
+        eps.append({"protocol": "http", "port": port})
+    tcp = getattr(d, "tcp_port", None)
+    if tcp is not None:
+        eps.append({"protocol": _TCP_PROTOCOL.get(tcp, "tcp"), "port": tcp})
+    return eps
+
+
+@router.get("/mesh/deployments")
+def mesh_deployments() -> dict:
+    """Flattened remote (mesh-discovered) deployments with derived endpoints — the
+    data the System Map needs to render other machines. Local node excluded (it's
+    already in /graph). Cross-node dependency *edges* need `requires` in the mesh
+    payload, which the registry doesn't carry yet."""
+    out: list[dict] = []
+    for hostname, remote in mesh_state.all_nodes(include_stale=True).items():
+        for _kind, name, d in remote.registry.all():
+            out.append(
+                {
+                    "name": name,
+                    "kind": d.kind,
+                    "node": hostname,
+                    "port": d.port,
+                    "base_url": getattr(d, "base_url", None),
+                    "subdomain": d.subdomain,
+                    "endpoints": _endpoints_of_registry(d),
+                }
+            )
+    return {"deployments": out}
+
+
 @router.get("/nodes/{hostname}", response_model=NodeDetail)
 def get_node(hostname: str) -> NodeDetail:
     """Get detailed info for a specific node."""

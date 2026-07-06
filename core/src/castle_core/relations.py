@@ -24,7 +24,7 @@ from pathlib import Path
 
 from castle_core import git
 from castle_core.config import CastleConfig
-from castle_core.manifest import Requirement
+from castle_core.manifest import Requirement, SystemdDeployment
 
 
 @dataclass
@@ -54,6 +54,16 @@ class Edge:
 
 
 @dataclass
+class Endpoint:
+    """A socket a deployment exposes. ``protocol`` is a display heuristic — the
+    manifest has no protocol field (expose is http XOR tcp), so raw TCP is refined
+    by well-known port (else ``tcp``). A real protocol field is future work."""
+
+    protocol: str  # "http" | "tcp" | "pg" | "bolt" | "mqtt" | "redis"
+    port: int
+
+
+@dataclass
 class Node:
     name: str  # deployment name
     program: str | None
@@ -64,6 +74,11 @@ class Node:
     functional: bool = True  # derived: all requirements satisfied
     fresh: bool | None = None  # derived: its repo is at latest + clean
     deployed: bool | None = None  # derived: active in the registry (None = unknown)
+    reach: str | None = None  # off|internal|public (systemd/caddy), else None
+    endpoints: list[Endpoint] = field(default_factory=list)  # sockets it exposes
+    base_url: str | None = None  # the target URL, for kind=="reference" (external)
+    provides: list[str] = field(default_factory=list)  # capability types (from program)
+    consumes: list[str] = field(default_factory=list)  # capability types (from program)
 
 
 @dataclass
@@ -163,6 +178,25 @@ def _check(config: CastleConfig, req: Requirement) -> bool:
     return True
 
 
+# Well-known TCP ports → a friendlier protocol label (display heuristic only).
+_TCP_PROTOCOL = {5432: "pg", 7687: "bolt", 1883: "mqtt", 6379: "redis"}
+
+
+def _endpoints_of(dep: object) -> list[Endpoint]:
+    """The sockets a deployment exposes, derived from its manifest — reusing the
+    ``http_exposed`` / ``tcp_port`` accessors (SystemdDeployment only). Tools,
+    statics, and references have no expose block and yield ``[]``."""
+    eps: list[Endpoint] = []
+    if not isinstance(dep, SystemdDeployment):
+        return eps  # only systemd services/jobs carry an expose block
+    exp = dep.expose
+    if dep.http_exposed and exp and exp.http:
+        eps.append(Endpoint("http", exp.http.internal.port))
+    if dep.tcp_port is not None:
+        eps.append(Endpoint(_TCP_PROTOCOL.get(dep.tcp_port, "tcp"), dep.tcp_port))
+    return eps
+
+
 def build_model(
     config: CastleConfig,
     check: bool = True,
@@ -206,11 +240,13 @@ def build_model(
             if check
             else []
         )
-        repo_key = repo_of.get(_program_of(name, dep))
+        prog_name = _program_of(name, dep)
+        repo_key = repo_of.get(prog_name)
+        prog = config.programs.get(prog_name) if prog_name else None
         nodes.append(
             Node(
                 name=name,
-                program=_program_of(name, dep),
+                program=prog_name,
                 kind=_nk,
                 repo=repo_key,
                 depended_on_by=fan_in.get(name, 0),
@@ -218,6 +254,11 @@ def build_model(
                 functional=not unmet,
                 fresh=fresh_of.get(repo_key) if (freshness and repo_key) else None,
                 deployed=(name in active) if active is not None else None,
+                reach=getattr(getattr(dep, "reach", None), "value", None),
+                endpoints=_endpoints_of(dep),
+                base_url=getattr(dep, "base_url", None),
+                provides=[c.type for c in prog.provides] if prog else [],
+                consumes=[c.type for c in prog.consumes] if prog else [],
             )
         )
     return Model(repos=list(repos.values()), nodes=nodes, edges=edges)

@@ -61,6 +61,12 @@ def _registry_to_json(registry: NodeRegistry) -> str:
             entry["schedule"] = comp.schedule
         if comp.managed:
             entry["managed"] = comp.managed
+        # Socket surface + external target — so a peer can resolve cross-node
+        # consumption endpoints (still no secrets: only ports/URLs).
+        if getattr(comp, "tcp_port", None) is not None:
+            entry["tcp_port"] = comp.tcp_port
+        if getattr(comp, "base_url", None):
+            entry["base_url"] = comp.base_url
         data["deployed"][NodeRegistry.key(comp.kind, name)] = entry
 
     return json.dumps(data)
@@ -93,6 +99,8 @@ def _json_to_registry(payload: str) -> NodeRegistry:
             subdomain=comp_data.get("subdomain"),
             schedule=comp_data.get("schedule"),
             managed=comp_data.get("managed", False),
+            tcp_port=comp_data.get("tcp_port"),
+            base_url=comp_data.get("base_url"),
         )
     return NodeRegistry(node=node, deployed=deployed)
 
