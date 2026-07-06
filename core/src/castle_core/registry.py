@@ -52,6 +52,10 @@ class Deployment:
     # ``down``). Empty for launchers whose stop is just SIGTERM to the ExecStart pid.
     stop_cmd: list[str] = field(default_factory=list)
     env: dict[str, str] = field(default_factory=dict)
+    # Absolute dirs prepended to the unit's default PATH — a resolved toolchain the
+    # default tool PATH omits (e.g. a program's pinned nvm node bin). Ignored when
+    # the deployment sets its own PATH in env (an explicit PATH is a full override).
+    path_prepend: list[str] = field(default_factory=list)
     # Names (never values) of secret-bearing env vars. Their resolved values live
     # only in the mode-0600 env file, never in env/run_cmd/registry — this is for
     # visibility (which secrets a deployment expects).
@@ -152,6 +156,7 @@ def load_registry(path: Path | None = None) -> NodeRegistry:
             run_cmd=comp_data.get("run_cmd", []),
             stop_cmd=comp_data.get("stop_cmd", []),
             env=comp_data.get("env", {}),
+            path_prepend=comp_data.get("path_prepend", []),
             secret_env_keys=comp_data.get("secret_env_keys", []),
             description=comp_data.get("description"),
             kind=kind,
@@ -215,6 +220,8 @@ def save_registry(registry: NodeRegistry, path: Path | None = None) -> None:
             entry["stop_cmd"] = comp.stop_cmd
         if comp.env:
             entry["env"] = comp.env
+        if comp.path_prepend:
+            entry["path_prepend"] = comp.path_prepend
         if comp.secret_env_keys:
             entry["secret_env_keys"] = comp.secret_env_keys
         if comp.description:

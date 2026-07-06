@@ -59,6 +59,58 @@ class TestUnitFromDeployed:
         unit = generate_unit_from_deployed("test-svc", deployed)
         assert "Environment=TEST_SVC_DATA_DIR=/home/user/.castle/data/test-svc" in unit
 
+    def test_default_path_emitted_when_absent(self) -> None:
+        """Castle supplies a default PATH when the service doesn't pin one."""
+        deployed = Deployment(
+            manager="systemd", launcher="python",
+            run_cmd=["/home/user/.local/bin/uv", "run", "test-svc"],
+            env={},
+            description="Test service",
+        )
+        unit = generate_unit_from_deployed("test-svc", deployed)
+        assert 'Environment="PATH=' in unit
+        assert "/usr/local/bin:/usr/bin:/bin" in unit
+
+    def test_path_prepend_precedes_default(self) -> None:
+        """A resolved toolchain dir (e.g. pinned node bin) leads the default PATH."""
+        deployed = Deployment(
+            manager="systemd", launcher="node",
+            run_cmd=["node", "server.js"],
+            env={},
+            path_prepend=["/home/user/.nvm/versions/node/v24.14.1/bin"],
+            description="Node service",
+        )
+        unit = generate_unit_from_deployed("node-svc", deployed)
+        path_line = next(ln for ln in unit.splitlines() if "PATH=" in ln)
+        assert "/home/user/.nvm/versions/node/v24.14.1/bin:" in path_line
+        assert path_line.index("v24.14.1") < path_line.index("/usr/bin")
+
+    def test_explicit_path_overrides_path_prepend(self) -> None:
+        """An explicit PATH is a full override — path_prepend is ignored too."""
+        deployed = Deployment(
+            manager="systemd", launcher="node",
+            run_cmd=["node", "server.js"],
+            env={"PATH": "/opt/node/bin:/usr/bin:/bin"},
+            path_prepend=["/home/user/.nvm/versions/node/v24.14.1/bin"],
+            description="Node service",
+        )
+        unit = generate_unit_from_deployed("node-svc", deployed)
+        assert "v24.14.1" not in unit
+        assert unit.count("PATH=") == 1
+
+    def test_explicit_path_overrides_default(self) -> None:
+        """A PATH pinned in defaults.env wins — Castle does not append its own,
+        which would clobber it under systemd's last-assignment-wins rule."""
+        deployed = Deployment(
+            manager="systemd", launcher="python",
+            run_cmd=["/home/user/.local/bin/uv", "run", "test-svc"],
+            env={"PATH": "/opt/node/bin:/usr/bin:/bin"},
+            description="Test service",
+        )
+        unit = generate_unit_from_deployed("test-svc", deployed)
+        assert "Environment=PATH=/opt/node/bin:/usr/bin:/bin" in unit
+        assert unit.count("PATH=") == 1  # exactly one PATH line, the explicit one
+
     def test_contains_restart_policy(self) -> None:
         """Unit file has restart configuration."""
         deployed = Deployment(

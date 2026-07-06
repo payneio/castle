@@ -75,7 +75,10 @@ REPOS_DIR = _resolve_repos_dir()
 # Order matters: pnpm's modern standalone installer puts its shim in
 # $PNPM_HOME/bin, which must win over the bare dir (older installs leave a stale
 # version wrapper there). nvm/node is intentionally omitted — it's versioned and
-# brittle; a service needing a specific node should pin it via defaults.env.
+# brittle to hardcode. A program's node is resolved per-program from its declared
+# pin (.node-version/.nvmrc/engines) and prepended ahead of these dirs at both the
+# build subprocess (stacks._build_env) and the runtime unit PATH (Deployment
+# .path_prepend) — see castle_core.toolchains.
 USER_TOOL_PATH_DIRS = [
     Path.home() / ".local" / "bin",
     Path.home() / ".local" / "share" / "pnpm" / "bin",

@@ -112,8 +112,18 @@ def generate_unit_from_deployed(
     env_lines = ""
     for key, value in deployed.env.items():
         env_lines += f"Environment={key}={value}\n"
-    tool_path = ":".join(str(d) for d in USER_TOOL_PATH_DIRS if d.exists())
-    env_lines += f'Environment="PATH={tool_path}:/usr/local/bin:/usr/bin:/bin"\n'
+    # Castle supplies a sensible default PATH (tool dirs + system bins). It is an
+    # escape hatch, not a mandate: if the service pins its own PATH in defaults.env
+    # (e.g. to add a versioned nvm node the tool dirs intentionally omit), respect
+    # it rather than clobbering it with a trailing Environment=PATH line that would
+    # win under systemd's last-assignment-wins rule. systemd does NOT expand
+    # ${PATH} across Environment= lines, so a service that overrides PATH must
+    # spell out the full value, tool dirs included.
+    if "PATH" not in deployed.env:
+        dirs = list(deployed.path_prepend)  # resolved toolchain (e.g. pinned node bin)
+        dirs += [str(d) for d in USER_TOOL_PATH_DIRS if d.exists()]
+        dirs += ["/usr/local/bin", "/usr/bin", "/bin"]
+        env_lines += f'Environment="PATH={":".join(dirs)}"\n'
     if env_file is not None:
         env_lines += f"EnvironmentFile={env_file}\n"
 

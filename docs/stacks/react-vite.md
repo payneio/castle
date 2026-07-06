@@ -121,6 +121,29 @@ pnpm run check        # lint + type-check + test
 
 The `build` output is a static SPA in `dist/` — just HTML, JS, and CSS files.
 
+## Pinning the node version
+
+Commit a **`.node-version`** (or `.nvmrc`, or `package.json` `engines.node`) at the
+project root:
+
+```
+24.14.1
+```
+
+Castle reads this pin and puts the matching node on PATH whenever it runs the
+program's node — at build time (`castle program build`, incl. builds triggered from
+the castle web app, which run inside the `castle-api` service) and at run time (a
+`launcher: node` service's systemd unit). This is why a build works from the web app
+even though the service's default PATH deliberately omits nvm's versioned dirs.
+
+The pin is standard, tool-agnostic config — the program stays castle-independent; nvm
+(and editors/CI) honor the same file. Castle resolves it against
+`~/.nvm/versions/node` (override with `CASTLE_NODE_VERSIONS_DIR`), newest match wins.
+An exact pin (`24.14.1`) matches exactly; a partial (`24`) or a range (`>=24`) matches
+the newest installed major. If the pinned version isn't installed, the verb fails loud
+with a `nvm install <version>` hint instead of a cryptic `node: not found`. Unpinned →
+Castle injects no node (it uses whatever ambient node is on PATH, and does not guess).
+
 ## Registering as a program
 
 A frontend program has a `build` spec (produces static output). Register it in

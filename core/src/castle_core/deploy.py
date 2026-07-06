@@ -59,6 +59,7 @@ from castle_core.registry import (
     load_registry,
     save_registry,
 )
+from castle_core.toolchains import ToolchainError, resolve_node_bin
 
 SYSTEMD_USER_DIR = Path.home() / ".config" / "systemd" / "user"
 
@@ -695,12 +696,26 @@ def _build_deployed(
     )
     stop_cmd = _build_stop_cmd(name, run, source_dir)
 
+    # A program that pins a node version (.node-version/.nvmrc/engines) → that node's
+    # bin dir on the unit PATH, so a `launcher: node` service runs the program's node
+    # (the default tool PATH omits nvm's versioned dirs). Harmless for non-node
+    # programs (no pin → no prepend). Fail-soft: a missing pinned version is a warning,
+    # not an aborted apply — it surfaces again, loudly, when the build/verb runs.
+    path_prepend: list[str] = []
+    try:
+        node_bin = resolve_node_bin(source_dir)
+        if node_bin is not None:
+            path_prepend = [str(node_bin)]
+    except ToolchainError as e:
+        messages.append(f"⚠ {name}: {e}")
+
     return Deployment(
         manager="systemd",
         launcher=run.launcher,
         run_cmd=run_cmd,
         stop_cmd=stop_cmd,
         env=env,
+        path_prepend=path_prepend,
         secret_env_keys=sorted(secret_env),
         description=description,
         kind=kind,

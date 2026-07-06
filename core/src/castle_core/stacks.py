@@ -11,6 +11,7 @@ from pathlib import Path
 
 from castle_core.config import USER_TOOL_PATH_DIRS
 from castle_core.manifest import ProgramSpec
+from castle_core.toolchains import ToolchainError, resolve_node_bin
 
 DEV_ACTIONS = ["build", "test", "lint", "format", "type-check", "check", "run"]
 INSTALL_ACTIONS = ["install", "uninstall"]
@@ -41,20 +42,37 @@ class ActionResult:
     output: str = ""
 
 
-def _build_env() -> dict[str, str]:
-    """Build a subprocess env with user tool dirs on PATH."""
+def _build_env(node_source: Path | None = None) -> dict[str, str]:
+    """Build a subprocess env with user tool dirs on PATH.
+
+    ``node_source`` is the program's source dir: if it pins a node version (see
+    :mod:`castle_core.toolchains`), that node's bin dir goes on the front of PATH so
+    the verb uses the program's node instead of whatever ambient node the caller
+    happens to have (the CLI inherits your shell's; the castle-api build executor's
+    default PATH has none). Raises :class:`ToolchainError` if the pin isn't installed.
+    """
     env = os.environ.copy()
-    extra = ":".join(str(d) for d in USER_TOOL_PATH_DIRS if d.exists())
-    if extra:
-        env["PATH"] = extra + ":" + env.get("PATH", "")
+    dirs = [str(d) for d in USER_TOOL_PATH_DIRS if d.exists()]
+    node_bin = resolve_node_bin(node_source)
+    if node_bin is not None:
+        dirs.insert(0, str(node_bin))
+    if dirs:
+        env["PATH"] = ":".join(dirs) + ":" + env.get("PATH", "")
     return env
 
 
 async def _run(
     cmd: list[str], cwd: Path, env: dict[str, str] | None = None
 ) -> tuple[int, str]:
-    """Run a subprocess and return (returncode, combined output)."""
-    run_env = _build_env()
+    """Run a subprocess and return (returncode, combined output).
+
+    The verb runs in ``cwd`` (the program source), so that dir doubles as the node
+    pin source — a pinned-but-missing node fails loud here rather than as a cryptic
+    ``node: not found`` mid-build."""
+    try:
+        run_env = _build_env(cwd)
+    except ToolchainError as e:
+        return 1, str(e)
     if env:
         run_env.update(env)
     proc = await asyncio.create_subprocess_exec(
