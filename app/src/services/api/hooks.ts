@@ -11,6 +11,8 @@ import type {
   ProgramDetail,
   GitStatus,
   GraphModel,
+  GraphSuggestion,
+  MeshDeployment,
   RepoSummary,
   ProgramSyncResponse,
   StatusResponse,
@@ -224,6 +226,31 @@ const REACH_SECTION: Record<string, string> = {
   job: "jobs",
   tool: "tools",
   static: "static",
+  reference: "references",
+}
+
+// Create/update an external resource — a `reference` deployment (manager: none)
+// that points at an endpoint castle doesn't run (a SaaS API, a remote service).
+// Behind the System Map's "add external resource" authoring. No apply needed —
+// a reference has no runtime unit; it just declares the endpoint.
+export function useSaveReference() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({
+      name,
+      base_url,
+      description,
+    }: {
+      name: string
+      base_url: string
+      description?: string
+    }) => {
+      await apiClient.put(`/config/references/${name}`, {
+        config: { manager: "none", base_url, description: description || null },
+      })
+    },
+    onSuccess: () => qc.invalidateQueries(),
+  })
 }
 
 // Set a deployment's exposure (off | internal | public), then converge it. This
@@ -265,6 +292,54 @@ export function useDeleteDeployment() {
     mutationFn: async ({ name, kind }: { name: string; kind: string }) => {
       const section = REACH_SECTION[kind] ?? "services"
       await apiClient.delete(`/config/${section}/${name}`)
+    },
+    onSuccess: () => qc.invalidateQueries(),
+  })
+}
+
+interface Requirement {
+  kind: string // system | deployment
+  ref: string
+  bind?: string | null
+}
+
+// Add or remove a `requires` edge on a deployment, then converge. Reads the
+// deployment's authoritative current requires (so system deps and binds are
+// preserved), applies the single add/remove, writes it back, and applies. Behind
+// the System Map's draw-a-line / delete-a-line dependency editing.
+export function useMutateRequires() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({
+      name,
+      kind,
+      add,
+      remove,
+    }: {
+      name: string
+      kind: string
+      add?: string
+      remove?: string
+    }) => {
+      const section = REACH_SECTION[kind] ?? "services"
+      const detail = await apiClient.get<DeploymentDetail>(`/deployments/${name}`)
+      const cur = (detail.manifest?.requires as Requirement[] | undefined) ?? []
+      let next = cur
+      if (remove) next = next.filter((r) => !(r.kind === "deployment" && r.ref === remove))
+      if (add && !next.some((r) => r.kind === "deployment" && r.ref === add))
+        next = [...next, { kind: "deployment", ref: add }]
+      await apiClient.put(`/config/${section}/${name}`, {
+        config: { requires: next.length ? next : null },
+      })
+      try {
+        return await apiClient.post<ApplyResult>("/apply", { name })
+      } catch (err) {
+        if (err instanceof TypeError) {
+          await waitForApi()
+          return null
+        }
+        throw err
+      }
     },
     onSuccess: () => qc.invalidateQueries(),
   })
@@ -341,6 +416,24 @@ export function useGraph() {
     queryKey: ["graph"],
     queryFn: () => apiClient.get<GraphModel>("/graph"),
     staleTime: 30_000,
+  })
+}
+
+// Undeclared-consumption suggestions (env → provider socket matches). Advisory only.
+export function useSuggestions() {
+  return useQuery({
+    queryKey: ["graph", "suggestions"],
+    queryFn: () => apiClient.get<{ suggestions: GraphSuggestion[] }>("/graph/suggestions"),
+    staleTime: 30_000,
+  })
+}
+
+// Deployments on other (mesh-discovered) castle nodes, for the multi-node map.
+export function useMeshDeployments() {
+  return useQuery({
+    queryKey: ["mesh", "deployments"],
+    queryFn: () => apiClient.get<{ deployments: MeshDeployment[] }>("/mesh/deployments"),
+    refetchInterval: 30_000,
   })
 }
 

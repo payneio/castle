@@ -121,6 +121,10 @@ export interface GraphRepo {
   dirty: boolean
   fresh: boolean | null
 }
+export interface GraphEndpoint {
+  protocol: string // http | tcp | pg | bolt | mqtt | redis (display heuristic)
+  port: number
+}
 export interface GraphNode {
   name: string
   program: string | null
@@ -131,6 +135,11 @@ export interface GraphNode {
   functional: boolean
   fresh: boolean | null
   deployed: boolean | null
+  reach: "off" | "internal" | "public" | null
+  endpoints: GraphEndpoint[]
+  base_url: string | null // set for kind === "reference" (external resource)
+  provides: string[] // capability types this offers (from its program)
+  consumes: string[] // capability types it needs (from its program)
 }
 export interface GraphEdge {
   src: string
@@ -142,6 +151,27 @@ export interface GraphModel {
   repos: GraphRepo[]
   nodes: GraphNode[]
   edges: GraphEdge[]
+}
+
+// GET /graph/suggestions — undeclared consumption inferred from env endpoint values
+// (an advisory; accepting one declares a real `requires`).
+export interface GraphSuggestion {
+  consumer: string
+  provider: string
+  env_var: string
+  endpoint: string
+  protocol: string
+}
+
+// GET /mesh/deployments — deployments on other (mesh-discovered) castle nodes.
+export interface MeshDeployment {
+  name: string
+  kind: string
+  node: string // the remote hostname
+  port: number | null
+  base_url: string | null
+  subdomain: string | null
+  endpoints: GraphEndpoint[]
 }
 
 // POST /programs/{name}/sync — a fast-forward pull (no build/apply/restart).
