@@ -284,23 +284,20 @@ class Capability(BaseModel):
 
 
 class Requirement(BaseModel):
-    """A precondition — something that must be true for a program/deployment to be
-    *functional*. The ``kind`` fixes both the meaning and how it's checked (there is
-    no separate purpose tag):
+    """A precondition — another **deployment** that must exist for this one to be
+    *functional* (``ref`` = the target deployment's name). ``bind`` names the env
+    var castle projects the target's URL into — env is derived *from* the
+    requirement, never scraped back into it.
 
-    - ``system``     — a host package/binary must be installed (``ref`` = package).
-    - ``deployment`` — another deployment must exist/run (``ref`` = its name).
-
-    ``version`` is reserved for a future constraint (unused now). ``bind`` (for a
-    ``deployment`` requirement) names the env var castle projects the target's URL
-    into — env is derived *from* the requirement, never scraped back into it.
-
-    See docs/relationships.md. ``system_dependencies`` is the ``kind: system`` case.
+    A deployment declares these in its ``requires`` list; ``kind`` defaults to
+    ``deployment`` (write just ``- ref: foo``). The ``system`` kind is not written
+    here — a program's host-package preconditions live in ``system_dependencies``,
+    and the relationship model synthesizes ``kind: system`` requirements from it for
+    the ``functional?`` check. See docs/relationships.md.
     """
 
-    kind: Literal["system", "deployment"]
+    kind: Literal["system", "deployment"] = "deployment"
     ref: str
-    version: str | None = None
     bind: str | None = None
 
 
@@ -384,10 +381,10 @@ class ProgramSpec(BaseModel):
     # Per-program dev verb overrides (declared verbs override the stack default).
     commands: CommandsSpec | None = None
 
-    # `requires` is the general precondition relation (see docs/relationships.md).
-    # `system_dependencies` is kept as the `{kind: system}` alias/back-compat; both
-    # are merged when evaluating what a program requires.
-    requires: list[Requirement] = Field(default_factory=list)
+    # Host-package preconditions (apt packages / binaries) intrinsic to this
+    # software. The relationship model checks these (`which`/`dpkg`) to derive the
+    # `functional?` light. Deployment-to-deployment dependencies are NOT here — they
+    # live on the deployment's `requires` (see DeploymentBase). See docs/relationships.md.
     system_dependencies: list[str] = Field(default_factory=list)
     install_extras: list[str] = Field(default_factory=list)
     version: str | None = None
@@ -431,8 +428,10 @@ class DeploymentBase(BaseModel):
     )
     description: str | None = None
     defaults: DefaultsSpec | None = None
-    # Runtime preconditions (e.g. another deployment that must exist). See
-    # docs/relationships.md; merged with the program's `requires` when evaluated.
+    # Deployment-to-deployment preconditions: other deployments this one needs
+    # (e.g. a frontend that requires its API + the supabase substrate). Each entry
+    # is `- ref: <deployment>` (+ optional `bind: ENV_VAR` to project the target's
+    # URL into env). Drives the relationship graph's edges. See docs/relationships.md.
     requires: list[Requirement] = Field(default_factory=list)
     # Declared on/off state. `castle apply` converges reality to this: enabled
     # deployments are activated (service started, tool installed, route served),

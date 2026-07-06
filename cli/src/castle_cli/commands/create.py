@@ -39,12 +39,12 @@ STACK_BUILD_OUTPUTS: dict[str, str] = {
     "react-vite": "dist",
 }
 
-# Substrate a stack's apps depend on — seeded as a `requires` at creation so the
-# relationship graph shows it. This keeps `stack` uncoupled from the runtime model:
-# the stack declares the edge once here; the graph only ever reads the encoded
+# Substrate a stack's apps depend on — seeded as a deployment `requires` at creation
+# so the relationship graph shows it. This keeps `stack` uncoupled from the runtime
+# model: the stack declares the edge once here; the graph only ever reads the encoded
 # `requires`, never the stack. See docs/relationships.md.
 STACK_REQUIRES: dict[str, list[Requirement]] = {
-    "supabase": [Requirement(kind="deployment", ref="supabase")],
+    "supabase": [Requirement(ref="supabase")],
 }
 
 
@@ -120,13 +120,18 @@ def run_create(args: argparse.Namespace) -> int:
         source=str(project_dir),
         stack=stack,
         build=build,
-        # Seed the stack's substrate dependency (e.g. supabase) as a real `requires`.
-        requires=list(STACK_REQUIRES.get(stack or "", [])),
     )
+    # The stack's substrate dependency (e.g. supabase) is a deployment-to-deployment
+    # `requires` — seeded on the deployment so the relationship graph shows the edge.
+    seeded_requires = list(STACK_REQUIRES.get(stack or "", []))
     if kind == "tool":
         # A PATH-managed deployment: installed via `uv tool install`, no unit/route.
         config.tools[name] = PathDeployment(
-            id=name, manager="path", program=name, description=description
+            id=name,
+            manager="path",
+            program=name,
+            description=description,
+            requires=seeded_requires,
         )
     elif kind == "static":
         # A caddy-managed static deployment: no systemd unit, served from the build dir.
@@ -136,6 +141,7 @@ def run_create(args: argparse.Namespace) -> int:
             program=name,
             root=static_root or "dist",
             description=description,
+            requires=seeded_requires,
         )
     elif kind == "service":
         prefix = name.replace("-", "_").upper()
@@ -151,6 +157,7 @@ def run_create(args: argparse.Namespace) -> int:
                     health_path="/health",
                 )
             ),
+            requires=seeded_requires,
             proxy=True,  # expose at <name>.<gateway.domain>
             manage=ManageSpec(systemd=SystemdSpec()),
             # python-fastapi scaffold reads env_prefix MY_SERVICE_ — map castle's

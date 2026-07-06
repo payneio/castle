@@ -167,6 +167,78 @@ export function useEnvSecrets(initial: Record<string, string>) {
   return { element, merged }
 }
 
+/** A deployment-to-deployment requirement as stored in `requires`. `kind` defaults
+ * to "deployment" on the backend, so the editor only surfaces ref + optional bind. */
+export interface Requirement {
+  kind?: string
+  ref: string
+  bind?: string
+}
+
+/** Hook for editing a deployment's `requires` (service→service dependencies).
+ * Returns the editor element plus a `value()` that yields the requirement list to
+ * save (empty entries dropped; bind omitted when blank). */
+export function useRequires(initial: Requirement[]) {
+  const [reqs, setReqs] = useState<Requirement[]>(() =>
+    (initial ?? []).map((r) => ({ ref: r.ref ?? "", bind: r.bind ?? "" })),
+  )
+
+  const value = (): Requirement[] =>
+    reqs
+      .filter((r) => r.ref.trim())
+      .map((r) =>
+        r.bind?.trim()
+          ? { ref: r.ref.trim(), bind: r.bind.trim() }
+          : { ref: r.ref.trim() },
+      )
+
+  const element = (
+    <Field
+      label="Requires"
+      hint="Other deployments this one depends on (drawn as edges on the graph). Add an env var to project the target's URL into the environment (e.g. API_URL → https://target.<domain>)."
+    >
+      <div className="space-y-2">
+        {reqs.map((r, i) => (
+          <div key={i} className="flex items-center gap-2">
+            <input
+              value={r.ref}
+              onChange={(e) =>
+                setReqs((p) => p.map((x, j) => (j === i ? { ...x, ref: e.target.value } : x)))
+              }
+              placeholder="deployment name"
+              className={`w-32 sm:w-48 min-w-0 ${INPUT} text-xs font-mono`}
+            />
+            <span className="text-[var(--muted)] shrink-0 text-xs">→</span>
+            <input
+              value={r.bind ?? ""}
+              onChange={(e) =>
+                setReqs((p) => p.map((x, j) => (j === i ? { ...x, bind: e.target.value } : x)))
+              }
+              placeholder="ENV_VAR (optional)"
+              className={`flex-1 min-w-0 ${INPUT} text-xs font-mono`}
+            />
+            <button
+              onClick={() => setReqs((p) => p.filter((_, j) => j !== i))}
+              className="text-red-400 hover:text-red-300 p-0.5 shrink-0"
+              title="Remove"
+            >
+              <Trash2 size={12} />
+            </button>
+          </div>
+        ))}
+        <button
+          onClick={() => setReqs((p) => [...p, { ref: "", bind: "" }])}
+          className="text-xs text-[var(--primary)] hover:underline"
+        >
+          + Add dependency
+        </button>
+      </div>
+    </Field>
+  )
+
+  return { element, value }
+}
+
 /** Save/Delete footer shared by the typed config forms. */
 export function FormFooter({
   saving,

@@ -2,7 +2,8 @@ import { useState } from "react"
 import type { DeploymentDetail } from "@/types"
 import { useGateway } from "@/services/api/hooks"
 import { gatewayHost, publicGatewayHost } from "@/lib/labels"
-import { Field, TextField, FormFooter, useEnvSecrets } from "./fields"
+import { Field, TextField, FormFooter, useEnvSecrets, useRequires } from "./fields"
+import type { Requirement } from "./fields"
 
 interface Props {
   static_: DeploymentDetail
@@ -31,6 +32,9 @@ export function StaticFields({ static_: dep, onSave, onDelete }: Props) {
   const { element: envEditor, merged } = useEnvSecrets(
     obj(obj(m.defaults).env) as Record<string, string>,
   )
+  const { element: requiresEditor, value: requiresValue } = useRequires(
+    (m.requires as Requirement[]) ?? [],
+  )
 
   const handleSave = async () => {
     setSaving(true)
@@ -43,6 +47,7 @@ export function StaticFields({ static_: dep, onSave, onDelete }: Props) {
       config.root = root || "dist"
       config.reach = isPublic ? "public" : "internal"
       delete config.public
+      config.requires = requiresValue()
       const env = merged()
       if (Object.keys(env).length > 0) config.defaults = { ...obj(config.defaults), env }
       else if (config.defaults) delete (config.defaults as Obj).env
@@ -70,20 +75,18 @@ export function StaticFields({ static_: dep, onSave, onDelete }: Props) {
         label="Reach"
         hint={`How far this static site is served. internal: ${gatewayHost(dep.id, domain)}. public: also to the internet via the Cloudflare tunnel. (A static site is always served, so there's no 'off'.)`}
       >
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           <select
             value={isPublic ? "public" : "internal"}
             onChange={(e) => setIsPublic(e.target.value === "public")}
             className="bg-black/30 border border-[var(--border)] rounded px-2 py-1 text-xs font-mono focus:outline-none focus:border-[var(--primary)]"
           >
-            <option value="internal">internal</option>
-            <option value="public">public</option>
+            <option value="internal">{`${gatewayHost(dep.id, domain)} (internal)`}</option>
+            <option value="public">{`${publicGatewayHost(dep.id, publicDomain)} (public)`}</option>
           </select>
-          <span className="font-mono text-[var(--muted)] text-xs">
-            {isPublic ? publicGatewayHost(dep.id, publicDomain) : gatewayHost(dep.id, domain)}
-          </span>
         </div>
       </Field>
+      {requiresEditor}
       {envEditor}
       <FormFooter
         saving={saving}

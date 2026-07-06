@@ -28,25 +28,36 @@ abstraction, in that order.
   on each program's source; several programs sharing one toplevel is a *monorepo*.
   Never stored.
 
-## The one encoded relation: `requires`
+## Encoded preconditions: `requires` + `system_dependencies`
 
-Everything we were calling "substrate", "wiring", or "dependency" is one relation —
-**`requires`** ("A must have B to be functional") — with a typed target. The
-**kind fixes the meaning and the check**; there is no separate purpose/`for` tag:
+Everything we were calling "substrate", "wiring", or "dependency" reduces to
+preconditions ("A must have B to be functional"), encoded on the layer each belongs
+to. The relationship model unifies them into one requirement set with a typed target;
+the **kind fixes the meaning and the check**:
 
-| kind | means | checked by |
-|------|-------|-----------|
-| `system` | the host package/binary must be **installed** | `which <ref>` |
-| `deployment` | another deployment must **exist / be running** | registry / config |
+| kind | source (where encoded) | means | checked by |
+|------|------------------------|-------|-----------|
+| `deployment` | the **deployment**'s `requires` | another deployment must **exist** | registry / config |
+| `system` | the **program**'s `system_dependencies` | the host package/binary must be **installed** | `which` / `dpkg` |
+
+A **deployment** declares the deployments it depends on. `kind` defaults to
+`deployment`, so an entry is just a `ref` (+ optional `bind`):
 
 ```yaml
+# deployments/<kind>/astro.yaml
 requires:
-  - { kind: system, ref: pandoc }              # today's system_dependencies
-  - { kind: deployment, ref: astro-guru, bind: GURU_URL }
-  # - { kind: deployment, ref: litellm, version: ">=1" }   # version: FUTURE, unused
+  - ref: astro-guru
+  - ref: supabase
+  - { ref: litellm, bind: LITELLM_URL }   # bind: project the target's URL into env
 ```
 
-`system_dependencies` is exactly the `{kind: system}` case and is kept as an alias.
+A **program**'s host-package preconditions stay on the program as
+`system_dependencies` (a plain list of package names); the model synthesizes the
+`{kind: system}` requirements from it for the `functional?` check. This split keeps
+each precondition on its natural layer — a deployment-ref is node-level wiring
+(belongs on the deployment), a host package is intrinsic to the software (belongs on
+the program). There is no `requires` on the program, and no `kind: system` written
+into a deployment's `requires`.
 
 Only encode a `requires` edge that is **not derivable** and that **castle itself
 must traverse** for an operation (status, bring-up order, group ops). Do **not**
@@ -58,7 +69,7 @@ one package ecosystem.
 
 Reading dependencies out of env strings is unstable (formats vary; a static
 frontend's API URL is baked into its bundle and invisible). The stable direction is
-the reverse: from an encoded `{kind: deployment}` requirement castle **generates**
+the reverse: from an encoded `{ref, bind}` deployment requirement castle **generates**
 the wiring env — it knows the target's address (`<ref>.<domain>` / its port) and
 projects it into the consumer's env, optionally under the var named by `bind`. Same
 move as `${public_url}`, one step further. Dependency → env, never env → dependency.

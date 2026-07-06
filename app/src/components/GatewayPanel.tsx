@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react"
 import { Link } from "react-router-dom"
-import { Globe, RefreshCw, FileText, ExternalLink, Cable } from "lucide-react"
+import { Globe, RefreshCw, FileText, ExternalLink, Cable, ArrowRight } from "lucide-react"
 import type { GatewayInfo, HealthStatus } from "@/types"
 import { useApply, useCaddyfile } from "@/services/api/hooks"
 import { subdomainUrl, detailPath } from "@/lib/labels"
@@ -74,6 +74,7 @@ export function GatewayPanel({ gateway, statuses }: GatewayPanelProps) {
                 <th className="px-4 py-2 font-medium text-[var(--muted)]">Node</th>
               )}
               <th className="px-4 py-2 font-medium text-[var(--muted)]">Health</th>
+              <th className="px-4 py-2 font-medium text-[var(--muted)] sr-only">Open</th>
             </tr>
           </thead>
           <tbody>
@@ -143,6 +144,18 @@ export function GatewayPanel({ gateway, statuses }: GatewayPanelProps) {
                       <span className="text-xs text-[var(--muted)]">—</span>
                     ) : (
                       <HealthBadge status={health?.status ?? "unknown"} latency={health?.latency_ms} />
+                    )}
+                  </td>
+                  <td className="px-4 py-2 text-right">
+                    {route.name && (
+                      <Link
+                        to={detailPath(route.name, route.kind)}
+                        title={`Go to ${route.name}`}
+                        className="inline-flex items-center gap-1 text-xs text-[var(--muted)] hover:text-[var(--primary)] transition-colors"
+                      >
+                        <span className="sr-only sm:not-sr-only">Open</span>
+                        <ArrowRight size={13} className="shrink-0" />
+                      </Link>
                     )}
                   </td>
                 </tr>

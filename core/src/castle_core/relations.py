@@ -1,15 +1,17 @@
 """The relationship model — derived, never stored. See docs/relationships.md.
 
 Entities: **program**, **deployment**, **repo** (a repo is a git working copy;
-programs sharing a toplevel form a monorepo). One encoded relation, **`requires`**
-(a precondition, typed by ``kind``: ``system`` = must be installed, ``deployment``
-= must exist). Everything else — repos, env wiring, fan-in, and the predicates
+programs sharing a toplevel form a monorepo). Preconditions come from two encoded
+sources: a deployment's **`requires`** (other deployments it needs) and its
+program's **`system_dependencies`** (host packages). These are unified here into one
+requirement set (typed by ``kind``: ``deployment`` = must exist, ``system`` = must be
+installed). Everything else — repos, env wiring, fan-in, and the predicates
 ``functional?`` / ``fresh?`` / ``deployed?`` — is computed here on demand.
 
 Governing rule: *predicates are derived; we encode only the non-derivable.* So this
-module reads the encoded ``requires`` (plus ``system_dependencies`` as its
-``kind: system`` alias) and derives the rest. It does **not** scrape env for
-dependencies — env is generated *from* requirements, not the reverse.
+module reads the encoded ``requires`` + ``system_dependencies`` and derives the rest.
+It does **not** scrape env for dependencies — env is generated *from* requirements,
+not the reverse.
 """
 
 from __future__ import annotations
@@ -115,16 +117,16 @@ def derive_repos(config: CastleConfig) -> dict[str, Repo]:
 
 
 def requirements_of(config: CastleConfig, dep_name: str) -> list[Requirement]:
-    """The full requirement set for a deployment: its own ``requires`` plus its
-    program's ``requires`` and ``system_dependencies`` (the ``kind: system`` alias),
-    de-duplicated by (kind, ref)."""
+    """The full requirement set for a deployment: its own ``requires`` (deployment
+    dependencies) plus its program's ``system_dependencies`` synthesized as
+    ``kind: system`` requirements, de-duplicated by (kind, ref)."""
     reqs: list[Requirement] = []
-    # A bare name may span kinds — union their requirements (plus their program's).
+    # A bare name may span kinds — union their requirements (plus their program's
+    # host-package deps as the synthesized `kind: system` set).
     for _kind, dep in config.deployments_named(dep_name):
         reqs += list(getattr(dep, "requires", []) or [])
         prog = config.programs.get(_program_of(dep_name, dep))
         if prog:
-            reqs += list(prog.requires)
             reqs += [
                 Requirement(kind="system", ref=pkg) for pkg in prog.system_dependencies
             ]

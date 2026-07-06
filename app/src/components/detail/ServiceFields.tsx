@@ -2,7 +2,8 @@ import { useState } from "react"
 import type { ServiceDetail } from "@/types"
 import { useGateway } from "@/services/api/hooks"
 import { gatewayHost, publicGatewayHost } from "@/lib/labels"
-import { Field, TextField, FormFooter, useEnvSecrets } from "./fields"
+import { Field, TextField, FormFooter, useEnvSecrets, useRequires } from "./fields"
+import type { Requirement } from "./fields"
 
 interface Props {
   service: ServiceDetail
@@ -78,6 +79,9 @@ export function ServiceFields({ service, onSave, onDelete }: Props) {
   )
 
   const { element: envEditor, merged } = useEnvSecrets(obj(obj(m.defaults).env) as Record<string, string>)
+  const { element: requiresEditor, value: requiresValue } = useRequires(
+    (m.requires as Requirement[]) ?? [],
+  )
 
   const handleSave = async () => {
     setSaving(true)
@@ -110,6 +114,8 @@ export function ServiceFields({ service, onSave, onDelete }: Props) {
       }
       delete config.proxy
       delete config.public
+
+      config.requires = requiresValue()
 
       const env = merged()
       if (Object.keys(env).length > 0) config.defaults = { ...obj(config.defaults), env }
@@ -197,30 +203,25 @@ export function ServiceFields({ service, onSave, onDelete }: Props) {
             label="Reach"
             hint={`How far this service is exposed. off: host:port only. internal: ${gatewayHost(service.id, domain)} via the gateway. public: also to the internet via the Cloudflare tunnel.`}
           >
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
               <select
                 value={reach}
                 onChange={(e) => setReach(e.target.value)}
                 disabled={!port}
                 className="bg-black/30 border border-[var(--border)] rounded px-2 py-1 text-xs font-mono focus:outline-none focus:border-[var(--primary)] disabled:opacity-50"
               >
-                <option value="off">off</option>
-                <option value="internal">internal</option>
-                <option value="public">public</option>
+                <option value="off">{port ? `localhost:${port} (local)` : "off"}</option>
+                <option value="internal">{`${gatewayHost(service.id, domain)} (internal)`}</option>
+                <option value="public">{`${publicGatewayHost(service.id, publicDomain)} (public)`}</option>
               </select>
-              <span className="font-mono text-[var(--muted)] text-xs">
-                {!port
-                  ? "set a port to expose"
-                  : reach === "off"
-                    ? "host:port only"
-                    : reach === "public"
-                      ? publicGatewayHost(service.id, publicDomain)
-                      : gatewayHost(service.id, domain)}
-              </span>
+              {!port && (
+                <span className="font-mono text-[var(--muted)] text-xs">set a port to expose</span>
+              )}
             </div>
           </Field>
         </>
       )}
+      {requiresEditor}
       {envEditor}
       <FormFooter
         saving={saving}

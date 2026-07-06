@@ -105,12 +105,13 @@ class TestCreateCommand:
         comp = config.programs["guestbook"]
         assert comp.stack == "supabase"
         assert comp.build is not None and comp.build.outputs == ["public"]
-        # The supabase stack seeds a `requires` on the substrate so the graph shows
-        # the dependency (stack stays uncoupled — it just declares the edge once).
-        assert [(r.kind, r.ref) for r in comp.requires] == [("deployment", "supabase")]
         dep = config.statics["guestbook"]
         assert dep.manager == "caddy"
         assert dep.root == "public"
+        # The supabase stack seeds a `requires` on the substrate (on the deployment)
+        # so the graph shows the dependency (stack stays uncoupled — it just declares
+        # the edge once).
+        assert [(r.kind, r.ref) for r in dep.requires] == [("deployment", "supabase")]
         assert config.deployments_of("guestbook") == [("guestbook", "static")]
 
     def test_create_duplicate_fails(self, castle_root: Path, capsys: object) -> None:

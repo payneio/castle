@@ -503,18 +503,12 @@ def _target_url(config: CastleConfig, target_name: str) -> str | None:
     return _public_url(config, target_name, getattr(dep, "http_exposed", False), tport)
 
 
-def _requires_env(
-    config: CastleConfig, dep: DeploymentSpec, config_key: str
-) -> dict[str, str]:
-    """Env generated FROM a deployment's ``requires`` — a ``{kind: deployment,
-    bind: VAR}`` requirement sets ``VAR`` to the target's URL. Env is derived from
-    the dependency, never scraped back into one (see docs/relationships.md)."""
-    prog = config.programs.get(config_key)
-    reqs = list(getattr(dep, "requires", []) or [])
-    if prog:
-        reqs += list(prog.requires)
+def _requires_env(config: CastleConfig, dep: DeploymentSpec) -> dict[str, str]:
+    """Env generated FROM a deployment's ``requires`` — a ``{ref, bind: VAR}``
+    requirement sets ``VAR`` to the target deployment's URL. Env is derived from the
+    dependency, never scraped back into one (see docs/relationships.md)."""
     out: dict[str, str] = {}
-    for r in reqs:
+    for r in getattr(dep, "requires", []) or []:
         if r.kind == "deployment" and r.bind:
             url = _target_url(config, r.ref)
             if url:
@@ -676,7 +670,7 @@ def _build_deployed(
     raw_env = dict(dep.defaults.env) if (dep.defaults and dep.defaults.env) else {}
     # Env generated from `requires` ({kind: deployment, bind: VAR} → target URL).
     # An explicit defaults.env value always wins — a hand-set var is never clobbered.
-    for var, url in _requires_env(config, dep, config_key).items():
+    for var, url in _requires_env(config, dep).items():
         raw_env.setdefault(var, url)
     public_url = _public_url(config, name, expose, port)
     ctx = _env_context(

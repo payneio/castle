@@ -1,6 +1,7 @@
 import { useState } from "react"
 import type { JobDetail } from "@/types"
-import { Field, TextField, FormFooter, useEnvSecrets } from "./fields"
+import { Field, TextField, FormFooter, useEnvSecrets, useRequires } from "./fields"
+import type { Requirement } from "./fields"
 
 interface Props {
   job: JobDetail
@@ -54,6 +55,9 @@ export function JobFields({ job, onSave, onDelete }: Props) {
   )
 
   const { element: envEditor, merged } = useEnvSecrets(obj(obj(m.defaults).env) as Record<string, string>)
+  const { element: requiresEditor, value: requiresValue } = useRequires(
+    (m.requires as Requirement[]) ?? [],
+  )
 
   const handleSave = async () => {
     setSaving(true)
@@ -65,6 +69,7 @@ export function JobFields({ job, onSave, onDelete }: Props) {
       config.schedule = schedule || undefined
 
       config.run = applyLauncher(obj(config.run), launcher, runTarget)
+      config.requires = requiresValue()
 
       const env = merged()
       if (Object.keys(env).length > 0) config.defaults = { ...obj(config.defaults), env }
@@ -111,6 +116,7 @@ export function JobFields({ job, onSave, onDelete }: Props) {
           />
         </div>
       </Field>
+      {requiresEditor}
       {envEditor}
       <FormFooter
         saving={saving}
