@@ -506,19 +506,28 @@ def get_service(name: str) -> ServiceDetail:
         summary = _service_from_deployed(name, deployed)
         if config is not None and summary.source is None:
             summary.source = _backfill_source(name, config)
-        manifest = {
-            "manager": deployed.manager,
-            "launcher": deployed.launcher,
-            "run_cmd": deployed.run_cmd,
-            "env": deployed.env,
-            "secret_env_keys": deployed.secret_env_keys,
-            "port": deployed.port,
-            "health_path": deployed.health_path,
-            "subdomain": deployed.subdomain,
-            "managed": deployed.managed,
-            "kind": deployed.kind,
-            "stack": deployed.stack,
-        }
+        # Serve the editable spec whenever the deployment is in castle.yaml — a
+        # STATIC (caddy) is in config.deployments but NOT config.services, so it
+        # lands here; without this its manifest lacks reach/root/program and the
+        # edit form defaults them wrong (calculator showed reach as internal).
+        if config is not None and name in config.deployments:
+            manifest = config.deployments[name].model_dump(
+                mode="json", exclude_none=True
+            )
+        else:
+            manifest = {
+                "manager": deployed.manager,
+                "launcher": deployed.launcher,
+                "run_cmd": deployed.run_cmd,
+                "env": deployed.env,
+                "secret_env_keys": deployed.secret_env_keys,
+                "port": deployed.port,
+                "health_path": deployed.health_path,
+                "subdomain": deployed.subdomain,
+                "managed": deployed.managed,
+                "kind": deployed.kind,
+                "stack": deployed.stack,
+            }
         return ServiceDetail(**summary.model_dump(), manifest=manifest)
 
     raise HTTPException(
@@ -892,11 +901,13 @@ def get_gateway() -> GatewayInfo:
         except FileNotFoundError:
             pass
 
-    # Which local services are public → their public URL (<name>.<public_domain>).
+    # Which local deployments are public → their public URL (<name>.<public_domain>).
+    # Scan ALL deployments, not just `config.services` — a public *static* (caddy)
+    # is not a service, so filtering to services dropped its public_url (calculator).
     public_domain = registry.node.public_domain
     public_names = {
-        name for name, svc in (config.services.items() if config else [])
-        if getattr(svc, "public", False)
+        name for name, dep in (config.deployments.items() if config else [])
+        if getattr(dep, "public", False)
     }
 
     remote = {h: r.registry for h, r in mesh_state.all_nodes().items()}
