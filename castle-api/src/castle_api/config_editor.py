@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 
 from castle_core.config import (
+    KINDS,
     CastleConfig,
     _DEPLOYMENT_ADAPTER,
     _normalize_deployment_dict,
@@ -81,10 +82,9 @@ def _aggregate_yaml(config: CastleConfig) -> str:
         data["programs"] = {
             n: _program_to_yaml_dict(s, config) for n, s in config.programs.items()
         }
-    if config.deployments:
-        data["deployments"] = {
-            n: _spec_to_yaml_dict(s) for n, s in config.deployments.items()
-        }
+    deps = {n: _spec_to_yaml_dict(s) for _k, n, s in config.all_deployments()}
+    if deps:
+        data["deployments"] = deps
     return yaml.dump(data, default_flow_style=False, sort_keys=False)
 
 
@@ -242,12 +242,12 @@ async def delete_program(name: str, cascade: bool = False) -> dict:
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Program '{name}' not found",
         )
-    refs = [d for d, spec in config.deployments.items() if spec.program == name]
+    refs = [(k, d) for k, d, spec in config.all_deployments() if spec.program == name]
     if refs and not cascade:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
-                f"'{name}' still has deployments ({', '.join(refs)}). "
+                f"'{name}' still has deployments ({', '.join(d for _k, d in refs)}). "
                 "Delete them first, or pass cascade=true to remove them too."
             ),
         )
@@ -256,14 +256,14 @@ async def delete_program(name: str, cascade: bool = False) -> dict:
     if refs:
         from castle_core.lifecycle import deactivate
 
-        for ref in refs:
+        for kind, ref in refs:
             # Best-effort teardown (uninstall/stop/disable); still remove the config
             # even if the runtime is already gone.
             try:
-                await deactivate(ref, config, config.root)
+                await deactivate(ref, kind, config, config.root)
             except Exception:
                 pass
-            del config.deployments[ref]
+            del config.store_for(kind)[ref]
             removed.append(ref)
 
     del config.programs[name]
@@ -295,8 +295,25 @@ def _save_deployment(name: str, config_dict: dict) -> dict:
     config = get_config()
     incoming = dict(config_dict)
 
-    if name in config.deployments:
-        base = config.deployments[name].model_dump(mode="json", exclude_none=True)
+    # Resolve the (name, kind) this save targets. A partial patch (e.g. just
+    # {reach: off}) has no manager, so we can't derive kind from it — prefer the
+    # existing same-named deployment when there's exactly one; otherwise derive the
+    # kind from the incoming spec (a create, or disambiguating a shared name).
+    named = config.deployments_named(name)
+    existing = None
+    if len(named) == 1:
+        existing = named[0][1]
+    else:
+        try:
+            probe = _DEPLOYMENT_ADAPTER.validate_python(
+                _normalize_deployment_dict({**incoming, "id": name})
+            )
+            existing = config.deployment(kind_for(probe), name)
+        except Exception:
+            existing = None
+
+    if existing is not None:
+        base = existing.model_dump(mode="json", exclude_none=True)
         merged = {**base, **incoming, "id": name}
         # An explicit null means "clear" — drop the key so its default applies.
         merged = {k: v for k, v in merged.items() if v is not None}
@@ -315,19 +332,23 @@ def _save_deployment(name: str, config_dict: dict) -> dict:
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"Invalid deployment config: {e}",
         )
-    config.deployments[name] = dep
+    config.store_for(kind_for(dep))[name] = dep
     save_config(config)
     return {"ok": True, "deployment": name}
 
 
 def _delete_deployment(name: str) -> dict:
     config = get_config()
-    if name not in config.deployments:
+    removed = False
+    for kind in KINDS:
+        if name in config.store_for(kind):
+            del config.store_for(kind)[name]
+            removed = True
+    if not removed:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Deployment '{name}' not found",
         )
-    del config.deployments[name]
     save_config(config)
     return {"ok": True, "deployment": name, "action": "deleted"}
 
@@ -357,13 +378,15 @@ def set_deployment_enabled(name: str, request: EnabledRequest) -> dict:
     declarative flow: change what you want, then apply.
     """
     config = get_config()
-    dep = config.deployments.get(name)
-    if dep is None:
+    deps = config.deployments_named(name)
+    if not deps:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Deployment '{name}' not found",
         )
-    dep.enabled = request.enabled
+    # A name may span kinds — toggle all of them together.
+    for _kind, dep in deps:
+        dep.enabled = request.enabled
     save_config(config)
     return {"ok": True, "deployment": name, "enabled": request.enabled}
 

@@ -21,7 +21,7 @@ async def check_all_health(registry: NodeRegistry) -> list[HealthStatus]:
     http_targets: list[tuple[str, str]] = []
     systemd_targets: list[str] = []
 
-    for name, deployed in registry.deployed.items():
+    for _kind, name, deployed in registry.all():
         if deployed.port and deployed.health_path:
             url = f"http://127.0.0.1:{deployed.port}{deployed.health_path}"
             http_targets.append((name, url))

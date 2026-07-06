@@ -17,6 +17,7 @@ def _make_registry() -> NodeRegistry:
                 run_cmd=["uv", "run", "my-svc"],
                 env={"PORT": "9001", "SECRET_KEY": "super-secret"},
                 description="My service",
+                name="my-svc",
                 kind="service",
                 stack="python-fastapi",
                 port=9001,
@@ -28,6 +29,7 @@ def _make_registry() -> NodeRegistry:
                 manager="systemd",
                 launcher="command",
                 run_cmd=["my-job"],
+                name="my-job",
                 kind="job",
                 stack="python-cli",
                 schedule="0 2 * * *",
@@ -51,8 +53,8 @@ class TestRegistrySerialization:
         original = _make_registry()
         restored = _json_to_registry(_registry_to_json(original))
 
-        assert "my-svc" in restored.deployed
-        svc = restored.deployed["my-svc"]
+        svc = restored.get("service", "my-svc")
+        assert svc is not None
         assert svc.manager == "systemd"
         assert svc.launcher == "python"
         assert svc.port == 9001
@@ -66,8 +68,8 @@ class TestRegistrySerialization:
         original = _make_registry()
         restored = _json_to_registry(_registry_to_json(original))
 
-        assert "my-job" in restored.deployed
-        job = restored.deployed["my-job"]
+        job = restored.get("job", "my-job")
+        assert job is not None
         assert job.launcher == "command"
         assert job.schedule == "0 2 * * *"
         assert job.kind == "job"
@@ -78,11 +80,11 @@ class TestRegistrySerialization:
         reg = NodeRegistry(
             node=NodeConfig(hostname="minimal"),
             deployed={
-                "bare": Deployment(manager="systemd", launcher="command", run_cmd=["bare"]),
+                "bare": Deployment(manager="systemd", launcher="command", run_cmd=["bare"], name="bare"),
             },
         )
         restored = _json_to_registry(_registry_to_json(reg))
-        bare = restored.deployed["bare"]
+        bare = restored.get("service", "bare")
         assert bare.port is None
         assert bare.health_path is None
         assert bare.subdomain is None

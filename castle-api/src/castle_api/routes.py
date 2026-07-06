@@ -385,7 +385,10 @@ def _program_from_spec(
     if config is not None:
         from castle_core.lifecycle import is_active
 
-        active = is_active(name, config)
+        # A program's active state = its same-named deployment's (or the bare
+        # program on PATH when it has none).
+        _named = config.deployments_named(name)
+        active = is_active(name, _named[0][0] if _named else "service", config)
         # A program → 0-N deployments, each with its own kind.
         deployments = [
             DeploymentRef(name=dname, kind=kind)
@@ -424,7 +427,7 @@ def list_services(include_remote: bool = False) -> list[ServiceSummary]:
 
     # Services page shows services (systemd) AND statics (caddy) — both are
     # exposed, URL-reachable "services". Not jobs, tools, or remotes.
-    for name, deployed in registry.deployed.items():
+    for _kind, name, deployed in registry.all():
         if deployed.kind not in ("service", "static"):
             continue
         s = _service_from_deployed(name, deployed)
@@ -461,7 +464,7 @@ def list_services(include_remote: bool = False) -> list[ServiceSummary]:
     # Remote
     if include_remote:
         for remote_host, remote in mesh_state.all_nodes().items():
-            for name, d in remote.registry.deployed.items():
+            for _kind, name, d in remote.registry.all():
                 if not d.schedule and name not in seen:
                     s = _service_from_deployed(name, d)
                     s.node = remote_host
@@ -501,19 +504,17 @@ def get_service(name: str) -> ServiceDetail:
         return ServiceDetail(**summary.model_dump(), manifest=manifest)
 
     registry = get_registry()
-    if name in registry.deployed and not registry.deployed[name].schedule:
-        deployed = registry.deployed[name]
+    # /services/{name} covers a service OR a static (both are "services" in the UI),
+    # never a job — resolve the non-job deployment of this name.
+    deployed = registry.get("service", name) or registry.get("static", name)
+    if deployed is not None:
         summary = _service_from_deployed(name, deployed)
         if config is not None and summary.source is None:
             summary.source = _backfill_source(name, config)
-        # Serve the editable spec whenever the deployment is in castle.yaml — a
-        # STATIC (caddy) is in config.deployments but NOT config.services, so it
-        # lands here; without this its manifest lacks reach/root/program and the
-        # edit form defaults them wrong (calculator showed reach as internal).
-        if config is not None and name in config.deployments:
-            manifest = config.deployments[name].model_dump(
-                mode="json", exclude_none=True
-            )
+        # Serve the editable spec (reach/root/program) when it's in castle.yaml.
+        spec = config.deployment(deployed.kind, name) if config is not None else None
+        if spec is not None:
+            manifest = spec.model_dump(mode="json", exclude_none=True)
         else:
             manifest = {
                 "manager": deployed.manager,
@@ -545,7 +546,7 @@ def list_jobs(include_remote: bool = False) -> list[JobSummary]:
     seen: set[str] = set()
 
     # Deployed jobs (scheduled)
-    for name, deployed in registry.deployed.items():
+    for _kind, name, deployed in registry.all():
         if not deployed.schedule:
             continue
         s = _job_from_deployed(name, deployed)
@@ -581,7 +582,7 @@ def list_jobs(include_remote: bool = False) -> list[JobSummary]:
     # Remote
     if include_remote:
         for remote_host, remote in mesh_state.all_nodes().items():
-            for name, d in remote.registry.deployed.items():
+            for _kind, name, d in remote.registry.all():
                 if d.schedule and name not in seen:
                     s = _job_from_deployed(name, d)
                     s.node = remote_host
@@ -612,8 +613,8 @@ def get_job(name: str) -> JobDetail:
         return JobDetail(**summary.model_dump(), manifest=manifest)
 
     registry = get_registry()
-    if name in registry.deployed and registry.deployed[name].schedule:
-        deployed = registry.deployed[name]
+    deployed = registry.get("job", name)
+    if deployed is not None:
         summary = _job_from_deployed(name, deployed)
         if config is not None and summary.source is None:
             summary.source = _backfill_source(name, config)
@@ -704,7 +705,7 @@ def list_components(include_remote: bool = False) -> list[DeploymentSummary]:
     seen: set[str] = set()
 
     # Deployed components from registry
-    for name, deployed in registry.deployed.items():
+    for _kind, name, deployed in registry.all():
         s = _summary_from_deployed(name, deployed)
         s.node = local_hostname
         summaries.append(s)
@@ -759,7 +760,7 @@ def list_components(include_remote: bool = False) -> list[DeploymentSummary]:
     # Remote components from mesh (local wins on name conflicts)
     if include_remote:
         for hostname, remote in mesh_state.all_nodes().items():
-            for name, d in remote.registry.deployed.items():
+            for _kind, name, d in remote.registry.all():
                 if name not in seen:
                     summaries.append(
                         DeploymentSummary(
@@ -788,8 +789,11 @@ def get_component(name: str) -> DeploymentDetail:
     """Get detailed info for a single component."""
     registry = get_registry()
 
-    if name in registry.deployed:
-        deployed = registry.deployed[name]
+    # A name may span kinds; the unified endpoint returns the first (kind-scoped
+    # /services|/jobs|/tools/{name} are the unambiguous addresses).
+    named = registry.named(name)
+    if named:
+        deployed = named[0]
         summary = _summary_from_deployed(name, deployed)
 
         root = get_castle_root()
@@ -819,8 +823,9 @@ def get_component(name: str) -> DeploymentDetail:
         # defaults), not the runtime view — serve the castle.yaml spec whenever the
         # deployment is defined there. Fall back to the runtime dict only for a
         # deployed-but-not-in-config item (e.g. a discovered remote reference).
-        if config and name in config.deployments:
-            raw = config.deployments[name].model_dump(mode="json", exclude_none=True)
+        spec = config.deployment(deployed.kind, name) if config else None
+        if spec is not None:
+            raw = spec.model_dump(mode="json", exclude_none=True)
         else:
             raw = {
                 "manager": deployed.manager,
@@ -906,7 +911,7 @@ def get_gateway() -> GatewayInfo:
     # is not a service, so filtering to services dropped its public_url (calculator).
     public_domain = registry.node.public_domain
     public_names = {
-        name for name, dep in (config.deployments.items() if config else [])
+        name for _k, name, dep in (config.all_deployments() if config else [])
         if getattr(dep, "public", False)
     }
 

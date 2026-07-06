@@ -8,6 +8,8 @@ from collections.abc import AsyncGenerator
 from fastapi import APIRouter, HTTPException, Query, status
 from starlette.responses import StreamingResponse
 
+from castle_core.generators.systemd import unit_name
+
 from castle_api.config import get_castle_root
 
 router = APIRouter(prefix="/logs", tags=["logs"])
@@ -27,20 +29,24 @@ async def get_logs(
         from castle_core.config import load_config
 
         config = load_config(root)
-        dep = config.deployments.get(name)
-        is_managed = dep is not None and getattr(dep, "manage", None) is not None
-        if not is_managed:
+        # A name may span kinds — the managed (systemd) one owns the journal.
+        dep_kind = next(
+            ((k, s) for k, s in config.deployments_named(name) if getattr(s, "manage", None)),
+            None,
+        )
+        if dep_kind is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"'{name}' is not a managed service",
             )
+        kind, _spec = dep_kind
     else:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Castle root not available",
         )
 
-    unit = f"{UNIT_PREFIX}{name}.service"
+    unit = unit_name(name, kind)
 
     if follow:
         return StreamingResponse(

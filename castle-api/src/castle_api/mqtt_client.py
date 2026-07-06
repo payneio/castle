@@ -41,7 +41,7 @@ def _registry_to_json(registry: NodeRegistry) -> str:
         "deployed": {},
     }
 
-    for name, comp in registry.deployed.items():
+    for _kind, name, comp in registry.all():
         entry: dict = {
             "manager": comp.manager,
             "launcher": comp.launcher,
@@ -61,7 +61,7 @@ def _registry_to_json(registry: NodeRegistry) -> str:
             entry["schedule"] = comp.schedule
         if comp.managed:
             entry["managed"] = comp.managed
-        data["deployed"][name] = entry
+        data["deployed"][NodeRegistry.key(comp.kind, name)] = entry
 
     return json.dumps(data)
 
@@ -76,14 +76,17 @@ def _json_to_registry(payload: str) -> NodeRegistry:
         gateway_port=node_data.get("gateway_port", 9000),
     )
     deployed: dict[str, Deployment] = {}
-    for name, comp_data in data.get("deployed", {}).items():
-        deployed[name] = Deployment(
+    for key, comp_data in data.get("deployed", {}).items():
+        key_kind, name = key.split("/", 1) if "/" in key else (None, key)
+        kind = comp_data.get("kind") or key_kind or "service"
+        deployed[NodeRegistry.key(kind, name)] = Deployment(
             manager=comp_data.get("manager", "systemd"),
             launcher=comp_data.get("launcher"),
             run_cmd=comp_data.get("run_cmd", []),
             env=comp_data.get("env", {}),
             description=comp_data.get("description"),
-            kind=comp_data.get("kind", "service"),
+            name=name,
+            kind=kind,
             stack=comp_data.get("stack"),
             port=comp_data.get("port"),
             health_path=comp_data.get("health_path"),

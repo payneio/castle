@@ -11,6 +11,7 @@ from starlette.responses import JSONResponse
 from castle_core.generators.systemd import (
     generate_timer,
     generate_unit_from_deployed,
+    unit_name,
 )
 
 from castle_api.config import get_castle_root, get_registry
@@ -53,10 +54,15 @@ async def _get_unit_status(unit: str) -> str:
     return (stdout or b"").decode().strip()
 
 
+def _managed(name: str):
+    """The managed deployment with this name (a name may span kinds; take the
+    managed systemd one — service or job), or None."""
+    return next((d for d in get_registry().named(name) if d.managed), None)
+
+
 def _validate_managed(name: str) -> None:
     """Raise 404 if the component isn't managed in the registry."""
-    registry = get_registry()
-    if name not in registry.deployed or not registry.deployed[name].managed:
+    if _managed(name) is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"'{name}' is not a managed service",
@@ -100,8 +106,8 @@ async def _deferred_systemctl(action: str, unit: str, delay: float = 0.5) -> Non
 
 async def _do_action(name: str, action: str) -> JSONResponse:
     """Execute a systemctl action and broadcast updated health."""
-    _validate_managed(name)
-    unit = f"{UNIT_PREFIX}{name}.service"
+    deployed = _managed(name)
+    unit = unit_name(name, deployed.kind) if deployed else f"{UNIT_PREFIX}{name}.service"
 
     # Self-restart: defer the systemctl call so the response can be sent first
     if name == SELF_NAME and action in ("restart", "stop"):
@@ -128,8 +134,7 @@ async def _do_action(name: str, action: str) -> JSONResponse:
 def get_unit(name: str) -> dict[str, str | None]:
     """Return the generated systemd unit file(s) for a managed component."""
     _validate_managed(name)
-    registry = get_registry()
-    deployed = registry.deployed[name]
+    deployed = _managed(name)
 
     # Get systemd spec from config if repo available
     systemd_spec = None
@@ -140,7 +145,7 @@ def get_unit(name: str) -> dict[str, str | None]:
         from castle_core.config import load_config
 
         config = load_config(root)
-        dep = config.deployments.get(name)
+        dep = config.deployment(deployed.kind, name)
         if dep is not None:
             manage = getattr(dep, "manage", None)
             if manage and manage.systemd:

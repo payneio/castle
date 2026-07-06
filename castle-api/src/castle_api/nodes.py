@@ -42,7 +42,7 @@ def _remote_node_summary(hostname: str, remote: object) -> NodeSummary:
 def _deployed_to_summaries(registry: object, hostname: str) -> list[DeploymentSummary]:
     """Convert deployed components from a registry into DeploymentSummary list."""
     summaries = []
-    for name, d in registry.deployed.items():
+    for _kind, name, d in registry.all():
         summaries.append(
             DeploymentSummary(
                 id=name,
