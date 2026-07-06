@@ -217,6 +217,59 @@ export function useSetEnabled() {
   })
 }
 
+// Deployment kind → the kind-scoped config section it writes to. Mirrors
+// ConfigPanel's writeSection so a mutation can't hit a same-named twin.
+const REACH_SECTION: Record<string, string> = {
+  service: "services",
+  job: "jobs",
+  tool: "tools",
+  static: "static",
+}
+
+// Set a deployment's exposure (off | internal | public), then converge it. This
+// is the mutation behind the System Map's drag-to-expose / drag-to-internet: a
+// partial config merge (reach only, other fields preserved) followed by apply.
+export function useSetReach() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({
+      name,
+      kind,
+      reach,
+    }: {
+      name: string
+      kind: string
+      reach: "off" | "internal" | "public"
+    }) => {
+      const section = REACH_SECTION[kind] ?? "services"
+      await apiClient.put(`/config/${section}/${name}`, { config: { reach } })
+      try {
+        return await apiClient.post<ApplyResult>("/apply", { name })
+      } catch (err) {
+        if (err instanceof TypeError) {
+          await waitForApi()
+          return null
+        }
+        throw err
+      }
+    },
+    onSuccess: () => qc.invalidateQueries(),
+  })
+}
+
+// Delete a deployment from castle.yaml (the kind-scoped removal; keeps the
+// program). Behind the System Map's node deletion.
+export function useDeleteDeployment() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ name, kind }: { name: string; kind: string }) => {
+      const section = REACH_SECTION[kind] ?? "services"
+      await apiClient.delete(`/config/${section}/${name}`)
+    },
+    onSuccess: () => qc.invalidateQueries(),
+  })
+}
+
 export function useProgramAction() {
   const qc = useQueryClient()
   return useMutation({

@@ -12,6 +12,7 @@ import {
   Package,
   Server,
   Share2,
+  Map as MapIcon,
   Network,
   Wrench,
   X,
@@ -40,6 +41,7 @@ const NAV: (NavLeaf | NavGroup)[] = [
   },
   { to: "/programs", label: "Programs", icon: Package },
   { to: "/graph", label: "Graph", icon: Network },
+  { to: "/map", label: "System Map", icon: MapIcon },
   { to: "/mesh", label: "Mesh", icon: Share2 },
 ]
 

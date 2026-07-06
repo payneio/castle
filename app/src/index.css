@@ -27,3 +27,15 @@ select option {
   background-color: var(--card);
   color: var(--foreground);
 }
+
+/* System Map: make a selected edge unmistakable — thicken it and lay a bright
+   halo behind the colored stroke so the current selection reads at a glance
+   before a Backspace/Delete removes it. */
+.react-flow__edge.selected .react-flow__edge-path {
+  stroke-width: 3.5;
+  filter: drop-shadow(0 0 5px rgba(240, 246, 252, 0.9));
+}
+.react-flow__edge:hover .react-flow__edge-path {
+  stroke-width: 3;
+  cursor: pointer;
+}
