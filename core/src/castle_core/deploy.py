@@ -127,11 +127,13 @@ def deploy(target_name: str | None = None, root: Path | None = None) -> DeployRe
         registry = NodeRegistry(node=node)
 
     # Deploy every deployment, dispatched by its manager (systemd/caddy/path/none).
-    for name, dep in config.deployments.items():
+    # target_name (if given) matches every kind sharing that bare name.
+    for _kind, name, dep in config.all_deployments():
         if target_name and name != target_name:
             continue
         deployed = _build_deployed(config, name, dep, result.messages)
-        registry.deployed[name] = deployed
+        deployed.name = name
+        registry.put(deployed)
         result.deployed_count += 1
         result.messages.append(_format_deployed(name, deployed))
 
@@ -191,14 +193,14 @@ def _node_config(config: CastleConfig) -> NodeConfig:
     )
 
 
-def _unit_file_for(name: str, is_job: bool) -> Path:
+def _unit_file_for(name: str, kind: str) -> Path:
     """On-disk systemd unit path for a deployment (timer if it's a job)."""
-    return SYSTEMD_USER_DIR / (timer_name(name) if is_job else unit_name(name))
+    return SYSTEMD_USER_DIR / (timer_name(name) if kind == "job" else unit_name(name, kind))
 
 
-def _unit_bytes(name: str, is_job: bool) -> str | None:
+def _unit_bytes(name: str, kind: str) -> str | None:
     """Current unit-file contents, or None if it isn't written yet."""
-    path = _unit_file_for(name, is_job)
+    path = _unit_file_for(name, kind)
     return path.read_text() if path.exists() else None
 
 
@@ -223,39 +225,52 @@ def apply(
     from castle_core.lifecycle import activate, deactivate, is_active
 
     config = load_config(root)
-    names = [n for n in config.deployments if not target_name or n == target_name]
-    is_job = {n: (n in config.jobs) for n in names}
+    # Each item is (kind, name, spec); target_name matches every kind of that name.
+    # Identity is (kind, name) — two kinds may share a bare name.
+    items = [
+        (k, n, d)
+        for k, n, d in config.all_deployments()
+        if not target_name or n == target_name
+    ]
+    names = [n for _k, n, _d in items]
 
     # Snapshot BEFORE rendering: liveness + current unit bytes (for restart-on-change).
-    before_active = {n: is_active(n, config) for n in names}
-    before_unit = {n: _unit_bytes(n, is_job[n]) for n in names}
+    before_active = {(k, n): is_active(n, k, config) for k, n, _ in items}
+    before_unit = {(k, n): _unit_bytes(n, k) for k, n, _ in items}
 
     # Desired state, rendered in memory to classify each deployment. For a real run
     # this is recomputed by deploy() below (which also writes it); cheap and keeps
     # the plan/apply classification identical.
-    desired = {n: _build_deployed(config, n, config.deployments[n], []) for n in names}
+    desired: dict[tuple[str, str], Deployment] = {}
+    for k, n, spec in items:
+        dep = _build_deployed(config, n, spec, [])
+        dep.name = n
+        desired[(k, n)] = dep
 
-    def _classify(name: str, after_unit: str | None) -> str:
-        dep = desired[name]
+    def _classify(ident: tuple[str, str], after_unit: str | None) -> str:
+        dep = desired[ident]
         if not dep.enabled:
-            return "deactivate" if before_active[name] else "unchanged"
-        if not before_active[name]:
+            return "deactivate" if before_active[ident] else "unchanged"
+        if not before_active[ident]:
             return "activate"
-        if dep.manager == "systemd" and before_unit[name] != after_unit:
+        if dep.manager == "systemd" and before_unit[ident] != after_unit:
             return "restart"
         return "unchanged"
 
     result = ApplyResult(
-        registry=NodeRegistry(node=_node_config(config), deployed=desired)
+        registry=NodeRegistry(
+            node=_node_config(config),
+            deployed={NodeRegistry.key(k, n): d for (k, n), d in desired.items()},
+        )
     )
 
     if plan:
         # No writes: for systemd, predict the new unit bytes by rendering to a string
         # so "would restart" is accurate; other managers never restart.
         result.planned = True
-        for name in names:
-            after = _render_unit_preview(config, name, desired[name], is_job[name])
-            _record(result, name, _classify(name, after))
+        for k, n, _ in items:
+            after = _render_unit_preview(config, n, desired[(k, n)], k)
+            _record(result, n, _classify((k, n), after))
         return result
 
     # Real run: render everything (writes units/Caddyfile/tunnel, daemon-reload,
@@ -277,21 +292,21 @@ def apply(
     wait_for_wildcard(config, names, result.messages)
     materialize_all(config, result.messages, only=names)
 
-    for name in names:
-        after_unit = _unit_bytes(name, is_job[name])
-        action = _classify(name, after_unit)
+    for k, n, _ in items:
+        after_unit = _unit_bytes(n, k)
+        action = _classify((k, n), after_unit)
         if action == "activate":
-            asyncio.run(activate(name, config, config.root))
-            result.activated.append(name)
+            asyncio.run(activate(n, k, config, config.root))
+            result.activated.append(n)
         elif action == "deactivate":
-            asyncio.run(deactivate(name, config, config.root))
-            result.deactivated.append(name)
+            asyncio.run(deactivate(n, k, config, config.root))
+            result.deactivated.append(n)
         elif action == "restart":
-            unit = timer_name(name) if is_job[name] else unit_name(name)
+            unit = timer_name(n) if k == "job" else unit_name(n, k)
             subprocess.run(["systemctl", "--user", "restart", unit], check=False)
-            result.restarted.append(name)
+            result.restarted.append(n)
         else:
-            result.unchanged.append(name)
+            result.unchanged.append(n)
 
     return result
 
@@ -306,7 +321,7 @@ def _record(result: ApplyResult, name: str, action: str) -> None:
 
 
 def _render_unit_preview(
-    config: CastleConfig, name: str, dep: Deployment, is_job: bool
+    config: CastleConfig, name: str, dep: Deployment, kind: str
 ) -> str | None:
     """The unit bytes `deploy` would write for the deployment we'd restart (the
     .timer for a job, the .service for a service), for --plan restart detection.
@@ -314,7 +329,7 @@ def _render_unit_preview(
     files = _render_unit_files(config, name, dep)
     if not files:
         return None
-    return files.get(timer_name(name) if is_job else unit_name(name))
+    return files.get(timer_name(name) if kind == "job" else unit_name(name, kind))
 
 
 # Gateway service name in the registry → its systemd unit (castle-castle-gateway).
@@ -474,8 +489,12 @@ def _public_url(
 
 def _target_url(config: CastleConfig, target_name: str) -> str | None:
     """The base URL another deployment is reachable at — how a ``{kind: deployment,
-    bind: VAR}`` requirement projects its target into the consumer's env."""
-    dep = config.deployments.get(target_name)
+    bind: VAR}`` requirement projects its target into the consumer's env. A name may
+    span kinds; the HTTP-exposed one is what has a URL, so prefer it."""
+    matches = config.deployments_named(target_name)
+    dep = next((s for _k, s in matches if getattr(s, "http_exposed", False)), None)
+    if dep is None:
+        dep = matches[0][1] if matches else None
     if dep is None:
         return None
     expose = getattr(dep, "expose", None)
@@ -484,11 +503,12 @@ def _target_url(config: CastleConfig, target_name: str) -> str | None:
     return _public_url(config, target_name, getattr(dep, "http_exposed", False), tport)
 
 
-def _requires_env(config: CastleConfig, name: str, config_key: str) -> dict[str, str]:
+def _requires_env(
+    config: CastleConfig, dep: DeploymentSpec, config_key: str
+) -> dict[str, str]:
     """Env generated FROM a deployment's ``requires`` — a ``{kind: deployment,
     bind: VAR}`` requirement sets ``VAR`` to the target's URL. Env is derived from
     the dependency, never scraped back into one (see docs/relationships.md)."""
-    dep = config.deployments[name]
     prog = config.programs.get(config_key)
     reqs = list(getattr(dep, "requires", []) or [])
     if prog:
@@ -656,7 +676,7 @@ def _build_deployed(
     raw_env = dict(dep.defaults.env) if (dep.defaults and dep.defaults.env) else {}
     # Env generated from `requires` ({kind: deployment, bind: VAR} → target URL).
     # An explicit defaults.env value always wins — a hand-set var is never clobbered.
-    for var, url in _requires_env(config, name, config_key).items():
+    for var, url in _requires_env(config, dep, config_key).items():
         raw_env.setdefault(var, url)
     public_url = _public_url(config, name, expose, port)
     ctx = _env_context(
@@ -951,12 +971,12 @@ def _format_deployed(name: str, deployed: Deployment) -> str:
 def _desired_unit_files(registry: NodeRegistry) -> set[str]:
     """Exact set of unit filenames that should exist on disk for this registry."""
     files: set[str] = set()
-    for name, deployed in registry.deployed.items():
+    for _key, deployed in registry.deployed.items():
         if not deployed.managed:
             continue
-        files.add(unit_name(name))
+        files.add(unit_name(deployed.name, deployed.kind))
         if deployed.schedule:
-            files.add(timer_name(name))
+            files.add(timer_name(deployed.name))
     return files
 
 
@@ -1004,13 +1024,13 @@ def _render_unit_files(
     if not deployed.managed:
         return {}
     systemd_spec = None
-    dep = config.deployments.get(name)
+    dep = config.deployment(deployed.kind, name)
     manage = getattr(dep, "manage", None)
     if manage and manage.systemd:
         systemd_spec = manage.systemd
 
     files = {
-        unit_name(name): generate_unit_from_deployed(
+        unit_name(name, deployed.kind): generate_unit_from_deployed(
             name, deployed, systemd_spec, env_file=unit_env_file(deployed, name)
         )
     }
@@ -1025,6 +1045,6 @@ def _generate_systemd_units(config: CastleConfig, registry: NodeRegistry) -> Non
     """Generate systemd units from the registry."""
     SYSTEMD_USER_DIR.mkdir(parents=True, exist_ok=True)
 
-    for name, deployed in registry.deployed.items():
-        for fname, content in _render_unit_files(config, name, deployed).items():
+    for _key, deployed in registry.deployed.items():
+        for fname, content in _render_unit_files(config, deployed.name, deployed).items():
             (SYSTEMD_USER_DIR / fname).write_text(content)

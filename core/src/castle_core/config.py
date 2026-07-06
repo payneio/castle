@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import re
-from dataclasses import dataclass, field
+from dataclasses import InitVar, dataclass, field
 from pathlib import Path
 
 import yaml
@@ -139,6 +139,20 @@ class GatewayConfig:
     cert_hook: bool = False
 
 
+# Deployment kinds and the CastleConfig store each lives in. Kind is STRUCTURAL —
+# a deployment's identity is (name, kind), so names are unique within a kind but may
+# collide across kinds (a `backup` tool + service + job coexist). `kind_for` (manifest)
+# stays only to validate that a spec's manager/schedule matches the store it's in.
+KINDS = ("service", "job", "tool", "static", "reference")
+_KIND_STORE = {
+    "service": "services",
+    "job": "jobs",
+    "tool": "tools",
+    "static": "statics",
+    "reference": "references",
+}
+
+
 @dataclass
 class CastleConfig:
     """Full castle configuration."""
@@ -147,45 +161,61 @@ class CastleConfig:
     gateway: GatewayConfig
     repo: Path | None
     programs: dict[str, ProgramSpec]
-    # The one deployment concept (manager-discriminated). service/job/tool/static/
-    # reference are *derived views* over this, filtered by kind_for — see below.
-    deployments: dict[str, DeploymentSpec]
+    # Per-kind deployment stores (the primary representation). Each is name-keyed and
+    # unique within its kind; a name may appear in more than one store. There is no
+    # single flat `deployments` dict — use `all_deployments()` / `deployments_named()`
+    # / the kind store directly (`config.services[name]`).
+    services: dict[str, DeploymentSpec] = field(default_factory=dict)
+    jobs: dict[str, DeploymentSpec] = field(default_factory=dict)
+    tools: dict[str, DeploymentSpec] = field(default_factory=dict)
+    statics: dict[str, DeploymentSpec] = field(default_factory=dict)
+    references: dict[str, DeploymentSpec] = field(default_factory=dict)
     # Launchable agent CLIs for the dashboard terminal UX (assistant-agnostic).
     # Optional; empty means the API falls back to a built-in default set.
     agents: dict[str, AgentSpec] = field(default_factory=dict)
+    # Construction convenience only (not stored): a flat name→spec dict is routed
+    # into the per-kind stores by kind_for. Lets callers/tests hand us a flat map
+    # without pre-splitting it; there is still no flat `deployments` attribute.
+    deployments: InitVar[dict[str, DeploymentSpec] | None] = None
 
-    def deployments_of(self, name: str) -> list[tuple[str, str]]:
+    def __post_init__(self, deployments: dict[str, DeploymentSpec] | None) -> None:
+        for name, spec in (deployments or {}).items():
+            self.store_for(kind_for(spec))[name] = spec
+
+    def store_for(self, kind: str) -> dict[str, DeploymentSpec]:
+        """The name-keyed deployment store for a kind (service|job|tool|static|reference)."""
+        return getattr(self, _KIND_STORE[kind])
+
+    def all_deployments(self) -> list[tuple[str, str, DeploymentSpec]]:
+        """Every deployment as `(kind, name, spec)`, kind-then-name ordered. The single
+        shared iterate-all — the converge loop dispatches on `spec.manager`, so the
+        machinery stays shared; only the namespace is split by kind."""
+        out: list[tuple[str, str, DeploymentSpec]] = []
+        for kind in KINDS:
+            store = self.store_for(kind)
+            out.extend((kind, name, store[name]) for name in sorted(store))
+        return out
+
+    def deployment(self, kind: str, name: str) -> DeploymentSpec | None:
+        """A single deployment by its `(kind, name)` identity, or None."""
+        return self.store_for(kind).get(name)
+
+    def deployments_named(self, name: str) -> list[tuple[str, DeploymentSpec]]:
+        """`(kind, spec)` for every kind that has a deployment with this bare name
+        (≤5). Used where a caller has only a name and no kind (apply/restart/redirect)."""
+        return [(kind, spec) for kind, n, spec in self.all_deployments() if n == name]
+
+    def deployments_of(self, program: str) -> list[tuple[str, str]]:
         """A program's deployments as (deployment-name, kind) pairs, name-sorted.
 
-        A program has no kind of its own — it *has deployments*, each with a kind.
-        A deployment belongs to a program when it names it (`program:`) or shares
-        its name (the 1:1 tool/static case). Empty for a bare, undeployed program.
+        A deployment belongs to a program when it names it (`program:`) or shares its
+        name (the 1:1 tool/static case). Empty for a bare, undeployed program.
         """
-        out = [
-            (dname, kind_for(dep))
-            for dname, dep in self.deployments.items()
-            if dname == name or dep.program == name
-        ]
-        return sorted(out)
-
-    @property
-    def services(self) -> dict[str, DeploymentSpec]:
-        """Deployments whose derived kind is `service` (a continuous systemd process)."""
-        return {n: d for n, d in self.deployments.items() if kind_for(d) == "service"}
-
-    @property
-    def jobs(self) -> dict[str, DeploymentSpec]:
-        """Deployments whose derived kind is `job` (a scheduled systemd timer)."""
-        return {n: d for n, d in self.deployments.items() if kind_for(d) == "job"}
-
-    @property
-    def tools(self) -> dict[str, ProgramSpec]:
-        """Programs with a PATH (tool) deployment — derived, not a stored label."""
-        return {
-            k: v
-            for k, v in self.programs.items()
-            if any(kind == "tool" for _, kind in self.deployments_of(k))
-        }
+        return sorted(
+            (name, kind)
+            for kind, name, dep in self.all_deployments()
+            if name == program or dep.program == program
+        )
 
     @property
     def frontends(self) -> dict[str, ProgramSpec]:
@@ -398,17 +428,8 @@ def load_config(root: Path | None = None) -> CastleConfig:
                 prog.source = str(root / prog.source)
         programs[name] = prog
 
-    # New layout: one deployments/ dir. Legacy: services/ + jobs/ (normalized on
-    # read) — used only until the one-shot migration rewrites everything.
-    raw = _load_resource_dir(root / "deployments")
-    if not raw:
-        raw = {
-            **_load_resource_dir(root / "services"),
-            **_load_resource_dir(root / "jobs"),
-        }
-    deployments: dict[str, DeploymentSpec] = {
-        name: _parse_deployment(name, dep_data) for name, dep_data in raw.items()
-    }
+    stores = _load_deployments(root)
+    _validate_subdomains(stores)
 
     agents: dict[str, AgentSpec] = {
         name: AgentSpec.model_validate(spec or {})
@@ -420,10 +441,60 @@ def load_config(root: Path | None = None) -> CastleConfig:
         repo=repo_path,
         gateway=gateway,
         programs=programs,
-        deployments=deployments,
         agents=agents,
+        **stores,
     )
     return config
+
+
+def _validate_subdomains(stores: dict[str, dict[str, DeploymentSpec]]) -> None:
+    """A gateway subdomain (``<name>.<domain>``) must be globally unique across kinds.
+    Only HTTP-exposed kinds claim one: a proxied service, or a static site. A name may
+    still be a tool/service/job trio (only the service is HTTP-exposed), but a service
+    and a static can't share a name (they'd fight over the same subdomain)."""
+    claimants: dict[str, list[str]] = {}
+    for name, spec in stores["services"].items():
+        if getattr(spec, "http_exposed", False):
+            claimants.setdefault(name, []).append("service")
+    for name in stores["statics"]:
+        claimants.setdefault(name, []).append("static")
+    for name, kinds in claimants.items():
+        if len(kinds) > 1:
+            raise ValueError(
+                f"subdomain '{name}' is claimed by multiple HTTP-exposed deployments "
+                f"({', '.join(kinds)}); a name can be HTTP-exposed by at most one kind"
+            )
+
+
+def _load_deployments(root: Path) -> dict[str, dict[str, DeploymentSpec]]:
+    """Load the per-kind deployment stores for a config root.
+
+    New layout: ``deployments/<store>/<name>.yaml`` (store = services|jobs|tools|
+    statics|references). Read-compat for the pre-migration layouts: flat
+    ``deployments/*.yaml`` files, and the older ``services/``+``jobs/`` split. Every
+    file is routed to its store by ``kind_for(spec)`` — the dir is a namespace, the
+    spec's manager/schedule is the source of truth (they must agree post-migration).
+    """
+    stores: dict[str, dict[str, DeploymentSpec]] = {s: {} for s in _KIND_STORE.values()}
+
+    def route(name: str, data: dict) -> None:
+        spec = _parse_deployment(name, data)
+        stores[_KIND_STORE[kind_for(spec)]][name] = spec
+
+    dep_dir = root / "deployments"
+    # New per-kind subdirs.
+    for store in _KIND_STORE.values():
+        for name, data in _load_resource_dir(dep_dir / store).items():
+            route(name, data)
+    # Legacy flat deployments/*.yaml (top-level only — subdirs handled above).
+    for name, data in _load_resource_dir(dep_dir).items():
+        route(name, data)
+    # Oldest layout: services/ + jobs/ dirs, only if there's no deployments/ dir.
+    if not dep_dir.is_dir():
+        for legacy in ("services", "jobs"):
+            for name, data in _load_resource_dir(root / legacy).items():
+                route(name, data)
+    return stores
 
 
 def _clean_for_yaml(data: object, preserve_keys: set[str] | None = None) -> object:
@@ -565,10 +636,17 @@ def save_config(config: CastleConfig) -> None:
         config.root / "programs",
         {n: _program_to_yaml_dict(s, config) for n, s in config.programs.items()},
     )
-    _write_resource_dir(
-        config.root / "deployments",
-        {n: _spec_to_yaml_dict(d) for n, d in config.deployments.items()},
-    )
+    # Per-kind: deployments/<store>/<name>.yaml (each store pruned independently).
+    dep_dir = config.root / "deployments"
+    for kind, store in _KIND_STORE.items():
+        _write_resource_dir(
+            dep_dir / store,
+            {n: _spec_to_yaml_dict(d) for n, d in config.store_for(kind).items()},
+        )
+    # Migration cleanup: drop any pre-migration flat deployments/*.yaml files.
+    if dep_dir.is_dir():
+        for path in dep_dir.glob("*.yaml"):
+            path.unlink()
 
 
 def ensure_dirs() -> None:

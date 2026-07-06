@@ -157,7 +157,7 @@ def materialize_all(
     process until the next ``castle tls reconcile``)."""
     msgs = messages if messages is not None else []
     scope = set(only) if only is not None else None
-    for name, dep in sorted(config.deployments.items()):
+    for _kind, name, dep in config.all_deployments():
         if scope is not None and name not in scope:
             continue
         if _tls_of(dep) is None:
@@ -188,7 +188,7 @@ def wait_for_wildcard(
     needs = [
         n
         for n in names
-        if (dep := config.deployments.get(n)) is not None and _tls_of(dep) is not None
+        if any(_tls_of(spec) is not None for _k, spec in config.deployments_named(n))
     ]
     if not needs:
         return msgs
@@ -227,7 +227,7 @@ def reconcile_tls(config: CastleConfig, messages: list[str] | None = None) -> li
     a no-op when nothing rotated. Invoked by ``castle tls reconcile`` and the Caddy
     ``cert_obtained`` hook. Logs its own outcome (the hook's ``exec`` swallows it)."""
     msgs = messages if messages is not None else []
-    for name, dep in sorted(config.deployments.items()):
+    for _kind, name, dep in config.all_deployments():
         tls = _tls_of(dep)
         if tls is None:
             continue

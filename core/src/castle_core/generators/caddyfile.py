@@ -75,24 +75,25 @@ def _local_routes(
     falls back to the deployed registry snapshot when config isn't available.
     """
     out: list[tuple[str, str, str]] = []
-    deployments = getattr(config, "deployments", None)
-    if deployments is not None:
-        for name, dep in sorted(deployments.items()):
+    if config is not None:
+        # Only HTTP-exposed kinds route: static (file-serve) and service (proxy).
+        # jobs/tools/references never do.
+        for kind, name, dep in config.all_deployments():
             # A disabled deployment is defined but not running — no route (else it
             # would 502). `castle apply` converges it off.
             if not dep.enabled:
                 continue
-            if isinstance(dep, CaddyDeployment):
+            if kind == "static" and isinstance(dep, CaddyDeployment):
                 src = _program_source(config, dep.program)
                 if src is not None:
                     out.append((name, "static", str(src / dep.root)))
-            elif isinstance(dep, SystemdDeployment):
+            elif kind == "service" and isinstance(dep, SystemdDeployment):
                 expose, port, base_url = service_proxy_targets(name, dep)
                 if expose and (port or base_url):
                     out.append((name, "proxy", base_url or f"localhost:{port}"))
         return out
     # No config → route from the deployed registry snapshot.
-    for name, d in sorted(registry.deployed.items()):
+    for _kind, name, d in registry.all():
         if not d.enabled:
             continue
         if d.static_root:

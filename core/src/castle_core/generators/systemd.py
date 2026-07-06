@@ -17,14 +17,26 @@ UNIT_PREFIX = "castle-"
 SECRET_ENV_DIR = SECRETS_DIR / "env"
 
 
-def unit_name(service_name: str) -> str:
-    """Get the systemd unit name for a service."""
-    return f"{UNIT_PREFIX}{service_name}.service"
+def unit_basename(name: str, kind: str = "service") -> str:
+    """The systemd unit stem for a deployment. Jobs carry a ``-job`` marker so a
+    service and a job can share a name (`castle-<name>.service` vs
+    `castle-<name>-job.{service,timer}`); everything else is `castle-<name>`."""
+    return f"{UNIT_PREFIX}{name}-job" if kind == "job" else f"{UNIT_PREFIX}{name}"
 
 
-def secret_env_path(service_name: str) -> Path:
+def unit_name(service_name: str, kind: str = "service") -> str:
+    """Get the systemd `.service` unit name for a deployment of the given kind."""
+    return f"{unit_basename(service_name, kind)}.service"
+
+
+def timer_name(service_name: str, kind: str = "job") -> str:
+    """Get the systemd `.timer` unit name (timers exist only for jobs)."""
+    return f"{unit_basename(service_name, kind)}.timer"
+
+
+def secret_env_path(service_name: str, kind: str = "service") -> Path:
     """Path to a deployment's generated secret env file (1:1 with its unit name)."""
-    return SECRET_ENV_DIR / f"{unit_name(service_name)}.env"
+    return SECRET_ENV_DIR / f"{unit_name(service_name, kind)}.env"
 
 
 def unit_env_file(deployed: Deployment, name: str) -> Path | None:
@@ -36,12 +48,7 @@ def unit_env_file(deployed: Deployment, name: str) -> Path | None:
     """
     if deployed.launcher == "container" or not deployed.secret_env_keys:
         return None
-    return secret_env_path(name)
-
-
-def timer_name(service_name: str) -> str:
-    """Get the systemd timer name for a scheduled service."""
-    return f"{UNIT_PREFIX}{service_name}.timer"
+    return secret_env_path(name, deployed.kind)
 
 
 def cron_to_oncalendar(cron: str) -> str:

@@ -41,7 +41,7 @@ def _make_registry(
     gateway_domain: str | None = None,
     acme_email: str | None = None,
 ) -> NodeRegistry:
-    return NodeRegistry(
+    reg = NodeRegistry(
         node=NodeConfig(
             hostname="test",
             gateway_port=gateway_port,
@@ -49,8 +49,11 @@ def _make_registry(
             gateway_domain=gateway_domain,
             acme_email=acme_email,
         ),
-        deployed=deployed or {},
     )
+    for name, d in (deployed or {}).items():
+        d.name = name
+        reg.put(d)
+    return reg
 
 
 def _dep(port: int, *, expose: bool, name: str | None = None, launcher: str = "python") -> Deployment:

@@ -17,7 +17,10 @@ from castle_core.registry import Deployment
 
 def _plan(castle_root: Path, active: dict[str, bool]):
     """Run apply(plan=True) with is_active stubbed to `active` (default False)."""
-    with patch("castle_core.lifecycle.is_active", side_effect=lambda n, c: active.get(n, False)):
+    with patch(
+        "castle_core.lifecycle.is_active",
+        side_effect=lambda n, k, c: active.get(n, False),
+    ):
         return apply(root=castle_root, plan=True)
 
 
@@ -71,4 +74,4 @@ def test_render_unit_preview_none_for_non_systemd() -> None:
     A path deployment is unmanaged, so the renderer returns before touching config.
     """
     tool = Deployment(manager="path", run_cmd=[], kind="tool")
-    assert _render_unit_preview(None, "x", tool, is_job=False) is None  # type: ignore[arg-type]
+    assert _render_unit_preview(None, "x", tool, "tool") is None  # type: ignore[arg-type]

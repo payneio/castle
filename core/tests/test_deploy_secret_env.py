@@ -61,17 +61,16 @@ class TestWriteSecretEnvFile:
 class TestRegistrySecretKeys:
     def test_round_trip_persists_keys_only(self, tmp_path: Path) -> None:
         reg_path = tmp_path / "registry.yaml"
-        registry = NodeRegistry(
-            node=NodeConfig(hostname="h"),
-            deployed={
-                "svc": Deployment(
-                    manager="systemd", launcher="container",
-                    run_cmd=["docker", "run"],
-                    env={"PORT": "9001"},
-                    secret_env_keys=["ANTHROPIC_API_KEY", "OPENAI_API_KEY"],
-                    managed=True,
-                )
-            },
+        registry = NodeRegistry(node=NodeConfig(hostname="h"))
+        registry.put(
+            Deployment(
+                manager="systemd", launcher="container",
+                run_cmd=["docker", "run"],
+                env={"PORT": "9001"},
+                secret_env_keys=["ANTHROPIC_API_KEY", "OPENAI_API_KEY"],
+                managed=True,
+                name="svc",
+            )
         )
         save_registry(registry, reg_path)
 
@@ -80,8 +79,6 @@ class TestRegistrySecretKeys:
         assert "sk-ant" not in text  # but no values ever
 
         loaded = load_registry(reg_path)
-        assert loaded.deployed["svc"].secret_env_keys == [
-            "ANTHROPIC_API_KEY",
-            "OPENAI_API_KEY",
-        ]
-        assert loaded.deployed["svc"].env == {"PORT": "9001"}
+        svc = loaded.get("service", "svc")
+        assert svc.secret_env_keys == ["ANTHROPIC_API_KEY", "OPENAI_API_KEY"]
+        assert svc.env == {"PORT": "9001"}

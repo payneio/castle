@@ -18,11 +18,16 @@ def _svc(managed: bool = True, schedule: str | None = None) -> Deployment:
         env={},
         managed=managed,
         schedule=schedule,
+        kind="job" if schedule else "service",
     )
 
 
 def _registry(**deployed: Deployment) -> NodeRegistry:
-    return NodeRegistry(node=NodeConfig(castle_root="/x", gateway_port=9000), deployed=dict(deployed))
+    reg = NodeRegistry(node=NodeConfig(castle_root="/x", gateway_port=9000))
+    for name, d in deployed.items():
+        d.name = name
+        reg.put(d)
+    return reg
 
 
 def _touch(d: Path, *names: str) -> None:
@@ -37,7 +42,7 @@ class TestDesiredUnitFiles:
 
     def test_scheduled_job_yields_service_and_timer(self) -> None:
         reg = _registry(job=_svc(schedule="0 2 * * *"))
-        assert _desired_unit_files(reg) == {"castle-job.service", "castle-job.timer"}
+        assert _desired_unit_files(reg) == {"castle-job-job.service", "castle-job-job.timer"}
 
     def test_unmanaged_excluded(self) -> None:
         reg = _registry(foo=_svc(managed=False))

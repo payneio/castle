@@ -61,7 +61,9 @@ class Deployment:
     # visibility (which secrets a deployment expects).
     secret_env_keys: list[str] = field(default_factory=list)
     description: str | None = None
-    # Derived kind: service | job | tool | static | reference.
+    # Deployment identity is (name, kind) — a name may be shared across kinds.
+    name: str = ""
+    # Kind: service | job | tool | static | reference (structural — its store).
     kind: str = "service"
     stack: str | None = None
     port: int | None = None
@@ -88,10 +90,33 @@ class Deployment:
 
 @dataclass
 class NodeRegistry:
-    """What's deployed on this node."""
+    """What's deployed on this node.
+
+    `deployed` is keyed by the composite identity ``"<kind>/<name>"`` so a service
+    and a job (or tool) can share a bare name. Prefer the helpers over indexing
+    `deployed` directly: `all()` (iterate), `get(kind, name)`, `named(name)`, `put()`.
+    """
 
     node: NodeConfig
     deployed: dict[str, Deployment] = field(default_factory=dict)
+
+    @staticmethod
+    def key(kind: str, name: str) -> str:
+        return f"{kind}/{name}"
+
+    def all(self) -> list[tuple[str, str, Deployment]]:
+        """Every deployed unit as ``(kind, name, Deployment)``."""
+        return [(d.kind, d.name, d) for d in self.deployed.values()]
+
+    def get(self, kind: str, name: str) -> Deployment | None:
+        return self.deployed.get(self.key(kind, name))
+
+    def named(self, name: str) -> list[Deployment]:
+        """Every deployed unit sharing a bare name (across kinds)."""
+        return [d for d in self.deployed.values() if d.name == name]
+
+    def put(self, deployed: Deployment) -> None:
+        self.deployed[self.key(deployed.kind, deployed.name)] = deployed
 
 
 def load_registry(path: Path | None = None) -> NodeRegistry:
@@ -126,7 +151,9 @@ def load_registry(path: Path | None = None) -> NodeRegistry:
     )
 
     deployed: dict[str, Deployment] = {}
-    for name, comp_data in data.get("deployed", {}).items():
+    for key, comp_data in data.get("deployed", {}).items():
+        # Key is the composite "<kind>/<name>" (new) or a bare name (legacy).
+        key_kind, name = key.split("/", 1) if "/" in key else (None, key)
         # New shape carries manager/launcher/kind; legacy carries runner/behavior.
         manager = comp_data.get("manager")
         launcher = comp_data.get("launcher")
@@ -137,7 +164,7 @@ def load_registry(path: Path | None = None) -> NodeRegistry:
             )
             if manager == "systemd":
                 launcher = runner
-        kind = comp_data.get("kind")
+        kind = comp_data.get("kind") or key_kind
         if kind is None:
             behavior = comp_data.get("behavior")
             if comp_data.get("schedule"):
@@ -150,7 +177,7 @@ def load_registry(path: Path | None = None) -> NodeRegistry:
                 kind = "reference"
             else:
                 kind = "service"
-        deployed[name] = Deployment(
+        deployed[NodeRegistry.key(kind, name)] = Deployment(
             manager=manager,
             launcher=launcher,
             run_cmd=comp_data.get("run_cmd", []),
@@ -159,6 +186,7 @@ def load_registry(path: Path | None = None) -> NodeRegistry:
             path_prepend=comp_data.get("path_prepend", []),
             secret_env_keys=comp_data.get("secret_env_keys", []),
             description=comp_data.get("description"),
+            name=name,
             kind=kind,
             stack=comp_data.get("stack"),
             port=comp_data.get("port"),
@@ -209,7 +237,7 @@ def save_registry(registry: NodeRegistry, path: Path | None = None) -> None:
     if registry.node.cert_hook:
         data["node"]["cert_hook"] = registry.node.cert_hook
 
-    for name, comp in registry.deployed.items():
+    for key, comp in registry.deployed.items():
         entry: dict = {
             "manager": comp.manager,
             "run_cmd": comp.run_cmd,
@@ -251,7 +279,7 @@ def save_registry(registry: NodeRegistry, path: Path | None = None) -> None:
         # registries byte-identical and matches the load-side default.
         if not comp.enabled:
             entry["enabled"] = comp.enabled
-        data["deployed"][name] = entry
+        data["deployed"][key] = entry
 
     with open(path, "w") as f:
         yaml.dump(data, f, default_flow_style=False, sort_keys=False)

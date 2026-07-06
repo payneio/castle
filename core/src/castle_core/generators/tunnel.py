@@ -41,7 +41,7 @@ def public_deployments(registry: NodeRegistry) -> list[tuple[str, Deployment]]:
     """The deployed services flagged public (and actually routed), name-sorted."""
     return sorted(
         (name, d)
-        for name, d in registry.deployed.items()
+        for _kind, name, d in registry.all()
         if d.public and d.subdomain
     )
 

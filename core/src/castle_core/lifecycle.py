@@ -87,15 +87,15 @@ def tool_installed(name: str) -> bool:
     return _on_path(name)
 
 
-def _svc_manager(name: str, config: CastleConfig) -> str | None:
-    """The manager for a deployed name, or None if not deployed."""
-    dep = config.deployments.get(name)
+def _svc_manager(name: str, kind: str, config: CastleConfig) -> str | None:
+    """The manager for a deployment (name, kind), or None if not in config."""
+    dep = config.deployment(kind, name)
     return dep.manager if dep is not None else None
 
 
 def _static_built(name: str, config: CastleConfig) -> bool:
     """Whether a static (caddy) deployment's served dir exists (assets are built)."""
-    dep = config.deployments.get(name)
+    dep = config.statics.get(name)
     if not isinstance(dep, CaddyDeployment):
         return False
     comp = config.programs.get(dep.program or name)
@@ -107,11 +107,11 @@ def _static_built(name: str, config: CastleConfig) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def is_active(name: str, config: CastleConfig) -> bool:
-    """Whether a deployment is available in its mode, dispatched by its manager."""
-    manager = _svc_manager(name, config)
+def is_active(name: str, kind: str, config: CastleConfig) -> bool:
+    """Whether a deployment (name, kind) is available in its mode, by manager."""
+    manager = _svc_manager(name, kind, config)
     if manager == "systemd":
-        unit = timer_name(name) if name in config.jobs else unit_name(name)
+        unit = timer_name(name) if kind == "job" else unit_name(name, kind)
         return _systemctl_active(unit)
     if manager == "caddy":
         return _static_built(name, config)  # served once its assets exist
@@ -131,31 +131,31 @@ def is_active(name: str, config: CastleConfig) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def enable_service(name: str, config: CastleConfig) -> ActionResult:
+def enable_service(name: str, kind: str, config: CastleConfig) -> ActionResult:
     """Generate+install the unit (and timer) from the registry, enable and start it."""
     if not REGISTRY_PATH.exists():
         return ActionResult(
             name, "activate", "error", "No registry. Run 'castle deploy' first."
         )
     registry = load_registry()
-    if name not in registry.deployed:
+    deployed = registry.get(kind, name)
+    if deployed is None:
         return ActionResult(
             name, "activate", "error", f"'{name}' not in registry; run 'castle deploy'."
         )
-    deployed = registry.deployed[name]
     if not deployed.managed:
         return ActionResult(
             name, "activate", "error", f"'{name}' is not a managed service."
         )
 
     systemd_spec = None
-    dep = config.deployments.get(name)
+    dep = config.deployment(kind, name)
     manage = getattr(dep, "manage", None)
     if manage:
         systemd_spec = manage.systemd
 
     SYSTEMD_USER_DIR.mkdir(parents=True, exist_ok=True)
-    svc_unit = unit_name(name)
+    svc_unit = unit_name(name, kind)
     (SYSTEMD_USER_DIR / svc_unit).write_text(
         generate_unit_from_deployed(
             name, deployed, systemd_spec, env_file=unit_env_file(deployed, name)
@@ -180,16 +180,19 @@ def enable_service(name: str, config: CastleConfig) -> ActionResult:
     )
 
 
-def disable_service(name: str) -> ActionResult:
-    """Stop, disable, and remove the unit (and timer) for a service/job."""
-    for unit in (timer_name(name), unit_name(name)):
+def disable_service(name: str, kind: str) -> ActionResult:
+    """Stop, disable, and remove the unit (and timer) for a service/job of a kind."""
+    units = [unit_name(name, kind)]
+    if kind == "job":
+        units.append(timer_name(name))
+    for unit in units:
         path = SYSTEMD_USER_DIR / unit
         if path.exists():
             subprocess.run(["systemctl", "--user", "stop", unit], check=False)
             subprocess.run(["systemctl", "--user", "disable", unit], check=False)
             path.unlink()
     # Drop the generated secret env file alongside the unit.
-    secret_env_path(name).unlink(missing_ok=True)
+    secret_env_path(name, kind).unlink(missing_ok=True)
     subprocess.run(["systemctl", "--user", "daemon-reload"], check=False)
     return ActionResult(name, "deactivate", "ok", f"{name}: deactivated")
 
@@ -199,16 +202,16 @@ def disable_service(name: str) -> ActionResult:
 # ---------------------------------------------------------------------------
 
 
-def _program_for(name: str, config: CastleConfig):
+def _program_for(name: str, kind: str, config: CastleConfig):
     """The program a deployment runs (its `program` ref, defaulting to the name)."""
-    dep = config.deployments.get(name)
+    dep = config.deployment(kind, name)
     prog = (dep.program if dep else None) or name
     return prog, config.programs.get(prog)
 
 
-async def activate(name: str, config: CastleConfig, root: Path) -> ActionResult:
-    """Make a deployment available in its mode, dispatched by its manager."""
-    manager = _svc_manager(name, config)
+async def activate(name: str, kind: str, config: CastleConfig, root: Path) -> ActionResult:
+    """Make a deployment (name, kind) available in its mode, dispatched by manager."""
+    manager = _svc_manager(name, kind, config)
 
     if manager == "systemd":
         # Ensure the program's binary is on PATH first (python), then enable the
@@ -218,7 +221,7 @@ async def activate(name: str, config: CastleConfig, root: Path) -> ActionResult:
             res = await run_action("install", name, comp, root)
             if res.status != "ok":
                 return res
-        return enable_service(name, config)
+        return enable_service(name, kind, config)
 
     if manager == "caddy":
         # Served by the gateway — reload it so the route is live. Building the
@@ -229,7 +232,7 @@ async def activate(name: str, config: CastleConfig, root: Path) -> ActionResult:
         return ActionResult(name, "activate", "ok", f"{name}: served via gateway")
 
     if manager == "path":
-        prog, comp = _program_for(name, config)
+        prog, comp = _program_for(name, kind, config)
         if comp is None:
             return ActionResult(name, "activate", "error", f"unknown program '{prog}'")
         if _on_path(prog):  # already installed — skip the (slow) editable reinstall
@@ -246,19 +249,19 @@ async def activate(name: str, config: CastleConfig, root: Path) -> ActionResult:
     return ActionResult(name, "activate", "error", f"'{name}' not found")
 
 
-async def deactivate(name: str, config: CastleConfig, root: Path) -> ActionResult:
-    """Take a deployment offline in its mode, dispatched by its manager."""
-    manager = _svc_manager(name, config)
+async def deactivate(name: str, kind: str, config: CastleConfig, root: Path) -> ActionResult:
+    """Take a deployment (name, kind) offline in its mode, dispatched by manager."""
+    manager = _svc_manager(name, kind, config)
 
     if manager == "systemd":
-        return disable_service(name)
+        return disable_service(name, kind)
     if manager == "caddy":
         return ActionResult(
             name, "deactivate", "ok",
             f"{name}: gateway-served — remove/disable the service to drop the route.",
         )
     if manager == "path":
-        prog, comp = _program_for(name, config)
+        prog, comp = _program_for(name, kind, config)
         if comp is None:
             return ActionResult(name, "deactivate", "error", f"unknown program '{prog}'")
         return await run_action("uninstall", prog, comp, root)

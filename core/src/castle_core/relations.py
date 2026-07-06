@@ -106,7 +106,7 @@ def derive_repos(config: CastleConfig) -> dict[str, Repo]:
             or git.git_status(Path(top), fetch=False).branch
         )
         deps = sorted(
-            d for d, dep in config.deployments.items() if _program_of(d, dep) in progs
+            d for _k, d, dep in config.all_deployments() if _program_of(d, dep) in progs
         )
         repos[_slug(Path(top).name, used)] = Repo("", top, url, ref, progs, deps)
     for key, repo in repos.items():
@@ -118,14 +118,16 @@ def requirements_of(config: CastleConfig, dep_name: str) -> list[Requirement]:
     """The full requirement set for a deployment: its own ``requires`` plus its
     program's ``requires`` and ``system_dependencies`` (the ``kind: system`` alias),
     de-duplicated by (kind, ref)."""
-    dep = config.deployments[dep_name]
-    prog = config.programs.get(_program_of(dep_name, dep))
-    reqs: list[Requirement] = list(getattr(dep, "requires", []) or [])
-    if prog:
-        reqs += list(prog.requires)
-        reqs += [
-            Requirement(kind="system", ref=pkg) for pkg in prog.system_dependencies
-        ]
+    reqs: list[Requirement] = []
+    # A bare name may span kinds — union their requirements (plus their program's).
+    for _kind, dep in config.deployments_named(dep_name):
+        reqs += list(getattr(dep, "requires", []) or [])
+        prog = config.programs.get(_program_of(dep_name, dep))
+        if prog:
+            reqs += list(prog.requires)
+            reqs += [
+                Requirement(kind="system", ref=pkg) for pkg in prog.system_dependencies
+            ]
     seen: set[tuple[str, str]] = set()
     out: list[Requirement] = []
     for r in reqs:
@@ -155,7 +157,7 @@ def _check(config: CastleConfig, req: Requirement) -> bool:
         # package manager (the real meaning of 'installed').
         return shutil.which(req.ref) is not None or _dpkg_installed(req.ref)
     if req.kind == "deployment":
-        return req.ref in config.deployments
+        return bool(config.deployments_named(req.ref))
     return True
 
 
@@ -173,7 +175,6 @@ def build_model(
       predicate (left ``None`` when the caller has no runtime view).
     - ``freshness``: also evaluate ``fresh?`` per repo (a ``git status``, no fetch —
       last-known — so it stays a local, network-free probe over many repos)."""
-    from castle_core.manifest import kind_for
 
     repos = derive_repos(config)
     if freshness:
@@ -186,14 +187,14 @@ def build_model(
     fresh_of = {key: r.fresh for key, r in repos.items()}
 
     edges: list[Edge] = []
-    for name in config.deployments:
+    for _k, name, _d in config.all_deployments():
         for r in requirements_of(config, name):
             edges.append(Edge(name, r.ref, r.kind, r.bind))
 
     fan_in = Counter(e.dst for e in edges if e.kind == "deployment")
 
     nodes: list[Node] = []
-    for name, dep in config.deployments.items():
+    for _nk, name, dep in config.all_deployments():
         unmet = (
             [
                 f"{r.kind}:{r.ref}"
@@ -208,7 +209,7 @@ def build_model(
             Node(
                 name=name,
                 program=_program_of(name, dep),
-                kind=kind_for(dep),
+                kind=_nk,
                 repo=repo_key,
                 depended_on_by=fan_in.get(name, 0),
                 unmet=unmet,

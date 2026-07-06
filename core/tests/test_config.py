@@ -120,10 +120,10 @@ class TestSaveConfig:
         config = load_config(castle_root)
         save_config(config)
         assert (castle_root / "programs" / "test-tool.yaml").exists()
-        # service, job, and tool all live under the single deployments/ dir now.
-        assert (castle_root / "deployments" / "test-svc.yaml").exists()
-        assert (castle_root / "deployments" / "test-job.yaml").exists()
-        assert (castle_root / "deployments" / "test-tool.yaml").exists()
+        # Deployments live under per-kind subdirs (deployments/<store>/<name>.yaml).
+        assert (castle_root / "deployments" / "services" / "test-svc.yaml").exists()
+        assert (castle_root / "deployments" / "jobs" / "test-job.yaml").exists()
+        assert (castle_root / "deployments" / "tools" / "test-tool.yaml").exists()
         # Global file holds gateway only, no resource sections
         global_data = yaml.safe_load((castle_root / "castle.yaml").read_text())
         assert global_data["gateway"]["port"] == 18000
@@ -133,9 +133,9 @@ class TestSaveConfig:
     def test_delete_prunes_file(self, castle_root: Path) -> None:
         """Removing a deployment and saving deletes its on-disk file."""
         config = load_config(castle_root)
-        del config.deployments["test-svc"]
+        del config.services["test-svc"]
         save_config(config)
-        assert not (castle_root / "deployments" / "test-svc.yaml").exists()
+        assert not (castle_root / "deployments" / "services" / "test-svc.yaml").exists()
         config2 = load_config(castle_root)
         assert "test-svc" not in config2.services
         assert "test-tool" in config2.programs
@@ -300,7 +300,7 @@ class TestConfigRoundTrip:
         assert loaded.gateway.domain == "civil.payne.io"
 
         # Deployment: reach + full TCP/TLS + container user/tmpfs must survive.
-        d = loaded.deployments["pg"]
+        d = loaded.services["pg"]
         assert d.reach == Reach.INTERNAL
         assert d.expose.tcp.port == 5432
         assert d.expose.tcp.tls.material == TlsMaterial.PAIR
