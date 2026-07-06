@@ -37,12 +37,21 @@ def public_client(
         )
     )
     (root / "programs").mkdir()
-    (root / "programs" / "calc.yaml").write_text(yaml.dump({"source": str(root / "calc")}))
-    (root / "calc" / "public").mkdir(parents=True)  # static build dir must exist to route
+    (root / "programs" / "calc.yaml").write_text(
+        yaml.dump({"source": str(root / "calc")})
+    )
+    (root / "calc" / "public").mkdir(
+        parents=True
+    )  # static build dir must exist to route
 
     deps = {
         # public STATIC (the calculator case)
-        "calc": {"program": "calc", "manager": "caddy", "root": "public", "reach": "public"},
+        "calc": {
+            "program": "calc",
+            "manager": "caddy",
+            "root": "public",
+            "reach": "public",
+        },
         # public systemd service
         "web": {
             "manager": "systemd",
@@ -80,20 +89,42 @@ def public_client(
         ),
         deployed={
             "calc": Deployment(
-                manager="caddy", run_cmd=[], kind="static", subdomain="calc",
-                public=True, static_root=str(root / "calc" / "public"),
+                manager="caddy",
+                run_cmd=[],
+                kind="static",
+                subdomain="calc",
+                public=True,
+                static_root=str(root / "calc" / "public"),
             ),
             "web": Deployment(
-                manager="systemd", launcher="python", run_cmd=["x"], kind="service",
-                port=9001, subdomain="web", public=True, managed=True,
+                manager="systemd",
+                launcher="python",
+                run_cmd=["x"],
+                kind="service",
+                port=9001,
+                subdomain="web",
+                public=True,
+                managed=True,
             ),
             "intern": Deployment(
-                manager="systemd", launcher="python", run_cmd=["x"], kind="service",
-                port=9002, subdomain="intern", public=False, managed=True,
+                manager="systemd",
+                launcher="python",
+                run_cmd=["x"],
+                kind="service",
+                port=9002,
+                subdomain="intern",
+                public=False,
+                managed=True,
             ),
             "pg": Deployment(
-                manager="systemd", launcher="container", run_cmd=["x"], kind="service",
-                port=None, subdomain=None, tcp_port=5432, managed=True,
+                manager="systemd",
+                launcher="container",
+                run_cmd=["x"],
+                kind="service",
+                port=None,
+                subdomain=None,
+                tcp_port=5432,
+                managed=True,
             ),
         },
     )
@@ -125,7 +156,9 @@ class TestGatewayPublicUrl:
     def test_public_service_has_public_url(self, public_client: TestClient) -> None:
         assert _routes(public_client)["web"]["public_url"] == "https://web.pub.test"
 
-    def test_internal_service_has_no_public_url(self, public_client: TestClient) -> None:
+    def test_internal_service_has_no_public_url(
+        self, public_client: TestClient
+    ) -> None:
         assert _routes(public_client)["intern"]["public_url"] is None
 
 
@@ -152,10 +185,10 @@ class TestDetailEndpointInvariant:
     @pytest.mark.parametrize(
         "endpoint,expected_reach",
         [
-            ("/deployments/calc", "public"),   # static, unified endpoint
-            ("/services/calc", "public"),       # static, /services endpoint (broke here)
-            ("/deployments/web", "public"),     # service, unified endpoint
-            ("/services/web", "public"),         # service, /services endpoint
+            ("/deployments/calc", "public"),  # static, unified endpoint
+            ("/services/calc", "public"),  # static, /services endpoint (broke here)
+            ("/deployments/web", "public"),  # service, unified endpoint
+            ("/services/web", "public"),  # service, /services endpoint
             ("/deployments/intern", "internal"),
             ("/services/intern", "internal"),
         ],
@@ -164,8 +197,8 @@ class TestDetailEndpointInvariant:
         self, public_client: TestClient, endpoint: str, expected_reach: str
     ) -> None:
         m = public_client.get(endpoint).json()["manifest"]
-        assert m.get("reach") == expected_reach       # spec field present
-        assert "run_cmd" not in m                      # not the runtime view
+        assert m.get("reach") == expected_reach  # spec field present
+        assert "run_cmd" not in m  # not the runtime view
 
     @pytest.mark.parametrize("name", ["calc", "web", "intern"])
     def test_deployments_and_services_endpoints_agree(

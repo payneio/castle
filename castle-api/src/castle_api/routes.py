@@ -154,7 +154,9 @@ def _summary_from_service(
     )
 
 
-def _summary_from_job(name: str, job: SystemdDeployment, config: object) -> DeploymentSummary:
+def _summary_from_job(
+    name: str, job: SystemdDeployment, config: object
+) -> DeploymentSummary:
     """Build a DeploymentSummary from a systemd deployment (job, non-deployed)."""
     managed = bool(job.manage and job.manage.systemd and job.manage.systemd.enable)
 
@@ -280,7 +282,9 @@ def _service_from_deployed(name: str, deployed: object) -> ServiceSummary:
     )
 
 
-def _service_from_spec(name: str, svc: SystemdDeployment, config: object) -> ServiceSummary:
+def _service_from_spec(
+    name: str, svc: SystemdDeployment, config: object
+) -> ServiceSummary:
     """Build a ServiceSummary from a systemd deployment."""
     port = None
     health_path = None
@@ -911,7 +915,8 @@ def get_gateway() -> GatewayInfo:
     # is not a service, so filtering to services dropped its public_url (calculator).
     public_domain = registry.node.public_domain
     public_names = {
-        name for _k, name, dep in (config.all_deployments() if config else [])
+        name
+        for _k, name, dep in (config.all_deployments() if config else [])
         if getattr(dep, "public", False)
     }
 
@@ -937,7 +942,8 @@ def get_gateway() -> GatewayInfo:
     tunnel_connected = (
         subprocess.run(
             ["systemctl", "--user", "is-active", "castle-castle-tunnel.service"],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         ).stdout.strip()
         == "active"
     )
@@ -970,7 +976,7 @@ def save_gateway_config(request: GatewayConfigRequest) -> dict[str, str]:
     from castle_core.config import load_config, save_config
 
     config = load_config(root)
-    norm = lambda v: (v or None)  # noqa: E731 — empty string clears
+    norm = lambda v: v or None  # noqa: E731 — empty string clears
     config.gateway.tls = norm(request.tls)
     config.gateway.domain = norm(request.domain)
     config.gateway.public_domain = norm(request.public_domain)

@@ -31,9 +31,10 @@ export function ConfigPanel({ deployment, configSection, onRefetch }: ConfigPane
   const [pendingApply, setPendingApply] = useState(false)
   const [applying, setApplying] = useState(false)
   const isDeployment = configSection !== "programs"
-  // Programs are their own catalog; every deployment kind (service/job/tool/
-  // static) lives in the single deployments/ collection.
-  const writeSection = isDeployment ? "deployments" : "programs"
+  // Save/delete against the kind-scoped resource (services/jobs/tools/static) so
+  // a save can't hit a same-named twin of another kind. `configSection` already
+  // carries the kind; programs write to their own catalog.
+  const writeSection = configSection
 
   const handleSave = async (compName: string, config: Record<string, unknown>) => {
     setMessage(null)

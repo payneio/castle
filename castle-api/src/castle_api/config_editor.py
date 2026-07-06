@@ -279,10 +279,15 @@ async def delete_program(name: str, cascade: bool = False) -> dict:
         except Exception:
             pass
 
-    return {"ok": True, "program": name, "action": "deleted", "removed_deployments": removed}
+    return {
+        "ok": True,
+        "program": name,
+        "action": "deleted",
+        "removed_deployments": removed,
+    }
 
 
-def _save_deployment(name: str, config_dict: dict) -> dict:
+def _save_deployment(name: str, config_dict: dict, kind: str | None = None) -> dict:
     """Create/update a deployment (any manager) with PATCH semantics.
 
     The incoming config is shallow-merged over the existing spec, so a save can
@@ -290,18 +295,26 @@ def _save_deployment(name: str, config_dict: dict) -> dict:
     a present key replaces wholesale, an **omitted** key is preserved, and an
     explicit ``null`` clears the key (back to its default). On CREATE there's no
     base, so the incoming config stands alone.
+
+    ``kind`` pins the twin this save targets — a kind-scoped endpoint
+    (``/services|/jobs|/tools|/static``) passes it so a partial patch to a
+    ``backup`` service can never bleed into a ``backup`` job/tool sharing the
+    name. The kind-agnostic ``/deployments/{name}`` leaves it None and infers.
     """
     _require_repo()
     config = get_config()
     incoming = dict(config_dict)
 
-    # Resolve the (name, kind) this save targets. A partial patch (e.g. just
+    # Resolve the (name, kind) this save targets. An explicit kind is
+    # authoritative (kind-scoped endpoint). Otherwise: a partial patch (e.g. just
     # {reach: off}) has no manager, so we can't derive kind from it — prefer the
-    # existing same-named deployment when there's exactly one; otherwise derive the
+    # existing same-named deployment when there's exactly one; else derive the
     # kind from the incoming spec (a create, or disambiguating a shared name).
     named = config.deployments_named(name)
     existing = None
-    if len(named) == 1:
+    if kind is not None:
+        existing = config.deployment(kind, name)
+    elif len(named) == 1:
         existing = named[0][1]
     else:
         try:
@@ -332,17 +345,25 @@ def _save_deployment(name: str, config_dict: dict) -> dict:
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"Invalid deployment config: {e}",
         )
-    config.store_for(kind_for(dep))[name] = dep
+    target_kind = kind_for(dep)
+    # A field edit that changes the derived kind (e.g. adds a schedule) moves the
+    # spec to the new store; drop the stale entry under the requested kind.
+    if kind is not None and target_kind != kind:
+        config.store_for(kind).pop(name, None)
+    config.store_for(target_kind)[name] = dep
     save_config(config)
     return {"ok": True, "deployment": name}
 
 
-def _delete_deployment(name: str) -> dict:
+def _delete_deployment(name: str, kind: str | None = None) -> dict:
+    """Remove a deployment. A kind-scoped delete drops only that twin; the
+    kind-agnostic path removes every kind sharing the name."""
     config = get_config()
     removed = False
-    for kind in KINDS:
-        if name in config.store_for(kind):
-            del config.store_for(kind)[name]
+    kinds = (kind,) if kind is not None else KINDS
+    for k in kinds:
+        if name in config.store_for(k):
+            del config.store_for(k)[name]
             removed = True
     if not removed:
         raise HTTPException(
@@ -391,26 +412,50 @@ def set_deployment_enabled(name: str, request: EnabledRequest) -> dict:
     return {"ok": True, "deployment": name, "enabled": request.enabled}
 
 
+# Kind-scoped endpoints — pin the twin so a save/delete can't hit a same-named
+# deployment of another kind (a `backup` service vs job vs tool).
 @router.put("/services/{name}")
 def save_service(name: str, request: ServiceConfigRequest) -> dict:
-    """Alias of PUT /deployments/{name} (kept for the existing dashboard)."""
-    return _save_deployment(name, request.config)
+    """Create/update the *service* named `name`."""
+    return _save_deployment(name, request.config, kind="service")
 
 
 @router.delete("/services/{name}")
 def delete_service(name: str) -> dict:
-    return _delete_deployment(name)
+    return _delete_deployment(name, kind="service")
 
 
 @router.put("/jobs/{name}")
 def save_job(name: str, request: JobConfigRequest) -> dict:
-    """Alias of PUT /deployments/{name} (kept for the existing dashboard)."""
-    return _save_deployment(name, request.config)
+    """Create/update the *job* named `name`."""
+    return _save_deployment(name, request.config, kind="job")
 
 
 @router.delete("/jobs/{name}")
 def delete_job(name: str) -> dict:
-    return _delete_deployment(name)
+    return _delete_deployment(name, kind="job")
+
+
+@router.put("/tools/{name}")
+def save_tool(name: str, request: ServiceConfigRequest) -> dict:
+    """Create/update the *tool* named `name`."""
+    return _save_deployment(name, request.config, kind="tool")
+
+
+@router.delete("/tools/{name}")
+def delete_tool(name: str) -> dict:
+    return _delete_deployment(name, kind="tool")
+
+
+@router.put("/static/{name}")
+def save_static(name: str, request: ServiceConfigRequest) -> dict:
+    """Create/update the *static* frontend named `name`."""
+    return _save_deployment(name, request.config, kind="static")
+
+
+@router.delete("/static/{name}")
+def delete_static(name: str) -> dict:
+    return _delete_deployment(name, kind="static")
 
 
 @router.post("/apply", response_model=ApplyResponse)

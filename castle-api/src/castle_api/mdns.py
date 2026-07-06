@@ -35,7 +35,9 @@ class CastleMDNS:
         self._service_info: ServiceInfo | None = None
 
         # Discovered state
-        self.peers: dict[str, dict] = {}  # hostname -> {gateway_port, api_port, addresses}
+        self.peers: dict[
+            str, dict
+        ] = {}  # hostname -> {gateway_port, api_port, addresses}
         self.mqtt_broker: dict | None = None  # {host, port} or None
 
     def _on_service_state_change(
@@ -67,14 +69,18 @@ class CastleMDNS:
     def _handle_castle_peer(self, info: ServiceInfo) -> None:
         """Process a discovered castle peer."""
         props = {
-            k.decode() if isinstance(k, bytes) else k: v.decode() if isinstance(v, bytes) else v
+            k.decode() if isinstance(k, bytes) else k: v.decode()
+            if isinstance(v, bytes)
+            else v
             for k, v in info.properties.items()
         }
         peer_hostname = props.get("hostname", "")
         if not peer_hostname or peer_hostname == self._hostname:
             return
 
-        addresses = [socket.inet_ntoa(addr) for addr in info.addresses if len(addr) == 4]
+        addresses = [
+            socket.inet_ntoa(addr) for addr in info.addresses if len(addr) == 4
+        ]
 
         self.peers[peer_hostname] = {
             "gateway_port": int(props.get("gateway_port", 9000)),
@@ -85,13 +91,17 @@ class CastleMDNS:
 
     def _handle_mqtt_broker(self, info: ServiceInfo) -> None:
         """Process a discovered MQTT broker."""
-        addresses = [socket.inet_ntoa(addr) for addr in info.addresses if len(addr) == 4]
+        addresses = [
+            socket.inet_ntoa(addr) for addr in info.addresses if len(addr) == 4
+        ]
         if addresses:
             self.mqtt_broker = {
                 "host": addresses[0],
                 "port": info.port,
             }
-            logger.info("mDNS: discovered MQTT broker at %s:%d", addresses[0], info.port)
+            logger.info(
+                "mDNS: discovered MQTT broker at %s:%d", addresses[0], info.port
+            )
 
     def start(self) -> None:
         """Start advertising and browsing."""
@@ -109,14 +119,24 @@ class CastleMDNS:
             },
         )
         self._zeroconf.register_service(self._service_info)
-        logger.info("mDNS: advertising %s on port %d", self._hostname, self._gateway_port)
+        logger.info(
+            "mDNS: advertising %s on port %d", self._hostname, self._gateway_port
+        )
 
         # Browse for peers and MQTT broker
         self._browsers.append(
-            ServiceBrowser(self._zeroconf, CASTLE_SERVICE_TYPE, handlers=[self._on_service_state_change])
+            ServiceBrowser(
+                self._zeroconf,
+                CASTLE_SERVICE_TYPE,
+                handlers=[self._on_service_state_change],
+            )
         )
         self._browsers.append(
-            ServiceBrowser(self._zeroconf, MQTT_SERVICE_TYPE, handlers=[self._on_service_state_change])
+            ServiceBrowser(
+                self._zeroconf,
+                MQTT_SERVICE_TYPE,
+                handlers=[self._on_service_state_change],
+            )
         )
 
     def stop(self) -> None:

@@ -31,7 +31,9 @@ class TestNodesList:
         assert local["deployed_count"] == 2  # test-svc + test-tool
         assert local["service_count"] == 1  # only test-svc is a service
 
-    def test_includes_remote_nodes(self, client: TestClient, registry_path: Path) -> None:
+    def test_includes_remote_nodes(
+        self, client: TestClient, registry_path: Path
+    ) -> None:
         """Remote nodes from mesh state are included."""
         import castle_api.mesh as mesh_mod
 
@@ -42,7 +44,8 @@ class TestNodesList:
                 node=NodeConfig(hostname="devbox", gateway_port=9000),
                 deployed={
                     "remote-svc": Deployment(
-                        manager="systemd", launcher="python",
+                        manager="systemd",
+                        launcher="python",
                         run_cmd=["svc"],
                         port=9050,
                         kind="service",

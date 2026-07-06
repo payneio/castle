@@ -27,6 +27,14 @@ export function SystemdPanel({ name, systemd }: SystemdPanelProps) {
       <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm mt-3">
         <span className="text-[var(--muted)]">Unit</span>
         <span className="font-mono break-all">{systemd.unit_name}</span>
+        {systemd.timer && (
+          <>
+            <span className="text-[var(--muted)]">Timer unit</span>
+            <span className="font-mono break-all">
+              {systemd.unit_name.replace(".service", ".timer")}
+            </span>
+          </>
+        )}
         <span className="text-[var(--muted)]">Path</span>
         <span className="font-mono break-all">{systemd.unit_path}</span>
         {systemd.timer && (

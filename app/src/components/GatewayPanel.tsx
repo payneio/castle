@@ -3,7 +3,7 @@ import { Link } from "react-router-dom"
 import { Globe, RefreshCw, FileText, ExternalLink, Cable } from "lucide-react"
 import type { GatewayInfo, HealthStatus } from "@/types"
 import { useApply, useCaddyfile } from "@/services/api/hooks"
-import { subdomainUrl } from "@/lib/labels"
+import { subdomainUrl, detailPath } from "@/lib/labels"
 import { HealthBadge } from "./HealthBadge"
 import { GatewaySettings } from "./GatewaySettings"
 
@@ -118,7 +118,10 @@ export function GatewayPanel({ gateway, statuses }: GatewayPanelProps) {
                   </td>
                   <td className="px-4 py-2 font-mono text-xs text-[var(--muted)]">
                     {route.name ? (
-                      <Link to={`/deployment/${route.name}`} className="hover:text-[var(--primary)]">
+                      <Link
+                        to={detailPath(route.name, route.kind)}
+                        className="hover:text-[var(--primary)]"
+                      >
                         {route.kind === "static" ? shortDir(route.target) : route.target}
                       </Link>
                     ) : (

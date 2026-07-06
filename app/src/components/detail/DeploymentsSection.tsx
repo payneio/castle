@@ -4,6 +4,7 @@ import { Plus, ChevronRight } from "lucide-react"
 import type { ProgramDetail } from "@/types"
 import { useServices, useJobs } from "@/services/api/hooks"
 import { KindBadge } from "@/components/KindBadge"
+import { detailPath } from "@/lib/labels"
 import { CreateDeploymentForm, type CreatePrefill } from "./CreateDeploymentForm"
 
 /** How a program is deployed. A program → 0-N deployments; each row links to its
@@ -26,9 +27,6 @@ export function DeploymentsSection({ program }: { program: ProgramDetail }) {
     runTarget: program.id,
     launcher: program.stack?.startsWith("python") || !program.stack ? "python" : "command",
   }
-
-  const detailPath = (name: string, kind: string) =>
-    kind === "tool" ? `/tools/${name}` : kind === "job" ? `/jobs/${name}` : `/services/${name}`
 
   return (
     <div className="bg-[var(--card)] border border-[var(--border)] rounded-lg p-5 mb-6">

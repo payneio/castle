@@ -107,7 +107,9 @@ async def _deferred_systemctl(action: str, unit: str, delay: float = 0.5) -> Non
 async def _do_action(name: str, action: str) -> JSONResponse:
     """Execute a systemctl action and broadcast updated health."""
     deployed = _managed(name)
-    unit = unit_name(name, deployed.kind) if deployed else f"{UNIT_PREFIX}{name}.service"
+    unit = (
+        unit_name(name, deployed.kind) if deployed else f"{UNIT_PREFIX}{name}.service"
+    )
 
     # Self-restart: defer the systemctl call so the response can be sent first
     if name == SELF_NAME and action in ("restart", "stop"):

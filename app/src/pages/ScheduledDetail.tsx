@@ -50,23 +50,15 @@ export function ScheduledDetailPage() {
               <Clock size={14} className="shrink-0 text-[var(--muted)]" />
               {deployment.schedule}
             </span>
-            {deployment.systemd && (
-              <>
-                <span className="text-[var(--muted)]">Timer unit</span>
-                <span className="font-mono break-all">
-                  {deployment.systemd.unit_name.replace(".service", ".timer")}
-                </span>
-              </>
-            )}
           </div>
         </div>
       )}
 
+      <ConfigPanel deployment={deployment} configSection="jobs" onRefetch={refetch} />
+
       {deployment.systemd && (
         <SystemdPanel name={deployment.id} systemd={deployment.systemd} />
       )}
-
-      <ConfigPanel deployment={deployment} configSection="jobs" onRefetch={refetch} />
 
       {deployment.managed && (
         <div className="mb-6">

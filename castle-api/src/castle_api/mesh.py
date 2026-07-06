@@ -40,7 +40,9 @@ class MeshStateManager:
     def update_node(self, hostname: str, registry: NodeRegistry) -> None:
         """Add or update a remote node's registry."""
         self._nodes[hostname] = RemoteNode(registry=registry)
-        logger.info("Mesh: updated node %s (%d deployed)", hostname, len(registry.deployed))
+        logger.info(
+            "Mesh: updated node %s (%d deployed)", hostname, len(registry.deployed)
+        )
 
     def set_offline(self, hostname: str) -> None:
         """Mark a node as offline (LWT received)."""

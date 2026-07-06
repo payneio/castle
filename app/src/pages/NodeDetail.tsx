@@ -3,6 +3,7 @@ import { ArrowLeft, Server } from "lucide-react"
 import { useNode } from "@/services/api/hooks"
 import { KindBadge } from "@/components/KindBadge"
 import { StackBadge } from "@/components/StackBadge"
+import { detailPath } from "@/lib/labels"
 import { cn } from "@/lib/utils"
 
 export function NodeDetailPage() {
@@ -77,7 +78,7 @@ export function NodeDetailPage() {
                 >
                   <td className="px-3 py-2.5">
                     <Link
-                      to={`/deployment/${comp.id}`}
+                      to={detailPath(comp.id, comp.kind ?? "service")}
                       className="font-medium hover:text-[var(--primary)] transition-colors"
                     >
                       {comp.id}

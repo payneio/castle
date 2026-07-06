@@ -112,7 +112,10 @@ export function CreateDeploymentForm({
     setError("")
     try {
       setBusy("Saving…")
-      await apiClient.put(`/config/deployments/${name}`, { config: buildConfig() })
+      // Post to the kind-scoped resource so creating a twin (a `backup` job when
+      // a `backup` service exists) targets the right collection, not a guess.
+      const section = kind === "static" ? "static" : `${kind}s`
+      await apiClient.put(`/config/${section}/${name}`, { config: buildConfig() })
       // Converge: render + activate the new deployment in one step.
       setBusy("Applying…")
       await apiClient.post(`/apply`, { name })

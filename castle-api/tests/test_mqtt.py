@@ -9,7 +9,9 @@ from castle_api.mqtt_client import _json_to_registry, _registry_to_json
 
 def _make_registry() -> NodeRegistry:
     return NodeRegistry(
-        node=NodeConfig(hostname="tower", castle_root="/data/repos/castle", gateway_port=9000),
+        node=NodeConfig(
+            hostname="tower", castle_root="/data/repos/castle", gateway_port=9000
+        ),
         deployed={
             "my-svc": Deployment(
                 manager="systemd",
@@ -80,7 +82,9 @@ class TestRegistrySerialization:
         reg = NodeRegistry(
             node=NodeConfig(hostname="minimal"),
             deployed={
-                "bare": Deployment(manager="systemd", launcher="command", run_cmd=["bare"], name="bare"),
+                "bare": Deployment(
+                    manager="systemd", launcher="command", run_cmd=["bare"], name="bare"
+                ),
             },
         )
         restored = _json_to_registry(_registry_to_json(reg))

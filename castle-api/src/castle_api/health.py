@@ -60,7 +60,10 @@ async def _check_systemd(name: str) -> HealthStatus:
     """Check a managed service's health via its systemd unit state."""
     unit = f"castle-{name}.service"
     proc = await asyncio.create_subprocess_exec(
-        "systemctl", "--user", "is-active", unit,
+        "systemctl",
+        "--user",
+        "is-active",
+        unit,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )

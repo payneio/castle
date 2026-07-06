@@ -18,9 +18,9 @@ class TestDeploymentEditSafety:
         the shape the edit form consumes (launcher nested under `run`, plus
         reach/expose) — not the flat runtime view (`run_cmd`, top-level launcher)."""
         m = client.get("/deployments/test-svc").json()["manifest"]
-        assert m["run"]["launcher"] == "python"          # spec shape (nested)
-        assert "run_cmd" not in m                         # runtime-only key absent
-        assert m.get("reach") == "internal"               # normalized from proxy:true
+        assert m["run"]["launcher"] == "python"  # spec shape (nested)
+        assert "run_cmd" not in m  # runtime-only key absent
+        assert m.get("reach") == "internal"  # normalized from proxy:true
         assert m["expose"]["http"]["internal"]["port"] == 19000
 
     def test_save_roundtrip_preserves_spec_fields(self, client: TestClient) -> None:
@@ -39,11 +39,13 @@ class TestDeploymentEditSafety:
         This is what makes the astro-class regression structurally impossible —
         even a client that sends a lossy payload can't nuke fields it omitted."""
         before = client.get("/deployments/test-svc").json()["manifest"]
-        resp = client.put("/config/deployments/test-svc", json={"config": {"reach": "off"}})
+        resp = client.put(
+            "/config/deployments/test-svc", json={"config": {"reach": "off"}}
+        )
         assert resp.status_code == 200, resp.text
         after = client.get("/deployments/test-svc").json()["manifest"]
-        assert after["reach"] == "off"                        # the change applied
-        assert after["program"] == before["program"]         # untouched → preserved
+        assert after["reach"] == "off"  # the change applied
+        assert after["program"] == before["program"]  # untouched → preserved
         assert after["run"] == before["run"]
         assert after["expose"] == before["expose"]
 
@@ -58,9 +60,9 @@ class TestDeploymentEditSafety:
         )
         assert resp.status_code == 200, resp.text
         after = client.get("/deployments/test-svc").json()["manifest"]
-        assert after.get("expose") is None                    # cleared
+        assert after.get("expose") is None  # cleared
         assert after["reach"] == "off"
-        assert after["program"] == "test-svc-comp"            # rest preserved
+        assert after["program"] == "test-svc-comp"  # rest preserved
 
 
 class TestProgramEditSafety:
@@ -73,6 +75,6 @@ class TestProgramEditSafety:
         )
         assert resp.status_code == 200, resp.text
         m = client.get("/programs/wired-in").json()["manifest"]
-        assert m["description"] == "renamed"                  # change applied
-        assert m["source"].endswith("wired-in")               # source preserved
-        assert m["commands"]["lint"] == [["make", "lint"]]    # commands preserved
+        assert m["description"] == "renamed"  # change applied
+        assert m["source"].endswith("wired-in")  # source preserved
+        assert m["commands"]["lint"] == [["make", "lint"]]  # commands preserved

@@ -49,6 +49,17 @@ export function stackLabel(stack: string): string {
 }
 
 /**
+ * The kind-scoped detail route for a deployment. A name can be shared across
+ * kinds (a `backup` service + job + tool), so links must carry the kind to
+ * reach the right twin. Statics share the service detail page.
+ */
+export function detailPath(name: string, kind: string): string {
+  if (kind === "tool") return `/tools/${name}`
+  if (kind === "job") return `/jobs/${name}`
+  return `/services/${name}`
+}
+
+/**
  * Full URL for a service exposed at <subdomain>.<gateway.domain>. The domain is
  * derived from the dashboard's own host (it is served at castle.<domain>), so
  * this returns null when the dashboard is on a bare host (off mode, no subdomains).

@@ -31,7 +31,11 @@ async def get_logs(
         config = load_config(root)
         # A name may span kinds — the managed (systemd) one owns the journal.
         dep_kind = next(
-            ((k, s) for k, s in config.deployments_named(name) if getattr(s, "manage", None)),
+            (
+                (k, s)
+                for k, s in config.deployments_named(name)
+                if getattr(s, "manage", None)
+            ),
             None,
         )
         if dep_kind is None:

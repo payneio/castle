@@ -146,10 +146,6 @@ export function ServiceDetailPage() {
         </div>
       </div>
 
-      {deployment.systemd && (
-        <SystemdPanel name={deployment.id} systemd={deployment.systemd} />
-      )}
-
       {isGateway && caddyfile?.content && (
         <div className="bg-[var(--card)] border border-[var(--border)] rounded-lg p-5 mb-6">
           <h2 className="text-sm font-semibold text-[var(--muted)] uppercase tracking-wider mb-1">
@@ -169,6 +165,10 @@ export function ServiceDetailPage() {
         configSection={isStatic ? "static" : "services"}
         onRefetch={refetch}
       />
+
+      {deployment.systemd && (
+        <SystemdPanel name={deployment.id} systemd={deployment.systemd} />
+      )}
 
       {deployment.managed && (
         <div className="mb-6">

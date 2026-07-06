@@ -4,7 +4,9 @@ from fastapi.testclient import TestClient
 
 
 class TestProgramCommands:
-    def test_wired_in_program_surfaces_commands_and_repo(self, client: TestClient) -> None:
+    def test_wired_in_program_surfaces_commands_and_repo(
+        self, client: TestClient
+    ) -> None:
         """A stack-less adopted program exposes its declared commands + repo."""
         resp = client.get("/programs")
         assert resp.status_code == 200

@@ -171,7 +171,9 @@ class CastleMQTTClient:
             return
 
         self._connected = True
-        logger.info("Connected to MQTT broker at %s:%d", self._broker_host, self._broker_port)
+        logger.info(
+            "Connected to MQTT broker at %s:%d", self._broker_host, self._broker_port
+        )
 
         # Publish our status as online (retained)
         client.publish(
@@ -222,7 +224,9 @@ class CastleMQTTClient:
                 if payload == "offline":
                     mesh_state.set_offline(hostname)
                     asyncio.run_coroutine_threadsafe(
-                        broadcast("mesh", {"event": "node_offline", "hostname": hostname}),
+                        broadcast(
+                            "mesh", {"event": "node_offline", "hostname": hostname}
+                        ),
                         self._loop,
                     )
 
