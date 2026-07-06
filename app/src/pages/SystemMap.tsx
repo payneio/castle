@@ -126,11 +126,9 @@ function MapNode({ id, data }: NodeProps) {
     kind: string
     sub?: string
     dim?: boolean
-    hub?: number
     exposable?: boolean
     program?: string | null
     reach?: string | null
-    externals?: { name: string; host: string; protocol: string }[]
     focusDim?: boolean
     focused?: boolean
     onMenu?: (x: number, y: number, name: string, kind: string) => void
@@ -197,25 +195,6 @@ function MapNode({ id, data }: NodeProps) {
           )}
         </div>
         {d.sub && <div className="truncate text-[10px] text-[var(--muted)]">{d.sub}</div>}
-        {typeof d.hub === "number" && d.hub > 0 && (
-          <div className="text-[10px]" style={{ color }}>
-            ← consumed by {d.hub}
-          </div>
-        )}
-        {d.externals && d.externals.length > 0 && (
-          <div className="mt-0.5 flex flex-wrap gap-0.5">
-            {d.externals.map((x) => (
-              <span
-                key={x.name}
-                className="inline-flex items-center gap-0.5 rounded border border-[var(--border)] bg-black/20 px-1 text-[9px] text-[var(--muted)]"
-                title={`consumes external: ${x.name} (${x.protocol})`}
-              >
-                <ExternalLink size={8} />
-                {x.host}
-              </span>
-            ))}
-          </div>
-        )}
       </div>
       {/* Right handle: drag OUT to connect — to a hub (expose) or another node
           (declare "requires"). Right target lands incoming dependency lines. */}
@@ -373,7 +352,7 @@ interface MenuItem {
 }
 
 export function SystemMapPage() {
-  const { data: graph } = useGraph()
+  const { data: graph, isLoading: graphLoading } = useGraph()
   const { data: jobs } = useJobs()
   const { data: programs } = usePrograms()
   const { data: gateway } = useGateway()
@@ -436,16 +415,6 @@ export function SystemMapPage() {
 
     // Consumption of an external `reference` renders as a chip on the consumer (not
     // a long cross-map edge). Collect them here, keyed by the consuming deployment.
-    const externalsOf = new Map<string, { name: string; host: string; protocol: string }[]>()
-    for (const e of graph.edges) {
-      if (e.kind !== "deployment") continue
-      const dst = byName.get(e.dst)
-      if (dst?.kind !== "reference") continue
-      const arr = externalsOf.get(e.src) ?? []
-      arr.push({ name: e.dst, host: hostOf(dst.base_url) || e.dst, protocol: protoOf(dst.base_url) })
-      externalsOf.set(e.src, arr)
-    }
-
     // A job shows its cron; everything else prefers its declared socket, else its
     // gateway http port. This is what makes raw-TCP infra (postgres :5432) visible.
     const subFor = (n: (typeof graph.nodes)[number]): string | undefined => {
@@ -473,11 +442,9 @@ export function SystemMapPage() {
             kind: n.kind,
             sub: subFor(n),
             dim: lane.dim,
-            hub: n.depended_on_by,
             exposable: !!lane.exposable,
             program: n.program && catalog.has(n.program) ? n.program : null,
             reach: n.reach,
-            externals: externalsOf.get(n.name),
           },
         } satisfies Node
       })
@@ -664,7 +631,7 @@ export function SystemMapPage() {
         target: isPub ? "__internet__" : "__gateway__",
         sourceHandle: "rs",
         targetHandle: "lt",
-        animated: isPub,
+        animated: true,
         deletable: true,
         style: { stroke: isPub ? "#2ea043" : "#58a6ff", strokeWidth: 1.75 },
       })
@@ -745,8 +712,31 @@ export function SystemMapPage() {
     reachRef.current = built.reachOf
     focusRef.current = focus
     setNodes(materialize(built))
-    setEdges(dimEdges(built.edges))
-  }, [built, focus, setNodes, setEdges, materialize, dimEdges])
+    // External consumption is drawn only while the consumer is selected — a dashed
+    // line to each of its reference nodes (kept off-canvas otherwise to avoid a
+    // permanent web of long cross-map lines).
+    const extEdges: Edge[] = []
+    if (focus && graph) {
+      const refNames = new Set(
+        graph.nodes.filter((n) => n.kind === "reference").map((n) => n.name),
+      )
+      for (const e of graph.edges) {
+        if (e.kind === "deployment" && e.src === focus && refNames.has(e.dst)) {
+          extEdges.push({
+            id: `ext:${focus}->${e.dst}`,
+            source: focus,
+            target: e.dst,
+            sourceHandle: "rs",
+            targetHandle: "lt",
+            animated: true,
+            deletable: false,
+            style: { stroke: "#8b949e", strokeWidth: 1.5, strokeDasharray: "4 3" },
+          })
+        }
+      }
+    }
+    setEdges([...dimEdges(built.edges), ...extEdges])
+  }, [built, focus, graph, setNodes, setEdges, materialize, dimEdges])
 
   // Single-node selection = inspect (dim + panel); 0 or many = no focus (drag mode).
   const onSelectionChange = useCallback((p: { nodes: Node[] }) => {
@@ -1060,6 +1050,12 @@ export function SystemMapPage() {
         colorMode="dark"
       >
         <Background color="#30363d" gap={20} />
+        {(graphLoading || !graph) && (
+          <div className="absolute inset-0 z-20 flex items-center justify-center gap-2 text-sm text-[var(--muted)]">
+            <Loader2 size={18} className="animate-spin" />
+            Loading map…
+          </div>
+        )}
         <Controls showInteractive={false}>
           <ControlButton
             onClick={() => setLasso((v) => !v)}
