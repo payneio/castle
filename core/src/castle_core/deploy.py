@@ -516,6 +516,11 @@ def _target_url(config: CastleConfig, target_name: str) -> str | None:
         dep = matches[0][1] if matches else None
     if dep is None:
         return None
+    # A reference (manager: none) carries its URL directly — that's what a bind to
+    # an external resource projects into the consumer's env.
+    base = getattr(dep, "base_url", None)
+    if base:
+        return base
     expose = getattr(dep, "expose", None)
     http = getattr(expose, "http", None) if expose else None
     tport = http.internal.port if http else None
