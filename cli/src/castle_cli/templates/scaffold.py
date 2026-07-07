@@ -675,8 +675,8 @@ serve((_req: Request) => {
         project_dir / "public" / "config.js",
         sub(
             """// Substrate wiring for __NAME__. The anon key is designed to be public
-// (RLS enforces access) — paste yours here, or inject at deploy time:
-//   cat ~/.castle/secrets/SUPABASE_ANON_KEY
+// (RLS enforces access) — paste yours here. Find it in the dashboard
+// Secrets page (or `castle mesh`/vault), secret name SUPABASE_ANON_KEY.
 window.APP = {
   SUPABASE_URL: "https://supabase.lan",
   SUPABASE_ANON_KEY: "PASTE_ANON_KEY_HERE",
@@ -758,8 +758,9 @@ live on the substrate; rebuild the rest from git anytime.
 ## Develop
 - Edit `migrations/`, then `castle program build __NAME__` to apply new migrations
   (re-running is a no-op — only unapplied migrations run).
-- Set the anon key in `public/config.js` (`cat ~/.castle/secrets/SUPABASE_ANON_KEY`).
-- `castle deploy && castle gateway reload` → served at `/__NAME__/`.
+- Set the anon key in `public/config.js` (find `SUPABASE_ANON_KEY` in the
+  dashboard Secrets page).
+- `castle apply` → served at `__NAME__.<domain>`.
 
 ## Privacy note
 RLS protects rows, not the static shell or Storage. For a `private`/`shared` app,

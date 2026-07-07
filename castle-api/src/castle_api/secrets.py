@@ -45,6 +45,48 @@ def secrets_info() -> dict:
     }
 
 
+@router.get("/overrides")
+def list_overrides() -> dict:
+    """Per-node secret overrides ({host: [names]}). Empty unless OpenBao."""
+    backend = _backend()
+    if not isinstance(backend, OpenBaoBackend):
+        return {"overrides": {}}
+    return {"overrides": backend.list_node_overrides()}
+
+
+@router.get("/overrides/{node}/{name:path}")
+def get_override(node: str, name: str) -> dict:
+    """Read a node's override value."""
+    value = _backend().read(f"nodes/{node}/{name}")
+    if value is None:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND, f"no override '{name}' for node '{node}'"
+        )
+    return {"node": node, "name": name, "value": value}
+
+
+@router.put("/overrides/{node}/{name:path}")
+def set_override(node: str, name: str, body: SecretValue) -> dict:
+    """Set a per-node override (authority only; needs the OpenBao backend)."""
+    backend = _backend()
+    if not isinstance(backend, OpenBaoBackend):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, "node overrides require the OpenBao backend"
+        )
+    try:
+        backend.write(f"nodes/{node}/{name}", body.value)
+    except Exception as exc:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc)) from exc
+    return {"node": node, "name": name, "ok": True}
+
+
+@router.delete("/overrides/{node}/{name:path}")
+def delete_override(node: str, name: str) -> dict:
+    """Remove a per-node override."""
+    _backend().delete(f"nodes/{node}/{name}")
+    return {"node": node, "name": name, "ok": True}
+
+
 @router.get("/{name}")
 def get_secret(name: str) -> dict:
     """Get a secret value."""

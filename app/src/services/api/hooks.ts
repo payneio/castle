@@ -583,3 +583,29 @@ export function useDeleteSecret() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["secrets"] }),
   })
 }
+
+export function useSecretOverrides() {
+  return useQuery({
+    queryKey: ["secret-overrides"],
+    queryFn: () =>
+      apiClient.get<{ overrides: Record<string, string[]> }>("/secrets/overrides"),
+  })
+}
+
+export function useSetOverride() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ node, name, value }: { node: string; name: string; value: string }) =>
+      apiClient.put(`/secrets/overrides/${node}/${name}`, { value }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["secret-overrides"] }),
+  })
+}
+
+export function useDeleteOverride() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ node, name }: { node: string; name: string }) =>
+      apiClient.delete(`/secrets/overrides/${node}/${name}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["secret-overrides"] }),
+  })
+}

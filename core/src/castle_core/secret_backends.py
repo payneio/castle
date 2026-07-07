@@ -104,14 +104,28 @@ class OpenBaoBackend:
         self._request("DELETE", url)
 
     def list_names(self) -> list[str]:
-        url = f"{self._addr}/v1/{self._mount}/metadata?list=true"
+        # Drop folder entries (e.g. "nodes/") — those group per-node overrides.
+        return sorted(k for k in self._list_path("") if not k.endswith("/"))
+
+    def _list_path(self, prefix: str) -> list[str]:
+        sep = "/" if prefix else ""
+        url = f"{self._addr}/v1/{self._mount}/metadata{sep}{prefix}?list=true"
         try:
-            data = self._request("GET", url)
-            keys = data.get("data", {}).get("keys", [])
-            # Drop folder entries (e.g. "nodes/") — those group per-node overrides.
-            return sorted(k for k in keys if not k.endswith("/"))
+            return self._request("GET", url).get("data", {}).get("keys", [])
         except Exception:
             return []
+
+    def list_node_overrides(self) -> dict[str, list[str]]:
+        """Per-node secret overrides: ``{host: [names]}`` from ``<mount>/nodes/*``."""
+        out: dict[str, list[str]] = {}
+        for entry in self._list_path("nodes"):
+            if not entry.endswith("/"):
+                continue
+            host = entry.rstrip("/")
+            names = [k for k in self._list_path(f"nodes/{host}") if not k.endswith("/")]
+            if names:
+                out[host] = sorted(names)
+        return out
 
     def _request(self, method: str, url: str, body: dict | None = None) -> dict:
         payload = json.dumps(body).encode() if body is not None else None
