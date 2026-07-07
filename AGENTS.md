@@ -244,9 +244,33 @@ defaults:
 | `${data_dir}` | `$CASTLE_DATA_DIR/<name>` (default `/data/castle/<name>`) |
 | `${name}` | the deployment name |
 | `${public_url}` | `https://<name>.<domain>` under acme, else `http://localhost:<port>` |
-| `${secret:NAME}` | contents of `~/.castle/secrets/NAME` (mode 700) |
+| `${secret:NAME}` | the secret `NAME` from the active backend |
 
-**Never** put secrets in `castle.yaml` or project dirs — use `${secret:…}`.
+**Secret backend.** `${secret:NAME}` (and `read_secret()` for direct-read code)
+resolve through a backend selected by the **`secrets:` block in `castle.yaml`**
+(`core/secret_backends.py`):
+
+```yaml
+secrets:
+  backend: openbao                                   # or `file` (default)
+  addr: https://castle-openbao.<domain>:8200
+  mount: castle                                       # KV-v2 mount
+  token_secret: OPENBAO_ROOT_TOKEN                    # vault token, read from a file
+  node_prefix: nodes/<host>                           # optional: per-node overrides
+```
+
+- **file** (default) → `~/.castle/secrets/NAME`.
+- **openbao** → vault KV-v2 `mount/NAME`, no file fallback. The vault **token** is
+  still a file (`token_secret`, the bootstrap root of trust — it can't live in the
+  vault it opens). With `node_prefix`, a read tries `mount/<node_prefix>/NAME`
+  then shared `mount/NAME`, so one vault serves shared secrets + per-node overrides
+  (e.g. each node's postgres password). Env vars (`CASTLE_SECRET_BACKEND`,
+  `CASTLE_OPENBAO_*`) override the block (tests/CI force `file`).
+- **This fleet runs `openbao`**: civil is the authority (root token), primer reads
+  via a least-privilege `castle-read` token. Only the bootstrap tier stays as
+  files (`OPENBAO_ROOT_TOKEN`/`OPENBAO_UNSEAL_KEY`, the `cloudflared` creds dir).
+
+**Never** put secret *values* in `castle.yaml` or project dirs — use `${secret:…}`.
 Roots: **`CASTLE_HOME`** (config/code/artifacts/secrets, default `~/.castle`,
 env-only — it *contains* castle.yaml) and **program data** (base of `${data_dir}`,
 default `/data/castle`) + **repos** (default `/data/repos`). The latter two resolve
