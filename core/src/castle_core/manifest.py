@@ -160,6 +160,9 @@ class SystemdSpec(BaseModel):
     no_new_privileges: bool = True
     readiness: ReadinessHttpGet | None = None
     exec_reload: str | None = None
+    # Commands run after the main process starts (systemd ``ExecStartPost=``), one
+    # line each — e.g. an OpenBao auto-unseal step. Failures don't fail the unit.
+    exec_start_post: list[str] = Field(default_factory=list)
 
 
 class ManageSpec(BaseModel):

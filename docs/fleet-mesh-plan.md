@@ -236,16 +236,21 @@ second node is proven on NATS.
 - **Tests:** `core/tests/test_secret_backends.py` (file hit/miss, backend
   selection, unreachable-vault + empty-token fallback). Suites: **206 core + 93 api**.
 
-**Remaining for full OpenBao production use (documented, not blocking — nothing
-uses the backend until `CASTLE_SECRET_BACKEND=openbao`):**
-1. **Write path** — `castle-api/secrets.py` CRUD still writes to files; in openbao
-   mode dashboard-set secrets land in file (resolve via fallback) rather than the
-   vault. Add `write`/`delete` to the backends + route the API writer through them.
-2. **Auto-unseal on boot** (Phase 0 deferral) — OpenBao re-seals on container
-   restart. Wire an unseal step (manifest `exec_start_post` or a companion
-   oneshot reading `OPENBAO_UNSEAL_KEY`). Not urgent while the backend is unused.
-3. **TLS hardening** — NATS + OpenBao are plaintext localhost. Required before
-   cross-network or moving real secrets: NATS mTLS + auth, OpenBao TLS listener.
+**Hardening:**
+1. **Write path — DONE + verified live.** `SecretBackend` gained
+   `write`/`delete`/`list_names`; `castle-api/secrets.py` routes all CRUD through
+   the active backend, so in openbao mode the dashboard writes to the vault.
+   Verified: write→vault→read→list→delete round-trip against live OpenBao.
+2. **Auto-unseal on boot — DONE + verified.** Added `exec_start_post` to the
+   systemd spec (general, `-`-prefixed so a hook failure never fails the unit);
+   `castle-openbao` runs `/data/castle/castle-openbao/unseal.sh` (polls up, unseals
+   with `OPENBAO_UNSEAL_KEY`). Verified: manual seal → restart → auto-unsealed.
+3. **TLS hardening — REMAINING (deliberately deferred).** NATS + OpenBao are
+   plaintext on the trusted LAN. This is the gate before cross-*network* or moving
+   real secrets — neither of which is here yet (the vault holds no production
+   secrets). Doing NATS TLS/auth touches the *live* civil↔primer mesh, so it's a
+   deliberate, staged change (regenerate certs, update both nodes' clients), not a
+   tail-end one. Next dedicated step.
 
 ### Phase 3 — cross-node routing + breaker: logic DONE + verified against a real peer (2026-07-07)
 

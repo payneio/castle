@@ -20,6 +20,19 @@ def test_file_backend_read_miss(tmp_path: Path) -> None:
     assert FileSecretBackend(tmp_path).read("ABSENT") is None
 
 
+def test_file_backend_write_read_list_delete(tmp_path: Path) -> None:
+    b = FileSecretBackend(tmp_path)
+    assert b.list_names() == []
+    b.write("A", "one")
+    b.write("B", "two")
+    assert b.read("A") == "one"
+    assert b.list_names() == ["A", "B"]
+    b.delete("A")
+    assert b.read("A") is None
+    assert b.list_names() == ["B"]
+    b.delete("ABSENT")  # no error
+
+
 def test_build_backend_defaults_to_file(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.delenv("CASTLE_SECRET_BACKEND", raising=False)
     assert isinstance(build_backend(tmp_path), FileSecretBackend)

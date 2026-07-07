@@ -26,10 +26,13 @@ from typing import Protocol
 
 class SecretBackend(Protocol):
     def read(self, name: str) -> str | None: ...
+    def write(self, name: str, value: str) -> None: ...
+    def delete(self, name: str) -> None: ...
+    def list_names(self) -> list[str]: ...
 
 
 class FileSecretBackend:
-    """Reads ``<secrets_dir>/<name>`` (the historical behavior)."""
+    """Reads/writes ``<secrets_dir>/<name>`` (the historical behavior)."""
 
     def __init__(self, secrets_dir: Path) -> None:
         self._dir = secrets_dir
@@ -39,6 +42,20 @@ class FileSecretBackend:
         if path.exists():
             return path.read_text().strip()
         return None
+
+    def write(self, name: str, value: str) -> None:
+        self._dir.mkdir(parents=True, exist_ok=True)
+        (self._dir / name).write_text(value.strip() + "\n")
+
+    def delete(self, name: str) -> None:
+        path = self._dir / name
+        if path.exists():
+            path.unlink()
+
+    def list_names(self) -> list[str]:
+        if not self._dir.exists():
+            return []
+        return sorted(f.name for f in self._dir.iterdir() if f.is_file())
 
 
 class OpenBaoBackend:
@@ -66,13 +83,43 @@ class OpenBaoBackend:
         if not self._token:
             return None
         url = f"{self._addr}/v1/{self._mount}/data/{name}"
-        req = urllib.request.Request(url, headers={"X-Vault-Token": self._token})
         try:
-            with urllib.request.urlopen(req, timeout=5) as resp:  # noqa: S310
-                data = json.load(resp)
+            data = self._request("GET", url)
             return data["data"]["data"].get("value")
         except Exception:
             return None
+
+    def write(self, name: str, value: str) -> None:
+        url = f"{self._addr}/v1/{self._mount}/data/{name}"
+        self._request("POST", url, {"data": {"value": value.strip()}})
+
+    def delete(self, name: str) -> None:
+        # Remove all versions (metadata delete), matching file-backend semantics.
+        url = f"{self._addr}/v1/{self._mount}/metadata/{name}"
+        self._request("DELETE", url)
+
+    def list_names(self) -> list[str]:
+        url = f"{self._addr}/v1/{self._mount}/metadata?list=true"
+        try:
+            data = self._request("GET", url)
+            return sorted(data.get("data", {}).get("keys", []))
+        except Exception:
+            return []
+
+    def _request(self, method: str, url: str, body: dict | None = None) -> dict:
+        payload = json.dumps(body).encode() if body is not None else None
+        req = urllib.request.Request(  # noqa: S310
+            url,
+            data=payload,
+            method=method,
+            headers={
+                "X-Vault-Token": self._token,
+                "Content-Type": "application/json",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:  # noqa: S310
+            raw = resp.read()
+        return json.loads(raw) if raw else {}
 
 
 def build_backend(secrets_dir: Path) -> SecretBackend:
