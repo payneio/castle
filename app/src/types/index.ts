@@ -325,9 +325,8 @@ export interface NodeDetail extends NodeSummary {
 
 export interface MeshStatus {
   enabled: boolean
-  mqtt_connected: boolean
-  mqtt_broker_host: string | null
-  mqtt_broker_port: number | null
+  connected: boolean
+  nats_url: string | null
   mdns_enabled: boolean
   peer_count: number
   peers: string[]

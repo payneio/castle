@@ -15,9 +15,8 @@ class Settings(BaseSettings):
     port: int = 9020
 
     # Mesh coordination (all off by default — single-node works without them)
-    mqtt_enabled: bool = False
-    mqtt_host: str = "localhost"
-    mqtt_port: int = 1883
+    nats_enabled: bool = False
+    nats_url: str = "nats://localhost:4222"
     mdns_enabled: bool = False
 
     model_config = {

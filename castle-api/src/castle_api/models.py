@@ -218,9 +218,8 @@ class MeshStatus(BaseModel):
     """Current state of the mesh coordination layer."""
 
     enabled: bool = False
-    mqtt_connected: bool = False
-    mqtt_broker_host: str | None = None
-    mqtt_broker_port: int | None = None
+    connected: bool = False
+    nats_url: str | None = None
     mdns_enabled: bool = False
     peer_count: int = 0
     peers: list[str] = []

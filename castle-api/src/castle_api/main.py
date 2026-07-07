@@ -56,25 +56,24 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     poll_task = asyncio.create_task(health_poll_loop())
 
     # --- Mesh coordination (opt-in) ---
-    mqtt_client = None
+    nats_client = None
     mdns_service = None
 
-    if settings.mqtt_enabled:
+    if settings.nats_enabled:
         try:
-            from castle_api.mqtt_client import CastleMQTTClient
+            from castle_api.nats_client import CastleNATSClient
 
             registry = get_registry()
-            mqtt_client = CastleMQTTClient(
+            nats_client = CastleNATSClient(
                 local_hostname=registry.node.hostname,
                 local_registry=registry,
-                broker_host=settings.mqtt_host,
-                broker_port=settings.mqtt_port,
+                servers=settings.nats_url,
             )
-            await mqtt_client.start()
-            app.state.mqtt_client = mqtt_client
+            await nats_client.start()
+            app.state.nats_client = nats_client
         except Exception:
-            logger.exception("Failed to start MQTT client")
-            mqtt_client = None
+            logger.exception("Failed to start NATS mesh client")
+            nats_client = None
 
     if settings.mdns_enabled:
         try:
@@ -97,8 +96,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     _shutting_down = True
     poll_task.cancel()
 
-    if mqtt_client:
-        await mqtt_client.stop()
+    if nats_client:
+        await nats_client.stop()
     if mdns_service:
         mdns_service.stop()
 
