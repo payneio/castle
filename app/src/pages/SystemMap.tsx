@@ -24,8 +24,8 @@ import {
   LayoutGrid,
   Loader2,
   Lock,
+  Maximize2,
   Minus,
-  MoreVertical,
   Package,
   Plus,
   RotateCw,
@@ -119,7 +119,7 @@ function savePositions(p: PosMap): void {
 // realized from — a future click target for the program/info panel) and the main
 // deployment body. The right handle is a connection *source* (drag it to an
 // exposure target); the others exist only to anchor pre-built edges.
-function MapNode({ id, data }: NodeProps) {
+function MapNode({ data }: NodeProps) {
   const d = data as {
     label: string
     kind: string
@@ -128,9 +128,9 @@ function MapNode({ id, data }: NodeProps) {
     exposable?: boolean
     program?: string | null
     reach?: string | null
+    launchUrl?: string
     focusDim?: boolean
     focused?: boolean
-    onMenu?: (x: number, y: number, name: string, kind: string) => void
     onProgram?: (program: string) => void
   }
   const color = KIND_COLOR[d.kind] ?? "#8b949e"
@@ -145,17 +145,18 @@ function MapNode({ id, data }: NodeProps) {
         boxShadow: d.focused ? `0 0 0 2px ${color}` : undefined,
       }}
     >
-      <button
-        className="absolute right-0.5 top-0.5 z-10 rounded bg-[var(--card)]/80 p-0.5 text-[var(--muted)] opacity-0 hover:text-[var(--card-foreground)] group-hover:opacity-100"
-        title="Actions"
-        onClick={(e) => {
-          e.stopPropagation()
-          const r = e.currentTarget.getBoundingClientRect()
-          d.onMenu?.(r.right, r.bottom, id, d.kind)
-        }}
-      >
-        <MoreVertical size={12} />
-      </button>
+      {d.launchUrl && (
+        <a
+          href={d.launchUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="absolute right-0.5 top-0.5 z-10 rounded bg-[var(--card)]/80 p-0.5 text-[var(--muted)] opacity-0 hover:text-[var(--primary)] group-hover:opacity-100"
+          title={`Launch ${d.launchUrl}`}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <ExternalLink size={12} />
+        </a>
+      )}
       {d.program ? (
         <button
           type="button"
@@ -380,6 +381,9 @@ interface NodeMeta {
   node: string | null
   provides: string[]
   capsConsumes: string[]
+  reach: string | null
+  exposable: boolean
+  launchUrl?: string
 }
 interface Built {
   nodes: Node[]
@@ -417,7 +421,6 @@ export function SystemMapPage() {
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
   const [banner, setBanner] = useState<{ type: "info" | "error"; text: string } | null>(null)
   const [confirmDel, setConfirmDel] = useState<{ name: string; kind: string } | null>(null)
-  const [menu, setMenu] = useState<{ x: number; y: number; name: string; kind: string } | null>(null)
   // Lasso mode: when on, a plain left-drag draws a selection box (pan moves to
   // middle/right mouse). When off, left-drag pans and Shift-drag still lassos.
   const [lasso, setLasso] = useState(false)
@@ -425,10 +428,6 @@ export function SystemMapPage() {
   const [focus, setFocus] = useState<string | null>(null)
   const [addExt, setAddExt] = useState(false)
 
-  const openMenu = useCallback(
-    (x: number, y: number, name: string, kind: string) => setMenu({ x, y, name, kind }),
-    [],
-  )
   const openProgram = useCallback((program: string) => navigate(`/programs/${program}`), [navigate])
 
   // Kind lookup for handlers (which config section to write). Kept in a ref so the
@@ -460,6 +459,17 @@ export function SystemMapPage() {
     // Per-node lookups from the graph itself (authoritative for sockets/reach now).
     const byName = new Map(graph.nodes.map((n) => [n.name, n]))
     const epOf = new Map(graph.nodes.map((n) => [n.name, n.endpoints]))
+
+    // A browser-launchable URL (the "Start Menu" open) — a frontend or an
+    // http-exposed service served at <name>.<domain>. TCP/tools/jobs aren't.
+    const domain = gateway?.domain ?? null
+    const launchOf = (n: (typeof graph.nodes)[number]): string | undefined => {
+      if (!domain || !n.reach || n.reach === "off") return undefined
+      if (n.kind === "static") return `https://${n.name}.${domain}`
+      if (n.kind === "service" && n.endpoints.some((e) => e.protocol === "http"))
+        return `https://${n.name}.${domain}`
+      return undefined
+    }
 
     // Consumption of an external `reference` renders as a chip on the consumer (not
     // a long cross-map edge). Collect them here, keyed by the consuming deployment.
@@ -493,6 +503,7 @@ export function SystemMapPage() {
             exposable: !!lane.exposable,
             program: n.program && catalog.has(n.program) ? n.program : null,
             reach: n.reach,
+            launchUrl: launchOf(n),
           },
         } satisfies Node
       })
@@ -831,11 +842,31 @@ export function SystemMapPage() {
       if (e.kind === "deployment" && present.has(e.src) && present.has(e.dst)) relate(e.src, e.dst)
     for (const [s, d] of xrel) relate(s, d)
 
-    const meta = new Map<string, { label: string; kind: string; remote: boolean; node: string | null; provides: string[]; capsConsumes: string[] }>()
+    const meta = new Map<string, NodeMeta>()
     for (const n of graph.nodes)
-      meta.set(n.name, { label: n.name, kind: n.kind, remote: false, node: null, provides: n.provides ?? [], capsConsumes: n.consumes ?? [] })
+      meta.set(n.name, {
+        label: n.name,
+        kind: n.kind,
+        remote: false,
+        node: null,
+        provides: n.provides ?? [],
+        capsConsumes: n.consumes ?? [],
+        reach: n.reach,
+        exposable: n.kind === "service" || n.kind === "static",
+        launchUrl: n.kind === "reference" ? (n.base_url ?? undefined) : launchOf(n),
+      })
     for (const [id, ri] of remoteInfo)
-      meta.set(id, { label: ri.md.name, kind: ri.md.kind, remote: true, node: ri.machine, provides: [], capsConsumes: [] })
+      meta.set(id, {
+        label: ri.md.name,
+        kind: ri.md.kind,
+        remote: true,
+        node: ri.machine,
+        provides: [],
+        capsConsumes: [],
+        reach: null,
+        exposable: false,
+        launchUrl: ri.md.base_url ?? undefined,
+      })
 
     return { nodes, edges, kindOf, reachOf, consumes, consumedBy, meta }
   }, [graph, jobs, programs, gateway, suggestionsResp, meshResp])
@@ -865,14 +896,14 @@ export function SystemMapPage() {
         const focused = n.id === focusRef.current
         const inspectable = n.type === "map" || n.type === "external" || n.type === "remote"
         let data = n.data
-        if (n.type === "map") data = { ...data, onMenu: openMenu, onProgram: openProgram }
+        if (n.type === "map") data = { ...data, onProgram: openProgram }
         if (inspectable) data = { ...data, focusDim, focused }
         // Keep the focused node selected across resyncs so inspect mode survives a
         // background refetch (otherwise react-flow clears selection → focus clears).
         return { ...n, position: posRef.current![n.id] ?? n.position, selected: focused, data }
       })
     },
-    [openMenu, openProgram, litOf],
+    [openProgram, litOf],
   )
 
   // Dim edges not touching the focused node.
@@ -1078,16 +1109,6 @@ export function SystemMapPage() {
     )
   }, [confirmDel, deleteDeployment])
 
-  // Right-click a deployment → same menu as the hover kebab.
-  const onNodeContextMenu = useCallback(
-    (e: React.MouseEvent, node: Node) => {
-      if (node.type !== "map") return
-      e.preventDefault()
-      openMenu(e.clientX, e.clientY, node.id, (node.data as { kind: string }).kind)
-    },
-    [openMenu],
-  )
-
   const restart = useCallback(
     (name: string) => {
       setBanner({ type: "info", text: `Restarting ${name}…` })
@@ -1103,36 +1124,6 @@ export function SystemMapPage() {
     [serviceAction],
   )
 
-  // The menu's actions for the right-clicked/kebabbed deployment. Exposure items
-  // are contextual on the current reach (from reachRef); statics are always served.
-  const menuItems = useMemo<MenuItem[]>(() => {
-    if (!menu) return []
-    const { name, kind } = menu
-    const close = () => setMenu(null)
-    const path = kind === "job" ? `/jobs/${name}` : kind === "tool" ? `/tools/${name}` : `/services/${name}`
-    const items: MenuItem[] = [
-      { label: "Open", icon: ExternalLink, onClick: () => (close(), navigate(path)) },
-    ]
-    if (kind === "service") items.push({ label: "Restart", icon: RotateCw, onClick: () => (close(), restart(name)) })
-    if (kind === "service" || kind === "static") {
-      const reach = built.reachOf[name] // internal | public | undefined(off)
-      if (reach !== "public")
-        items.push({ label: "Publish to internet", icon: Globe, onClick: () => (close(), applyReach(name, kind, "public")) })
-      if (reach !== "internal")
-        items.push({ label: "Restrict to LAN", icon: Router, onClick: () => (close(), applyReach(name, kind, "internal")) })
-      if (kind === "service" && reach)
-        items.push({ label: "Make private (off)", icon: Lock, onClick: () => (close(), applyReach(name, kind, "off")) })
-    }
-    items.push({
-      label: `Delete ${kind}`,
-      icon: Trash2,
-      danger: true,
-      onClick: () => (close(), setConfirmDel({ name, kind })),
-    })
-    return items
-  }, [menu, built, navigate, restart, applyReach])
-
-  // The inspected node's consumes / consumed_by, resolved from the graph edges.
   // The inspected node's consumes / consumed_by — from the unified adjacency, so a
   // remote node's panel works identically to a local one.
   const focusInfo = useMemo(() => {
@@ -1147,10 +1138,32 @@ export function SystemMapPage() {
       node: m.node,
       provides: m.provides,
       capsConsumes: m.capsConsumes,
+      launchUrl: m.launchUrl,
+      reach: m.reach,
+      exposable: m.exposable,
       consumes: built.consumes.get(focus) ?? [],
       consumedBy: built.consumedBy.get(focus) ?? [],
     }
   }, [focus, built])
+
+  // Actions for the inspected node — the old right-click menu, now in the panel.
+  // Only for local (editable) deployments; remotes are view-only from here.
+  const focusActions = useMemo<MenuItem[]>(() => {
+    if (!focusInfo || focusInfo.remote) return []
+    const { name, kind, reach, exposable } = focusInfo
+    const items: MenuItem[] = []
+    if (kind === "service") items.push({ label: "Restart", icon: RotateCw, onClick: () => restart(name) })
+    if (exposable) {
+      if (reach !== "public")
+        items.push({ label: "Publish to internet", icon: Globe, onClick: () => applyReach(name, kind, "public") })
+      if (reach !== "internal")
+        items.push({ label: "Restrict to LAN", icon: Router, onClick: () => applyReach(name, kind, "internal") })
+      if (kind === "service" && reach && reach !== "off")
+        items.push({ label: "Make private (off)", icon: Lock, onClick: () => applyReach(name, kind, "off") })
+    }
+    items.push({ label: `Delete ${kind}`, icon: Trash2, danger: true, onClick: () => setConfirmDel({ name, kind }) })
+    return items
+  }, [focusInfo, restart, applyReach])
 
   const addExternal = useCallback(
     (name: string, base_url: string) => {
@@ -1187,7 +1200,6 @@ export function SystemMapPage() {
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         onEdgeClick={onEdgeClick}
-        onNodeContextMenu={onNodeContextMenu}
         onNodeDragStop={onNodeDragStop}
         onEdgesDelete={onEdgesDelete}
         onBeforeDelete={onBeforeDelete}
@@ -1243,13 +1255,10 @@ export function SystemMapPage() {
         )}
       </ReactFlow>
 
-      {menu && (
-        <NodeMenu menu={menu} items={menuItems} onClose={() => setMenu(null)} />
-      )}
-
       {focusInfo && (
         <InspectPanel
           info={focusInfo}
+          actions={focusActions}
           onClose={() => setFocus(null)}
           onOpen={(name, kind, node) => navigate(node ? `/node/${node}` : detailPath(name, kind))}
           onUnlink={(ref) => removeDep(focusInfo.name, focusInfo.kind, ref)}
@@ -1268,56 +1277,6 @@ export function SystemMapPage() {
         onCancel={() => setConfirmDel(null)}
       />
     </div>
-  )
-}
-
-// The deployment popup — a fixed-position action list at the cursor/kebab, with a
-// backdrop that closes it. Clamped to stay on-screen.
-function NodeMenu({
-  menu,
-  items,
-  onClose,
-}: {
-  menu: { x: number; y: number; name: string; kind: string }
-  items: MenuItem[]
-  onClose: () => void
-}) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose()
-    window.addEventListener("keydown", onKey)
-    return () => window.removeEventListener("keydown", onKey)
-  }, [onClose])
-
-  const left = Math.min(menu.x, window.innerWidth - 200)
-  const top = Math.min(menu.y, window.innerHeight - (items.length * 34 + 40))
-  return (
-    <>
-      <div className="fixed inset-0 z-40" onClick={onClose} onContextMenu={(e) => (e.preventDefault(), onClose())} />
-      <div
-        className="fixed z-50 w-[186px] overflow-hidden rounded-md border border-[var(--border)] bg-[var(--card)] py-1 text-xs shadow-xl"
-        style={{ left, top }}
-      >
-        <div className="truncate px-3 py-1.5 font-mono text-[10px] text-[var(--muted)]" title={menu.name}>
-          {menu.name}
-        </div>
-        <div className="border-t border-[var(--border)]" />
-        {items.map((it) => {
-          const Icon = it.icon
-          return (
-            <button
-              key={it.label}
-              onClick={it.onClick}
-              className={`flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors hover:bg-white/5 ${
-                it.danger ? "text-red-400" : "text-[var(--card-foreground)]"
-              }`}
-            >
-              <Icon size={13} />
-              {it.label}
-            </button>
-          )
-        })}
-      </div>
-    </>
   )
 }
 
@@ -1363,6 +1322,7 @@ function Legend() {
 // (with protocol/external chips) and consumed-by, each removable/navigable.
 function InspectPanel({
   info,
+  actions,
   onClose,
   onOpen,
   onUnlink,
@@ -1372,11 +1332,13 @@ function InspectPanel({
     kind: string
     remote: boolean
     node: string | null
+    launchUrl?: string
     provides: string[]
     capsConsumes: string[]
     consumes: Consume[]
     consumedBy: Dependent[]
   }
+  actions: MenuItem[]
   onClose: () => void
   onOpen: (name: string, kind: string, node: string | null) => void
   onUnlink: (ref: string) => void
@@ -1395,14 +1357,48 @@ function InspectPanel({
         <span className="shrink-0 rounded bg-black/30 px-1.5 py-0.5 text-[9px] uppercase text-[var(--muted)]">
           {info.kind}
         </span>
-        <button onClick={() => onOpen(info.name, info.kind, info.node)} title="Open" className="text-[var(--muted)] hover:text-[var(--card-foreground)]">
-          <ExternalLink size={13} />
+        {info.launchUrl && (
+          <a
+            href={info.launchUrl}
+            target="_blank"
+            rel="noreferrer"
+            title={`Launch ${info.launchUrl}`}
+            className="text-[var(--muted)] hover:text-[var(--primary)]"
+          >
+            <ExternalLink size={13} />
+          </a>
+        )}
+        <button onClick={() => onOpen(info.name, info.kind, info.node)} title="Castle details" className="text-[var(--muted)] hover:text-[var(--card-foreground)]">
+          <Maximize2 size={12} />
         </button>
         <button onClick={onClose} title="Close" className="text-[var(--muted)] hover:text-[var(--card-foreground)]">
           <X size={14} />
         </button>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
+        {actions.length > 0 && (
+          <PanelSection title="Actions">
+            <div className="flex flex-wrap gap-1">
+              {actions.map((a) => {
+                const Icon = a.icon
+                return (
+                  <button
+                    key={a.label}
+                    onClick={a.onClick}
+                    className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] transition-colors ${
+                      a.danger
+                        ? "border-red-900 text-red-400 hover:bg-red-900/30"
+                        : "border-[var(--border)] text-[var(--card-foreground)] hover:border-[var(--primary)]"
+                    }`}
+                  >
+                    <Icon size={11} />
+                    {a.label}
+                  </button>
+                )
+              })}
+            </div>
+          </PanelSection>
+        )}
         {(info.provides.length > 0 || info.capsConsumes.length > 0) && (
           <PanelSection title="Capabilities">
             {info.provides.map((t) => (
