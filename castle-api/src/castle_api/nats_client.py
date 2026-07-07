@@ -50,10 +50,12 @@ class CastleNATSClient:
         local_hostname: str,
         local_registry: NodeRegistry,
         servers: str | list[str] = "nats://localhost:4222",
+        token: str | None = None,
     ) -> None:
         self._local_hostname = local_hostname
         self._local_registry = local_registry
         self._servers = servers
+        self._token = token or None
         self._nc: nats.NATS | None = None
         self._kv = None
         self._presence_kv = None
@@ -77,9 +79,13 @@ class CastleNATSClient:
 
     async def start(self) -> None:
         """Connect, publish our registry, seed state, and start watchers."""
+        # A `tls://` server URL makes nats-py verify the server against the system
+        # CA bundle — which trusts the wildcard's Let's Encrypt issuer, so no custom
+        # CA is needed. `token` authenticates this node to the broker.
         self._nc = await nats.connect(
             self._servers,
             name=f"castle-{self._local_hostname}",
+            token=self._token,
             max_reconnect_attempts=-1,  # reconnect forever — nodes come and go
         )
         js = self._nc.jetstream()
