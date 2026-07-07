@@ -19,8 +19,6 @@ import json
 import urllib.error
 import urllib.request
 
-from castle_core.config import SECRETS_DIR
-
 _API = "https://api.cloudflare.com/client/v4"
 
 # Secret holding a Cloudflare token scoped to the PUBLIC zone (Zone:DNS:Edit).
@@ -30,11 +28,10 @@ PUBLIC_DNS_TOKEN = "CLOUDFLARE_PUBLIC_DNS_TOKEN"
 
 
 def public_dns_token() -> str | None:
-    """The public-zone DNS token from secrets, or None if not configured."""
-    path = SECRETS_DIR / PUBLIC_DNS_TOKEN
-    if path.exists():
-        return path.read_text().strip() or None
-    return None
+    """The public-zone DNS token from the active secret backend, or None."""
+    from castle_core.config import read_secret
+
+    return read_secret(PUBLIC_DNS_TOKEN) or None
 
 
 def _api(token: str, method: str, path: str, body: dict | None = None) -> dict:

@@ -59,25 +59,30 @@ class FileSecretBackend:
 
 
 class OpenBaoBackend:
-    """Reads from an OpenBao/Vault KV-v2 mount; falls back to ``fallback``.
+    """Reads/writes an OpenBao/Vault KV-v2 mount. No file fallback — a missing key
+    or unreachable server returns None (the bootstrap token is read separately by
+    ``build_backend`` via the file backend, not through here).
 
-    A missing key, an auth failure, or an unreachable server all fall through to
-    the fallback — so a partly-migrated vault and the bootstrap token both resolve.
+    ``node_prefix`` supports a shared vault with per-node overrides: a read tries
+    ``<node_prefix>/<name>`` first, then the shared ``<name>``. So a node-specific
+    secret (e.g. that node's postgres password) lives at the prefixed path while
+    shared secrets (a common token) live at the base — no name collision.
     """
 
     def __init__(
-        self, addr: str, token: str, mount: str, fallback: SecretBackend
+        self, addr: str, token: str, mount: str, node_prefix: str | None = None
     ) -> None:
         self._addr = addr.rstrip("/")
         self._token = token
         self._mount = mount
-        self._fallback = fallback
+        self._node_prefix = (node_prefix or "").strip("/")
 
     def read(self, name: str) -> str | None:
-        value = self._read_bao(name)
-        if value is not None:
-            return value
-        return self._fallback.read(name)
+        if self._node_prefix:
+            override = self._read_bao(f"{self._node_prefix}/{name}")
+            if override is not None:
+                return override
+        return self._read_bao(name)
 
     def _read_bao(self, name: str) -> str | None:
         if not self._token:
@@ -122,16 +127,33 @@ class OpenBaoBackend:
         return json.loads(raw) if raw else {}
 
 
-def build_backend(secrets_dir: Path) -> SecretBackend:
-    """Construct the active secret backend from the environment."""
+def build_backend(secrets_dir: Path, settings: dict | None = None) -> SecretBackend:
+    """Construct the active secret backend.
+
+    Selection comes from ``settings`` (the ``secrets:`` block of castle.yaml), with
+    environment variables overriding — so production is configured declaratively in
+    castle.yaml while tests/CI can force a backend via env. Default: file.
+
+    The OpenBao **token** is still read from the file backend (the bootstrap root of
+    trust — it can't live in the vault it unlocks); everything else comes from the
+    vault with no file fallback.
+    """
+    settings = settings or {}
     file_backend = FileSecretBackend(secrets_dir)
-    kind = os.environ.get("CASTLE_SECRET_BACKEND", "file").lower()
+    kind = (os.environ.get("CASTLE_SECRET_BACKEND") or settings.get("backend") or "file").lower()
     if kind == "openbao":
-        addr = os.environ.get("CASTLE_OPENBAO_ADDR", "http://localhost:8200")
-        mount = os.environ.get("CASTLE_OPENBAO_MOUNT", "castle")
-        token_secret = os.environ.get("CASTLE_OPENBAO_TOKEN_SECRET", "OPENBAO_TOKEN")
+        addr = os.environ.get("CASTLE_OPENBAO_ADDR") or settings.get(
+            "addr"
+        ) or "http://localhost:8200"
+        mount = os.environ.get("CASTLE_OPENBAO_MOUNT") or settings.get("mount") or "castle"
+        token_secret = os.environ.get("CASTLE_OPENBAO_TOKEN_SECRET") or settings.get(
+            "token_secret"
+        ) or "OPENBAO_TOKEN"
         token = file_backend.read(token_secret) or os.environ.get(
             "CASTLE_OPENBAO_TOKEN", ""
         )
-        return OpenBaoBackend(addr, token, mount, fallback=file_backend)
+        node_prefix = os.environ.get("CASTLE_OPENBAO_NODE_PREFIX") or settings.get(
+            "node_prefix"
+        )
+        return OpenBaoBackend(addr, token, mount, node_prefix)
     return file_backend

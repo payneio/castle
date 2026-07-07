@@ -410,11 +410,10 @@ def _substrate_db_url() -> str | None:
     explicit = os.environ.get("SUPABASE_DB_URL")
     if explicit:
         return explicit
-    from castle_core.config import SECRETS_DIR
+    from castle_core.config import read_secret
 
-    pw_file = SECRETS_DIR / "SUPABASE_POSTGRES_PASSWORD"
-    if pw_file.exists():
-        pw = pw_file.read_text().strip()
+    pw = read_secret("SUPABASE_POSTGRES_PASSWORD")
+    if pw:
         port = os.environ.get("SUPABASE_DB_HOST_PORT", "5433")
         return f"postgresql://postgres:{pw}@localhost:{port}/postgres"
     return None

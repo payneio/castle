@@ -318,17 +318,31 @@ def resolve_env_vars(
     return {k: secret[k] if k in secret else plain[k] for k in env}
 
 
-def _read_secret(name: str) -> str:
-    """Resolve a secret via the active backend (file by default; OpenBao opt-in).
+def _secrets_settings() -> dict:
+    """The ``secrets:`` block of castle.yaml — selects the backend."""
+    try:
+        data = yaml.safe_load((CASTLE_HOME / "castle.yaml").read_text()) or {}
+        return data.get("secrets") or {}
+    except Exception:
+        return {}
 
-    Returns a ``<MISSING_SECRET:...>`` placeholder if unresolved (never raises).
+
+def read_secret(name: str) -> str | None:
+    """Resolve a secret via the active backend, or None if unset.
+
+    The public helper for code that reads secrets directly (DNS/supabase/etc.) so
+    everything goes through the one backend rather than the filesystem.
     """
     from castle_core.secret_backends import build_backend
 
-    value = build_backend(SECRETS_DIR).read(name)
-    if value is not None:
-        return value
-    return f"<MISSING_SECRET:{name}>"
+    return build_backend(SECRETS_DIR, _secrets_settings()).read(name)
+
+
+def _read_secret(name: str) -> str:
+    """Like :func:`read_secret` but returns a ``<MISSING_SECRET:...>`` placeholder
+    for unresolved secrets (used by ``${secret:...}`` env substitution)."""
+    value = read_secret(name)
+    return value if value is not None else f"<MISSING_SECRET:{name}>"
 
 
 def _parse_program(name: str, data: dict) -> ProgramSpec:
