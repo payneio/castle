@@ -93,7 +93,6 @@ const PROTO_COLOR: Record<string, string> = {
   system: "#6e7681",
 }
 const EXTERNAL_X = 1450 // external resources (references) — beyond Internet
-const MESH_Y = -150 // band above the local lanes for other machines' deployments
 
 const HANDLE = { opacity: 0, width: 8, height: 8 } as const
 
@@ -491,33 +490,35 @@ export function SystemMapPage() {
       })
     })
 
-    // Other machines (mesh-discovered) — a read-only band above the local lanes,
-    // one row per node, its deployments laid out horizontally.
+    // Other machines (mesh-discovered). Each is a band above the local lanes, with
+    // its deployments in the SAME kind-columns as local, draggable, and the shared
+    // lane headers lifted above the topmost band so they head every machine.
     const byMachine = new Map<string, MeshDeployment[]>()
     for (const md of meshResp?.deployments ?? []) {
       const arr = byMachine.get(md.node) ?? []
       arr.push(md)
       byMachine.set(md.node, arr)
     }
-    let mrow = 0
+    let bandBaseline = TOP - 70 // first band sits just above local; bands stack upward
+    let headersY = TOP - 40 // rises above the bands when machines are present
     for (const [machine, deps] of byMachine) {
-      const y = MESH_Y - mrow * (ROW_H + 8)
-      nodes.push({
-        id: `__machine_${machine}__`,
-        type: "lane",
-        position: { x: PROG_X, y: y - 4 },
-        selectable: false,
-        draggable: false,
-        deletable: false,
-        data: { label: `⬡ ${machine}` },
-      })
-      deps.forEach((md, i) => {
+      const perLaneM: Record<string, number> = {}
+      const laid = deps
+        .filter((md) => LANES[md.kind])
+        .map((md) => {
+          const lane = LANES[md.kind]
+          const row = (perLaneM[md.kind] = (perLaneM[md.kind] ?? 0) + 1) - 1
+          return { md, x: lane.x, row }
+        })
+      const rows = Math.max(1, ...Object.values(perLaneM))
+      const bandTop = bandBaseline - (rows - 1) * ROW_H
+      for (const { md, x, row } of laid) {
         nodes.push({
           id: `__remote_${machine}_${md.name}__`,
           type: "remote",
-          position: { x: i * 150, y },
-          selectable: false,
-          draggable: false,
+          position: { x, y: bandTop + row * ROW_H },
+          selectable: true,
+          draggable: true,
           deletable: false,
           data: {
             label: md.name,
@@ -525,8 +526,18 @@ export function SystemMapPage() {
             sub: md.endpoints[0] ? `:${md.endpoints[0].port}` : undefined,
           },
         })
+      }
+      nodes.push({
+        id: `__machine_${machine}__`,
+        type: "lane",
+        position: { x: PROG_X, y: bandTop },
+        selectable: false,
+        draggable: false,
+        deletable: false,
+        data: { label: `⬡ ${machine}` },
       })
-      mrow++
+      headersY = Math.min(headersY, bandTop - 44)
+      bandBaseline = bandTop - (ROW_H + 44) // gap before the next machine (upward)
     }
 
     const maxRows = Math.max(1, ...Object.values(perLane))
@@ -557,7 +568,7 @@ export function SystemMapPage() {
       nodes.push({
         id: `__lane_${title}__`,
         type: "lane",
-        position: { x, y: TOP - 40 },
+        position: { x, y: headersY },
         data: { label: title },
         selectable: false,
         draggable: false,
