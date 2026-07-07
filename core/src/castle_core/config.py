@@ -644,6 +644,44 @@ def _write_resource_dir(directory: Path, specs: dict[str, dict]) -> None:
             path.unlink()
 
 
+# Top-level castle.yaml keys that save_config owns and rewrites; anything else
+# (e.g. `secrets:`) is preserved verbatim so a rewrite can't drop it.
+_MANAGED_GLOBALS = {
+    "gateway", "repo", "data_dir", "repos_dir", "agents", "role",
+    "programs", "services", "jobs", "tools", "statics", "references", "deployments",
+}
+
+
+def write_deployment_file(config: CastleConfig, kind: str, name: str) -> None:
+    """Write (or remove) a single deployment file — globals and other resources are
+    left untouched. This is the PATCH primitive: a deployment edit persists only
+    that deployment, never rewriting castle.yaml globals."""
+    directory = config.root / "deployments" / _KIND_STORE[kind]
+    path = directory / f"{name}.yaml"
+    spec = config.store_for(kind).get(name)
+    if spec is None:
+        path.unlink(missing_ok=True)
+        return
+    directory.mkdir(parents=True, exist_ok=True)
+    with open(path, "w") as f:
+        yaml.dump(_spec_to_yaml_dict(spec), f, default_flow_style=False, sort_keys=False)
+
+
+def write_program_file(config: CastleConfig, name: str) -> None:
+    """Write (or remove) a single program file — nothing else is touched."""
+    directory = config.root / "programs"
+    path = directory / f"{name}.yaml"
+    spec = config.programs.get(name)
+    if spec is None:
+        path.unlink(missing_ok=True)
+        return
+    directory.mkdir(parents=True, exist_ok=True)
+    with open(path, "w") as f:
+        yaml.dump(
+            _program_to_yaml_dict(spec, config), f, default_flow_style=False, sort_keys=False
+        )
+
+
 def save_config(config: CastleConfig) -> None:
     """Save castle config: global castle.yaml + programs/ and deployments/ dirs."""
     gateway_data: dict = {"port": config.gateway.port}
@@ -687,10 +725,13 @@ def save_config(config: CastleConfig) -> None:
     # from the existing file.
     if config.role and config.role != "follower":
         data["role"] = config.role
+    # Preserve any top-level castle.yaml keys this writer doesn't model (e.g.
+    # `secrets:`) — a full rewrite must never silently drop an unmanaged global.
     try:
         existing = yaml.safe_load((config.root / "castle.yaml").read_text()) or {}
-        if existing.get("secrets"):
-            data["secrets"] = existing["secrets"]
+        for k, v in existing.items():
+            if k not in _MANAGED_GLOBALS and k not in data:
+                data[k] = v
     except Exception:
         pass
 

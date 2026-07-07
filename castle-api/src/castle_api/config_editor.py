@@ -19,6 +19,8 @@ from castle_core.config import (
     load_config,
     parse_gateway,
     save_config,
+    write_deployment_file,
+    write_program_file,
 )
 from castle_core.manifest import ProgramSpec, kind_for
 
@@ -78,6 +80,16 @@ def _aggregate_yaml(config: CastleConfig) -> str:
     data: dict = {"gateway": {"port": config.gateway.port}}
     if config.repo:
         data["repo"] = str(config.repo)
+    if config.role and config.role != "follower":
+        data["role"] = config.role
+    # `secrets:` isn't modeled on CastleConfig — surface it from the raw file so the
+    # aggregate view/round-trip includes it.
+    try:
+        raw = yaml.safe_load((config.root / "castle.yaml").read_text()) or {}
+        if raw.get("secrets"):
+            data["secrets"] = raw["secrets"]
+    except Exception:
+        pass
     if config.programs:
         data["programs"] = {
             n: _program_to_yaml_dict(s, config) for n, s in config.programs.items()
@@ -221,7 +233,7 @@ def save_program(name: str, request: ProgramConfigRequest) -> dict:
         )
 
     config.programs[name] = spec
-    save_config(config)
+    write_program_file(config, name)  # PATCH: only this program file
     return {"ok": True, "program": name}
 
 
@@ -264,10 +276,11 @@ async def delete_program(name: str, cascade: bool = False) -> dict:
             except Exception:
                 pass
             del config.store_for(kind)[ref]
+            write_deployment_file(config, kind, ref)  # unlinks the removed deployment
             removed.append(ref)
 
     del config.programs[name]
-    save_config(config)
+    write_program_file(config, name)  # unlinks the program file only
 
     if removed:
         # Converge the runtime: prune any orphan units and regenerate the Caddyfile
@@ -350,8 +363,9 @@ def _save_deployment(name: str, config_dict: dict, kind: str | None = None) -> d
     # spec to the new store; drop the stale entry under the requested kind.
     if kind is not None and target_kind != kind:
         config.store_for(kind).pop(name, None)
+        write_deployment_file(config, kind, name)  # spec now absent → unlinks old file
     config.store_for(target_kind)[name] = dep
-    save_config(config)
+    write_deployment_file(config, target_kind, name)  # PATCH: only this file
     return {"ok": True, "deployment": name}
 
 
@@ -359,18 +373,19 @@ def _delete_deployment(name: str, kind: str | None = None) -> dict:
     """Remove a deployment. A kind-scoped delete drops only that twin; the
     kind-agnostic path removes every kind sharing the name."""
     config = get_config()
-    removed = False
+    removed_kinds = []
     kinds = (kind,) if kind is not None else KINDS
     for k in kinds:
         if name in config.store_for(k):
             del config.store_for(k)[name]
-            removed = True
-    if not removed:
+            removed_kinds.append(k)
+    if not removed_kinds:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Deployment '{name}' not found",
         )
-    save_config(config)
+    for k in removed_kinds:
+        write_deployment_file(config, k, name)  # spec absent → unlinks
     return {"ok": True, "deployment": name, "action": "deleted"}
 
 
@@ -406,9 +421,9 @@ def set_deployment_enabled(name: str, request: EnabledRequest) -> dict:
             detail=f"Deployment '{name}' not found",
         )
     # A name may span kinds — toggle all of them together.
-    for _kind, dep in deps:
+    for kind, dep in deps:
         dep.enabled = request.enabled
-    save_config(config)
+        write_deployment_file(config, kind, name)
     return {"ok": True, "deployment": name, "enabled": request.enabled}
 
 
