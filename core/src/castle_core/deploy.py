@@ -615,6 +615,15 @@ def _resolve_description(config: CastleConfig, spec: DeploymentBase) -> str | No
     return None
 
 
+def _registry_requires(dep: DeploymentSpec) -> list[dict]:
+    """A deployment's `requires` as plain dicts for the registry — carried into the
+    mesh payload so peers can draw cross-node consumption."""
+    return [
+        {"kind": r.kind, "ref": r.ref, "bind": r.bind}
+        for r in (getattr(dep, "requires", None) or [])
+    ]
+
+
 def _build_deployed(
     config: CastleConfig, name: str, dep: DeploymentSpec, messages: list[str]
 ) -> Deployment:
@@ -642,6 +651,7 @@ def _build_deployed(
             static_root=static_root,
             managed=False,
             enabled=dep.enabled,
+            requires=_registry_requires(dep),
         )
     if isinstance(dep, PathDeployment):
         return Deployment(
@@ -652,6 +662,7 @@ def _build_deployed(
             stack=stack,
             managed=False,
             enabled=dep.enabled,
+            requires=_registry_requires(dep),
         )
     if isinstance(dep, RemoteDeployment):
         return Deployment(
@@ -663,6 +674,7 @@ def _build_deployed(
             base_url=dep.base_url,
             managed=False,
             enabled=dep.enabled,
+            requires=_registry_requires(dep),
         )
 
     # systemd: a supervised process (a service, or a job when scheduled).
@@ -766,6 +778,7 @@ def _build_deployed(
         schedule=getattr(dep, "schedule", None),
         managed=managed,
         enabled=dep.enabled,
+        requires=_registry_requires(dep),
     )
 
 

@@ -126,6 +126,9 @@ def mesh_deployments() -> dict:
                     "base_url": getattr(d, "base_url", None),
                     "subdomain": d.subdomain,
                     "endpoints": _endpoints_of_registry(d),
+                    "requires": [
+                        r.get("ref") for r in (getattr(d, "requires", None) or []) if r.get("ref")
+                    ],
                 }
             )
     return {"deployments": out}

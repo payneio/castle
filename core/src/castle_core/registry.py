@@ -86,6 +86,10 @@ class Deployment:
     # Declared desired state (from the deployment's `enabled:`). `castle apply`
     # activates enabled deployments and deactivates disabled ones. Default True.
     enabled: bool = True
+    # Deployment `requires` (list of {kind, ref, bind}) — carried so the mesh can
+    # draw cross-node consumption. A remote consumer's ref resolves against the
+    # provider set across nodes.
+    requires: list[dict] = field(default_factory=list)
 
 
 @dataclass

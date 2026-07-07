@@ -324,6 +324,8 @@ function RemoteNode({ data }: NodeProps) {
         </div>
         {d.sub && <div className="truncate text-[9px] text-[var(--muted)]">{d.sub}</div>}
       </div>
+      <Handle id="rs" type="source" position={Position.Bottom} isConnectable={false} style={{ ...HANDLE, opacity: 0 }} />
+      <Handle id="lt" type="target" position={Position.Left} isConnectable={false} style={{ ...HANDLE, opacity: 0 }} />
     </div>
   )
 }
@@ -653,6 +655,47 @@ export function SystemMapPage() {
         labelStyle: { fill: "#f59e0b", fontSize: 9 },
         labelBgStyle: { fill: "#0d1117" },
       })
+    }
+
+    // Cross-node consumption — a remote deployment's `requires` resolved against
+    // the provider set across nodes: same machine first, then a local provider
+    // (a cross-machine edge), then another machine. This is the multi-node payoff.
+    const meshDeps = meshResp?.deployments ?? []
+    const meshByNode = new Map<string, Set<string>>()
+    for (const md of meshDeps) {
+      const s = meshByNode.get(md.node) ?? new Set<string>()
+      s.add(md.name)
+      meshByNode.set(md.node, s)
+    }
+    const remoteId = (node: string, name: string) => `__remote_${node}_${name}__`
+    for (const md of meshDeps) {
+      for (const ref of md.requires ?? []) {
+        let target: string | null = null
+        if (meshByNode.get(md.node)?.has(ref) && present.has(remoteId(md.node, ref)))
+          target = remoteId(md.node, ref) // same machine
+        else if (present.has(ref))
+          target = ref // a local provider — cross-machine edge
+        else
+          for (const [mn, names] of meshByNode)
+            if (mn !== md.node && names.has(ref) && present.has(remoteId(mn, ref))) {
+              target = remoteId(mn, ref)
+              break
+            }
+        if (!target) continue
+        edges.push({
+          id: `xnode:${md.node}:${md.name}->${ref}`,
+          source: remoteId(md.node, md.name),
+          target,
+          sourceHandle: "rs",
+          targetHandle: "lt",
+          animated: true,
+          deletable: false,
+          label: `${md.node} → ${ref}`,
+          style: { stroke: "#e879f9", strokeWidth: 1.5, strokeDasharray: "6 3" },
+          labelStyle: { fill: "#e879f9", fontSize: 9 },
+          labelBgStyle: { fill: "#0d1117" },
+        })
+      }
     }
 
     return { nodes, edges, kindOf, reachOf }
@@ -1176,6 +1219,7 @@ function Legend() {
     { c: PROTO_COLOR.system, label: "consumes — other" },
     { c: "#bc8cff", label: "same program", dashed: true },
     { c: "#f59e0b", label: "suggested — click to accept", dashed: true },
+    { c: "#e879f9", label: "cross-node", dashed: true },
     { c: "#58a6ff", label: "internal — LAN" },
     { c: "#2ea043", label: "public — internet" },
   ]

@@ -172,6 +172,7 @@ export interface MeshDeployment {
   base_url: string | null
   subdomain: string | null
   endpoints: GraphEndpoint[]
+  requires: string[] // deployment refs it consumes (for cross-node edges)
 }
 
 // POST /programs/{name}/sync — a fast-forward pull (no build/apply/restart).

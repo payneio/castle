@@ -67,6 +67,9 @@ def _registry_to_json(registry: NodeRegistry) -> str:
             entry["tcp_port"] = comp.tcp_port
         if getattr(comp, "base_url", None):
             entry["base_url"] = comp.base_url
+        # requires — deployment refs (no secrets), so peers can draw cross-node deps.
+        if getattr(comp, "requires", None):
+            entry["requires"] = comp.requires
         data["deployed"][NodeRegistry.key(comp.kind, name)] = entry
 
     return json.dumps(data)
@@ -101,6 +104,7 @@ def _json_to_registry(payload: str) -> NodeRegistry:
             managed=comp_data.get("managed", False),
             tcp_port=comp_data.get("tcp_port"),
             base_url=comp_data.get("base_url"),
+            requires=comp_data.get("requires", []),
         )
     return NodeRegistry(node=node, deployed=deployed)
 
