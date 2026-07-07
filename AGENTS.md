@@ -271,11 +271,21 @@ a service public unless it authenticates or is meant to be open.
 
 ## 8. Mesh — multi-node coordination (opt-in)
 
-Disabled by default. Enable via env on `castle-api`:
-`CASTLE_API_MQTT_ENABLED=true` (+ `_MQTT_HOST`/`_PORT`), `CASTLE_API_MDNS_ENABLED=true`.
-Nodes then advertise/discover over MQTT (Mosquitto, `castle-mqtt`) + mDNS; remote
-deployments surface as `manager: none` **reference** kinds. Inspect:
-`GET /mesh/status`, `GET /nodes`. Modules: `castle_api.mesh`, `.mqtt_client`, `.mdns`.
+Runs on **NATS JetStream** (`castle-nats`, TLS + token). Enable via env on
+`castle-api`: `CASTLE_API_NATS_ENABLED=true`, `CASTLE_API_NATS_URL=tls://castle-nats.<domain>:4222`,
+`CASTLE_API_NATS_TOKEN=${secret:NATS_TOKEN}`. Each node publishes its
+(secret-stripped) registry to a JetStream **KV** bucket, renews a **presence**
+key, and watches for peers; remote deployments surface as `manager: none`
+**reference** kinds. A static **`role`** (`authority`|`follower`, in `castle.yaml`)
+gates who may write the shared-config bucket. A consumed cross-node service
+(`requires: - ref: X` satisfied by a peer) is routed by the gateway with a
+presence-gated circuit-breaker.
+
+Inspect + drive from the CLI: **`castle mesh status`** / **`castle mesh nodes`** /
+**`castle mesh config list|get|set`** (or `GET /mesh/status`, `/nodes`,
+`/mesh/config`). Modules: `castle_api.nats_client`, `.mesh`, `.mesh_gateway`,
+`.mdns`; secrets via `core` `secret_backends` (file default, OpenBao opt-in).
+→ Full history + operations: **`docs/fleet-mesh-plan.md`**.
 
 ---
 

@@ -1,5 +1,9 @@
 """Test fixtures for castle-api."""
 
+import socket
+import subprocess
+import time
+import urllib.request
 from collections.abc import Generator
 from pathlib import Path
 
@@ -15,6 +19,48 @@ from castle_core.registry import (
     NodeRegistry,
     save_registry,
 )
+
+
+def _free_port() -> int:
+    s = socket.socket()
+    s.bind(("", 0))
+    port = s.getsockname()[1]
+    s.close()
+    return port
+
+
+def _docker_available() -> bool:
+    try:
+        return subprocess.run(
+            ["docker", "info"], capture_output=True, timeout=5
+        ).returncode == 0
+    except Exception:
+        return False
+
+
+@pytest.fixture
+def nats_url() -> Generator[str, None, None]:
+    """A throwaway NATS+JetStream broker in docker (fresh per test for clean
+    buckets). Skips if docker is unavailable."""
+    if not _docker_available():
+        pytest.skip("docker unavailable — skipping NATS integration tests")
+    cport, mport = _free_port(), _free_port()
+    name = f"castle-test-nats-{cport}"
+    subprocess.run(
+        ["docker", "run", "-d", "--rm", "--name", name,
+         "-p", f"{cport}:4222", "-p", f"{mport}:8222", "nats:2", "-js", "-m", "8222"],
+        check=True, capture_output=True,
+    )
+    try:
+        for _ in range(50):  # wait for readiness
+            try:
+                urllib.request.urlopen(f"http://127.0.0.1:{mport}/healthz", timeout=1)
+                break
+            except Exception:
+                time.sleep(0.2)
+        yield f"nats://127.0.0.1:{cport}"
+    finally:
+        subprocess.run(["docker", "rm", "-f", name], capture_output=True)
 
 
 def _write_castle_config(root: Path, config: dict) -> None:

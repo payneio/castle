@@ -239,6 +239,15 @@ class CastleNATSClient:
             raise RuntimeError("config bucket not available")
         await self._config_kv.put(key, value.encode())
 
+    async def list_shared_config(self) -> list[str]:
+        """All shared-config keys (empty if none/unavailable)."""
+        if self._config_kv is None:
+            return []
+        try:
+            return sorted(await self._config_kv.keys())
+        except Exception:
+            return []  # empty bucket raises NoKeysError in nats-py
+
     async def _config_watch_loop(self) -> None:
         """Watch shared config; announce changes so followers can reconcile.
 
