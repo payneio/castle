@@ -200,6 +200,7 @@ class NodeSummary(BaseModel):
 
     hostname: str
     gateway_port: int
+    gateway_domain: str | None = None  # acme domain → dashboard at castle.<domain>
     deployed_count: int
     service_count: int
     is_local: bool = False

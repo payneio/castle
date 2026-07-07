@@ -14,7 +14,6 @@ import {
   Server,
   Share2,
   Map as MapIcon,
-  Network,
   Wrench,
   X,
   type LucideIcon,
@@ -23,6 +22,7 @@ import { cn } from "@/lib/utils"
 import { useEventStream } from "@/services/api/hooks"
 import { AssistantDock } from "@/components/AssistantDock"
 import { CommandPalette } from "@/components/CommandPalette"
+import { HostSwitcher } from "@/components/HostSwitcher"
 
 type NavLeaf = { to: string; label: string; icon: LucideIcon; end?: boolean }
 type NavGroup = { label: string; icon: LucideIcon; children: NavLeaf[] }
@@ -42,7 +42,6 @@ const NAV: (NavLeaf | NavGroup)[] = [
     ],
   },
   { to: "/programs", label: "Programs", icon: Package },
-  { to: "/graph", label: "Graph", icon: Network },
   { to: "/map", label: "System Map", icon: MapIcon },
   { to: "/mesh", label: "Mesh", icon: Share2 },
 ]
@@ -202,6 +201,7 @@ export function Layout() {
                 <X size={20} />
               </button>
             </div>
+            <HostSwitcher collapsed={false} />
             <NavItems collapsed={false} onNavigate={() => setMobileOpen(false)} />
           </aside>
         </div>
@@ -222,6 +222,7 @@ export function Layout() {
         >
           <Brand collapsed={collapsed} />
         </div>
+        <HostSwitcher collapsed={collapsed} />
         <NavItems collapsed={collapsed} />
         <button
           onClick={() => setCollapsed((c) => !c)}

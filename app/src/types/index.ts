@@ -311,6 +311,7 @@ export interface SSEServiceActionEvent {
 export interface NodeSummary {
   hostname: string
   gateway_port: number
+  gateway_domain: string | null // acme domain → dashboard at castle.<domain>
   deployed_count: number
   service_count: number
   is_local: boolean

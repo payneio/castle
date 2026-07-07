@@ -53,6 +53,7 @@ def _local_node_summary(registry: object) -> NodeSummary:
     return NodeSummary(
         hostname=registry.node.hostname,
         gateway_port=registry.node.gateway_port,
+        gateway_domain=registry.node.gateway_domain,
         deployed_count=len(registry.deployed),
         service_count=sum(1 for d in registry.deployed.values() if d.port is not None),
         is_local=True,
@@ -67,6 +68,7 @@ def _remote_node_summary(hostname: str, remote: object) -> NodeSummary:
     return NodeSummary(
         hostname=hostname,
         gateway_port=reg.node.gateway_port,
+        gateway_domain=getattr(reg.node, "gateway_domain", None),
         deployed_count=len(reg.deployed),
         service_count=sum(1 for d in reg.deployed.values() if d.port is not None),
         is_local=False,
