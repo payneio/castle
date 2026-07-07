@@ -1,8 +1,9 @@
 # Fleet Mesh Plan — OpenBao + NATS
 
-**Status:** in progress on branch `feat/fleet-mesh-nats-openbao`.
-Phases 0–2 + Phase 4 (secret-read backend) complete + single-node verified (live).
-Phase 3 (cross-node routing/breaker) and Phase 4 hardening pending the 2nd node.
+**Status:** Phases 0–4 complete + verified live across **both nodes** (civil +
+primer), including TLS hardening (NATS + OpenBao). Merged to main.
+Remaining nice-to-have: the live curl+kill breaker demo (needs a peer-unique
+consumed service) — every underlying piece is verified.
 
 ## Context
 
@@ -245,12 +246,23 @@ second node is proven on NATS.
    systemd spec (general, `-`-prefixed so a hook failure never fails the unit);
    `castle-openbao` runs `/data/castle/castle-openbao/unseal.sh` (polls up, unseals
    with `OPENBAO_UNSEAL_KEY`). Verified: manual seal → restart → auto-unsealed.
-3. **TLS hardening — REMAINING (deliberately deferred).** NATS + OpenBao are
-   plaintext on the trusted LAN. This is the gate before cross-*network* or moving
-   real secrets — neither of which is here yet (the vault holds no production
-   secrets). Doing NATS TLS/auth touches the *live* civil↔primer mesh, so it's a
-   deliberate, staged change (regenerate certs, update both nodes' clients), not a
-   tail-end one. Next dedicated step.
+3. **TLS hardening — DONE + verified across both nodes (2026-07-07).**
+   Reuses the existing ACME **wildcard cert** via `expose.tcp.tls` (the postgres
+   mechanism) — services present a publicly-trusted cert for
+   `<name>.civil.payne.io`, so clients verify against the **system CA with no
+   custom CA to distribute**.
+   - **NATS:** `tls{}` (wildcard cert in `/tls`) + `authorization{token}`
+     (`$NATS_TOKEN` from the `NATS_TOKEN` secret). Clients connect to
+     `tls://castle-nats.civil.payne.io:4222` with the token; `CastleNATSClient`
+     gained token support (a `tls://` URL → nats-py verifies via system CA).
+     **civil + primer both cut over**; plaintext now rejected (verified:
+     `certificate is valid for *.civil.payne.io, not localhost`).
+   - **OpenBao:** listener `tls_cert_file`/`tls_key_file` from `/tls`; reachable at
+     `https://castle-openbao.civil.payne.io:8200`. Auto-unseal + secret backend
+     both use the HTTPS URL. Verified: HTTPS serves, **auto-unsealed over HTTPS**,
+     plaintext rejected, backend reads a secret over HTTPS.
+   - Coordinated cutover across the whole fleet (both nodes) with a brief,
+     expected mesh blip; mesh isn't load-bearing so no service impact.
 
 ### Phase 3 — cross-node routing + breaker: logic DONE + verified against a real peer (2026-07-07)
 
