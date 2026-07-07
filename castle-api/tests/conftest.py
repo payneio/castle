@@ -1,5 +1,11 @@
 """Test fixtures for castle-api."""
 
+import os as _os
+# Tests must not read the host's real secret backend (castle.yaml may point
+# at OpenBao); force the file backend unless CI explicitly overrides.
+_os.environ.setdefault("CASTLE_SECRET_BACKEND", "file")
+
+
 import socket
 import subprocess
 import time

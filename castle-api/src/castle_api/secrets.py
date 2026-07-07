@@ -5,14 +5,17 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 
-from castle_core.config import SECRETS_DIR
-from castle_core.secret_backends import build_backend
+from castle_core.config import SECRETS_DIR, _secrets_settings
+from castle_core.secret_backends import OpenBaoBackend, build_backend
+
+from castle_api.config import get_registry
 
 router = APIRouter(prefix="/secrets", tags=["secrets"])
 
 
 def _backend():
-    return build_backend(SECRETS_DIR)
+    # Same selection as the rest of castle (castle.yaml `secrets:` block).
+    return build_backend(SECRETS_DIR, _secrets_settings())
 
 
 class SecretValue(BaseModel):
@@ -23,6 +26,23 @@ class SecretValue(BaseModel):
 def list_secrets() -> list[str]:
     """List all secret names (not values)."""
     return _backend().list_names()
+
+
+@router.get("/info")
+def secrets_info() -> dict:
+    """The active backend + whether this node may write (for the UI)."""
+    settings = _secrets_settings()
+    backend = _backend()
+    kind = "openbao" if isinstance(backend, OpenBaoBackend) else "file"
+    role = get_registry().node.role
+    # File is always writable; a vault follower holds a read-only token.
+    writable = kind == "file" or role == "authority"
+    return {
+        "backend": kind,
+        "addr": settings.get("addr") if kind == "openbao" else None,
+        "role": role,
+        "writable": writable,
+    }
 
 
 @router.get("/{name}")

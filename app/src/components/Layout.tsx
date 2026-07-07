@@ -7,6 +7,7 @@ import {
   ChevronRight,
   Clock,
   Globe,
+  KeyRound,
   LayoutDashboard,
   Menu,
   Package,
@@ -44,6 +45,7 @@ const NAV: (NavLeaf | NavGroup)[] = [
   { to: "/programs", label: "Programs", icon: Package },
   { to: "/map", label: "System Map", icon: MapIcon },
   { to: "/mesh", label: "Mesh", icon: Share2 },
+  { to: "/secrets", label: "Secrets", icon: KeyRound },
 ]
 
 const COLLAPSE_KEY = "castle-nav-collapsed"

@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+import os as _os
 from collections.abc import Generator
 from pathlib import Path
+
+# Tests must not read the host's real secret backend (castle.yaml may point
+# at OpenBao); force the file backend unless CI explicitly overrides.
+_os.environ.setdefault("CASTLE_SECRET_BACKEND", "file")
 
 import pytest
 import yaml

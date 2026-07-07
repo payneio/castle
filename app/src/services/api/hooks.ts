@@ -543,3 +543,43 @@ export function useEventStream() {
     return () => es.close()
   }, [qc])
 }
+
+// --- Secrets ---
+
+export interface SecretsInfo {
+  backend: string
+  addr: string | null
+  role: string
+  writable: boolean
+}
+
+export function useSecretsInfo() {
+  return useQuery({
+    queryKey: ["secrets-info"],
+    queryFn: () => apiClient.get<SecretsInfo>("/secrets/info"),
+  })
+}
+
+export function useSecrets() {
+  return useQuery({
+    queryKey: ["secrets"],
+    queryFn: () => apiClient.get<string[]>("/secrets"),
+  })
+}
+
+export function useSetSecret() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ name, value }: { name: string; value: string }) =>
+      apiClient.put(`/secrets/${name}`, { value }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["secrets"] }),
+  })
+}
+
+export function useDeleteSecret() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (name: string) => apiClient.delete(`/secrets/${name}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["secrets"] }),
+  })
+}

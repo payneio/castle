@@ -107,7 +107,9 @@ class OpenBaoBackend:
         url = f"{self._addr}/v1/{self._mount}/metadata?list=true"
         try:
             data = self._request("GET", url)
-            return sorted(data.get("data", {}).get("keys", []))
+            keys = data.get("data", {}).get("keys", [])
+            # Drop folder entries (e.g. "nodes/") — those group per-node overrides.
+            return sorted(k for k in keys if not k.endswith("/"))
         except Exception:
             return []
 
