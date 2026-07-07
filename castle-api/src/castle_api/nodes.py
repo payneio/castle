@@ -3,12 +3,49 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Request, status
+from pydantic import BaseModel
 
 from castle_api.config import get_registry, settings
 from castle_api.mesh import mesh_state
 from castle_api.models import DeploymentSummary, MeshStatus, NodeDetail, NodeSummary
 
 router = APIRouter(tags=["nodes"])
+
+
+class ConfigValue(BaseModel):
+    value: str
+
+
+@router.get("/mesh/config")
+async def list_mesh_config(request: Request) -> dict:
+    """List shared-config keys + this node's role (only the authority may write)."""
+    client = getattr(request.app.state, "nats_client", None)
+    if client is None:
+        return {"keys": [], "role": get_registry().node.role}
+    return {"keys": await client.list_shared_config(), "role": client.role}
+
+
+@router.get("/mesh/config/{key:path}")
+async def get_mesh_config(key: str, request: Request) -> dict:
+    """Read a shared-config value."""
+    client = getattr(request.app.state, "nats_client", None)
+    value = await client.get_shared_config(key) if client else None
+    if value is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"config key '{key}' not set")
+    return {"key": key, "value": value}
+
+
+@router.put("/mesh/config/{key:path}")
+async def set_mesh_config(key: str, body: ConfigValue, request: Request) -> dict:
+    """Write a shared-config value (authority only)."""
+    client = getattr(request.app.state, "nats_client", None)
+    if client is None:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "mesh not enabled")
+    try:
+        await client.put_shared_config(key, body.value)
+    except PermissionError as exc:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc)) from exc
+    return {"key": key, "ok": True}
 
 
 def _local_node_summary(registry: object) -> NodeSummary:

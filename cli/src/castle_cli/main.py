@@ -168,6 +168,20 @@ def build_parser() -> argparse.ArgumentParser:
     gw_sub = gw.add_subparsers(dest="gateway_command")
     gw_sub.add_parser("status", help="Show gateway status + routes (the default)")
 
+    # Mesh — inspect nodes + manage authority-written shared config.
+    mesh = subparsers.add_parser("mesh", help="Inspect the mesh + shared config")
+    mesh_sub = mesh.add_subparsers(dest="mesh_command")
+    mesh_sub.add_parser("status", help="Mesh coordination status (the default)")
+    mesh_sub.add_parser("nodes", help="List mesh nodes (local + remote)")
+    mc = mesh_sub.add_parser("config", help="Shared config (only the authority writes)")
+    mc_sub = mc.add_subparsers(dest="mesh_config_command")
+    mc_sub.add_parser("list", help="List shared-config keys")
+    mc_get = mc_sub.add_parser("get", help="Get a shared-config value")
+    mc_get.add_argument("key")
+    mc_set = mc_sub.add_parser("set", help="Set a shared-config value (authority only)")
+    mc_set.add_argument("key")
+    mc_set.add_argument("value")
+
     # TLS material for raw-TCP services (cert cut from the gateway wildcard).
     tls = subparsers.add_parser(
         "tls", help="Manage castle-materialized TLS certs for raw-TCP services"
@@ -320,6 +334,10 @@ def main() -> int:
         from castle_cli.commands.gateway import run_gateway
 
         return run_gateway(args)
+    if cmd == "mesh":
+        from castle_cli.commands.mesh import run_mesh
+
+        return run_mesh(args)
     if cmd == "tls":
         from castle_cli.commands.tls import run_tls
 
