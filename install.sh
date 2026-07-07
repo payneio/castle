@@ -249,6 +249,45 @@ install_cli() {
     log_ok
 }
 
+# Non-interactive/non-login shells (`ssh host cmd`, systemd units, `castle` dev verbs)
+# load ~/.zshenv but NOT ~/.zshrc → ~/.zsh.d/*.sh — so tools installed there (uv,
+# castle, pnpm, nvm node) don't resolve over a bare `ssh host 'castle …'`. Mirror just
+# the PATH entries into ~/.zshenv (interactive niceties stay in ~/.zsh.d). Idempotent.
+ensure_shell_path() {
+    log_step "Wiring PATH for non-interactive shells"
+    case "${SHELL:-}" in
+        */zsh) : ;;
+        *)
+            if [ ! -e "${HOME}/.zshrc" ] && [ ! -e "${HOME}/.zshenv" ]; then
+                log_skip "not a zsh user"
+                return
+            fi
+            ;;
+    esac
+    local zshenv="${HOME}/.zshenv"
+    if [ -f "$zshenv" ] && grep -q "castle non-interactive PATH" "$zshenv"; then
+        log_skip "already wired"
+        return
+    fi
+    cat >> "$zshenv" <<'ZSHENV'
+
+# >>> castle non-interactive PATH >>>
+# Non-interactive/non-login shells (ssh 'cmd', systemd, castle dev verbs) load
+# ~/.zshenv but not ~/.zshrc → ~/.zsh.d/*.sh. Mirror the PATH entries castle's
+# toolchain needs (uv/castle in ~/.local/bin, pnpm, nvm node) so they resolve there.
+for _d in "$HOME/.local/bin" "$HOME/.local/share/pnpm"; do
+  case ":$PATH:" in *":$_d:"*) ;; *) [ -d "$_d" ] && PATH="$_d:$PATH" ;; esac
+done
+for _nb in "$HOME"/.nvm/versions/node/*/bin(N); do
+  case ":$PATH:" in *":$_nb:"*) ;; *) PATH="$_nb:$PATH" ;; esac
+done
+export PATH
+unset _d _nb
+# <<< castle non-interactive PATH <<<
+ZSHENV
+    log_ok "~/.zshenv"
+}
+
 # ---------------------------------------------------------------------------
 # Directory structure
 # ---------------------------------------------------------------------------
@@ -607,6 +646,7 @@ main() {
     [ -n "$WITH_DNS_PLUGIN" ] && ensure_caddy_dns_plugin "$WITH_DNS_PLUGIN"
     ensure_uv
     install_cli
+    ensure_shell_path
     create_directories
     seed_control_plane
     enable_lingering
