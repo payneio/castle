@@ -16,7 +16,7 @@ import {
   type ReactFlowInstance,
 } from "@xyflow/react"
 import "@xyflow/react/dist/style.css"
-import { useNavigate } from "react-router-dom"
+import { useNavigate, useSearchParams } from "react-router-dom"
 import {
   BoxSelect,
   ExternalLink,
@@ -429,6 +429,7 @@ export function SystemMapPage() {
   const [addExt, setAddExt] = useState(false)
 
   const openProgram = useCallback((program: string) => navigate(`/programs/${program}`), [navigate])
+  const [searchParams] = useSearchParams()
 
   // Kind lookup for handlers (which config section to write). Kept in a ref so the
   // stable callbacks below don't need it in their dep arrays.
@@ -954,6 +955,17 @@ export function SystemMapPage() {
     const picks = p.nodes.filter((n) => n.type === "map" || n.type === "external" || n.type === "remote")
     setFocus(picks.length === 1 ? picks[0].id : null)
   }, [])
+
+  // "Go to on map" from the command palette (/map?focus=<id>): select + center it.
+  useEffect(() => {
+    const f = searchParams.get("focus")
+    if (!f) return
+    const t = setTimeout(() => {
+      setFocus(f)
+      rfRef.current?.fitView({ nodes: [{ id: f }], padding: 0.6, duration: 400 })
+    }, 200)
+    return () => clearTimeout(t)
+  }, [searchParams])
 
   // Remember where the user dropped a node (persist across refetches + reloads).
   const onNodeDragStop = useCallback((_e: MouseEvent | TouchEvent, _n: Node, dragged: Node[]) => {

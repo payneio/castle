@@ -10,6 +10,7 @@ import {
   LayoutDashboard,
   Menu,
   Package,
+  Search,
   Server,
   Share2,
   Map as MapIcon,
@@ -21,6 +22,7 @@ import {
 import { cn } from "@/lib/utils"
 import { useEventStream } from "@/services/api/hooks"
 import { AssistantDock } from "@/components/AssistantDock"
+import { CommandPalette } from "@/components/CommandPalette"
 
 type NavLeaf = { to: string; label: string; icon: LucideIcon; end?: boolean }
 type NavGroup = { label: string; icon: LucideIcon; children: NavLeaf[] }
@@ -127,6 +129,22 @@ function NavGroupItem({
 function NavItems({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: () => void }) {
   return (
     <nav className="flex-1 px-2 py-3 space-y-1 overflow-y-auto">
+      <button
+        onClick={() => {
+          window.dispatchEvent(new Event("open-command-palette"))
+          onNavigate?.()
+        }}
+        title="Launch or find anything (⌘K)"
+        className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm text-[var(--muted)] hover:bg-white/5 hover:text-[var(--foreground)]"
+      >
+        <Search size={18} className="shrink-0" />
+        {!collapsed && (
+          <>
+            <span className="flex-1 text-left">Launch…</span>
+            <kbd className="rounded bg-black/40 px-1 text-[10px]">⌘K</kbd>
+          </>
+        )}
+      </button>
       {NAV.map((item) =>
         "children" in item ? (
           <NavGroupItem key={item.label} group={item} collapsed={collapsed} onNavigate={onNavigate} />
@@ -236,6 +254,9 @@ export function Layout() {
 
       {/* Global assistant — persists across navigation (Layout doesn't remount). */}
       <AssistantDock />
+
+      {/* App-wide ⌘K launcher / command palette. */}
+      <CommandPalette />
     </div>
   )
 }
