@@ -329,3 +329,141 @@ class TestConfigRoundTrip:
         assert g.public_domain == "pub.io"
         assert g.tunnel_id == "uuid-123"
         assert g.cert_hook is True
+
+
+class TestConfigurableRoots:
+    """data_dir / repos_dir: env > castle.yaml > default. The single source of truth
+    that keeps the CLI and the api service from resolving different data dirs."""
+
+    @pytest.fixture(autouse=True)
+    def _no_root_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # The test host may export CASTLE_DATA_DIR (that's the bug we're fixing);
+        # clear it so yaml/default precedence is exercised deterministically.
+        monkeypatch.delenv("CASTLE_DATA_DIR", raising=False)
+        monkeypatch.delenv("CASTLE_REPOS_DIR", raising=False)
+
+    def test_resolve_precedence_env_over_yaml(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from castle_core.config import _DEFAULT_DATA_DIR, _resolve_root_path
+
+        monkeypatch.setenv("X_ROOT_ENV", "/from/env")
+        p = _resolve_root_path("X_ROOT_ENV", "/from/yaml", tmp_path, _DEFAULT_DATA_DIR)
+        assert p == Path("/from/env")
+
+    def test_resolve_yaml_over_default(self, tmp_path: Path) -> None:
+        from castle_core.config import _DEFAULT_DATA_DIR, _resolve_root_path
+
+        p = _resolve_root_path(
+            "UNSET_ROOT_ENV", "/from/yaml", tmp_path, _DEFAULT_DATA_DIR
+        )
+        assert p == Path("/from/yaml")
+
+    def test_resolve_default_when_neither(self, tmp_path: Path) -> None:
+        from castle_core.config import _DEFAULT_DATA_DIR, _resolve_root_path
+
+        p = _resolve_root_path("UNSET_ROOT_ENV", None, tmp_path, _DEFAULT_DATA_DIR)
+        assert p == _DEFAULT_DATA_DIR  # returned as-is so save_config can compare equal
+
+    def test_resolve_expanduser(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from castle_core.config import _DEFAULT_DATA_DIR, _resolve_root_path
+
+        monkeypatch.setenv("X_ROOT_ENV", "~/box")
+        p = _resolve_root_path("X_ROOT_ENV", None, tmp_path, _DEFAULT_DATA_DIR)
+        assert p == (Path.home() / "box").resolve()
+
+    def test_resolve_relative_anchored_to_anchor_not_cwd(self, tmp_path: Path) -> None:
+        """A relative root is anchored to the dir holding castle.yaml — never cwd, or
+        the CLI (shell cwd) and api (unit cwd) would diverge again."""
+        from castle_core.config import _DEFAULT_DATA_DIR, _resolve_root_path
+
+        p = _resolve_root_path(
+            "UNSET_ROOT_ENV", "sub/data", tmp_path, _DEFAULT_DATA_DIR
+        )
+        assert p == (tmp_path / "sub" / "data").resolve()
+
+    def test_load_config_reads_data_dir_from_yaml(self, tmp_path: Path) -> None:
+        (tmp_path / "castle.yaml").write_text(
+            yaml.dump({"gateway": {"port": 9000}, "data_dir": "/srv/box/data"})
+        )
+        config = load_config(tmp_path)
+        assert config.data_dir == Path("/srv/box/data")
+
+    def test_load_config_data_dir_defaults(self, tmp_path: Path) -> None:
+        from castle_core.config import _DEFAULT_DATA_DIR
+
+        (tmp_path / "castle.yaml").write_text(yaml.dump({"gateway": {"port": 9000}}))
+        config = load_config(tmp_path)
+        assert config.data_dir == _DEFAULT_DATA_DIR
+
+    def test_save_round_trips_nondefault_roots(self, tmp_path: Path) -> None:
+        from castle_core.config import GatewayConfig
+
+        cfg = CastleConfig(
+            root=tmp_path,
+            gateway=GatewayConfig(port=9000),
+            repo=None,
+            programs={},
+            data_dir=Path("/srv/box/data"),
+            repos_dir=Path("/srv/box/repos"),
+        )
+        save_config(cfg)
+        text = (tmp_path / "castle.yaml").read_text()
+        assert "data_dir: /srv/box/data" in text
+        assert "repos_dir: /srv/box/repos" in text
+        reloaded = load_config(tmp_path)
+        assert reloaded.data_dir == Path("/srv/box/data")
+        assert reloaded.repos_dir == Path("/srv/box/repos")
+
+    def test_save_omits_default_roots(self, tmp_path: Path) -> None:
+        from castle_core.config import (
+            _DEFAULT_DATA_DIR,
+            _DEFAULT_REPOS_DIR,
+            GatewayConfig,
+        )
+
+        cfg = CastleConfig(
+            root=tmp_path,
+            gateway=GatewayConfig(port=9000),
+            repo=None,
+            programs={},
+            data_dir=_DEFAULT_DATA_DIR,
+            repos_dir=_DEFAULT_REPOS_DIR,
+        )
+        save_config(cfg)
+        text = (tmp_path / "castle.yaml").read_text()
+        assert "data_dir" not in text
+        assert "repos_dir" not in text
+
+    def test_ensure_dirs_raises_actionable_error(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An uncreatable data dir yields a CastleDirError with a fix, not a bare OSError."""
+        import castle_core.config as C
+        from castle_core.config import GatewayConfig
+
+        # Redirect the in-$HOME dirs to tmp so the test never touches the real ~/.castle.
+        for name in (
+            "CASTLE_HOME",
+            "CODE_DIR",
+            "SPECS_DIR",
+            "CONTENT_DIR",
+            "SECRETS_DIR",
+        ):
+            monkeypatch.setattr(C, name, tmp_path / name.lower())
+        # data_dir whose parent is a FILE → mkdir raises NotADirectoryError (OSError),
+        # deterministically, even if the suite runs as root.
+        blocker = tmp_path / "afile"
+        blocker.write_text("x")
+        cfg = CastleConfig(
+            root=tmp_path,
+            gateway=GatewayConfig(port=9000),
+            repo=None,
+            programs={},
+            data_dir=blocker / "sub",
+        )
+        with pytest.raises(C.CastleDirError) as ei:
+            C.ensure_dirs(cfg)
+        assert "data_dir" in str(ei.value)

@@ -15,7 +15,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from castle_core.config import (
-    DATA_DIR,
     SECRETS_DIR,
     SPECS_DIR,
     CastleConfig,
@@ -110,7 +109,7 @@ def deploy(target_name: str | None = None, root: Path | None = None) -> DeployRe
     config = load_config(root)
     result = DeployResult()
 
-    ensure_dirs()
+    ensure_dirs(config)
 
     # Build node config
     node = _node_config(config)
@@ -195,7 +194,9 @@ def _node_config(config: CastleConfig) -> NodeConfig:
 
 def _unit_file_for(name: str, kind: str) -> Path:
     """On-disk systemd unit path for a deployment (timer if it's a job)."""
-    return SYSTEMD_USER_DIR / (timer_name(name) if kind == "job" else unit_name(name, kind))
+    return SYSTEMD_USER_DIR / (
+        timer_name(name) if kind == "job" else unit_name(name, kind)
+    )
 
 
 def _unit_bytes(name: str, kind: str) -> str | None:
@@ -563,14 +564,15 @@ def _env_context(
     name: str,
     config_key: str,
     port: int | None,
+    data_dir: Path,
     public_url: str | None = None,
     supabase_app_schemas: str | None = None,
 ) -> dict[str, str]:
     """Placeholder values for defaults.env: ${name}/${data_dir}/${port}/${public_url}/
-    ${supabase_app_schemas}."""
+    ${supabase_app_schemas}. `data_dir` is the instance root (config.data_dir)."""
     ctx = {
         "name": name,
-        "data_dir": str(DATA_DIR / config_key),
+        "data_dir": str(data_dir / config_key),
         "uid": str(os.getuid()),
         "gid": str(os.getgid()),
     }
@@ -710,14 +712,21 @@ def _build_deployed(
         raw_env.setdefault(var, url)
     public_url = _public_url(config, name, expose, port)
     ctx = _env_context(
-        name, config_key, port, public_url, _supabase_app_schemas(config)
+        name,
+        config_key,
+        port,
+        config.data_dir,
+        public_url,
+        _supabase_app_schemas(config),
     )
     # ${tls_*}: paths to castle-materialized cert files for a TLS-material TCP
     # service. The deployment maps them into its own config (mount ${tls_dir} for a
     # container, or reference ${tls_cert}/${tls_key} directly for a native service).
     tls = dep.expose.tcp.tls if (dep.expose and dep.expose.tcp) else None
     if tls and tls.material != TlsMaterial.OFF:
-        tls_dir = DATA_DIR / config_key / "tls"
+        from castle_core.tls import tls_dir_for
+
+        tls_dir = tls_dir_for(config.data_dir, config_key)
         ctx.update(
             {
                 "tls_dir": str(tls_dir),
@@ -1077,5 +1086,7 @@ def _generate_systemd_units(config: CastleConfig, registry: NodeRegistry) -> Non
     SYSTEMD_USER_DIR.mkdir(parents=True, exist_ok=True)
 
     for _key, deployed in registry.deployed.items():
-        for fname, content in _render_unit_files(config, deployed.name, deployed).items():
+        for fname, content in _render_unit_files(
+            config, deployed.name, deployed
+        ).items():
             (SYSTEMD_USER_DIR / fname).write_text(content)

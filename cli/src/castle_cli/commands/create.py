@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import subprocess
 
-from castle_cli.config import REPOS_DIR, load_config, save_config
+from castle_cli.config import load_config, save_config
 from castle_cli.manifest import (
     BuildSpec,
     CaddyDeployment,
@@ -75,8 +75,8 @@ def run_create(args: argparse.Namespace) -> int:
         print(f"Error: '{name}' already exists in castle.yaml")
         return 1
 
-    REPOS_DIR.mkdir(parents=True, exist_ok=True)
-    project_dir = REPOS_DIR / name
+    config.repos_dir.mkdir(parents=True, exist_ok=True)
+    project_dir = config.repos_dir / name
     if project_dir.exists():
         print(f"Error: directory already exists: {project_dir}")
         return 1

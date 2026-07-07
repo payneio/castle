@@ -34,30 +34,32 @@ def _resolve_castle_home() -> Path:
     return Path.home() / ".castle"
 
 
-def _resolve_data_dir() -> Path:
-    """Resolve the program data directory (service/program data I/O).
-
-    Decoupled from CASTLE_HOME so bulk data can live on a dedicated volume.
-    Defaults to /data/castle. Override with the CASTLE_DATA_DIR environment
-    variable (supports ~ and relative paths, which are expanded and made absolute).
-    """
-    override = os.environ.get("CASTLE_DATA_DIR")
-    if override:
-        return Path(override).expanduser().resolve()
-    return Path("/data/castle")
+_DEFAULT_DATA_DIR = Path("/data/castle")
+_DEFAULT_REPOS_DIR = Path("/data/repos")
 
 
-def _resolve_repos_dir() -> Path:
-    """Resolve where program source repos live by default.
+class CastleDirError(RuntimeError):
+    """A required castle directory can't be created (e.g. data_dir outside a writable
+    parent). Carries an actionable message; surfaced to the CLI and the api instead of
+    a bare PermissionError traceback."""
 
-    `castle create` scaffolds and `castle add` adopts repos under here. Programs
-    may also live anywhere (source: is an absolute path); this is just the default
-    home for new ones. Override with CASTLE_REPOS_DIR. Defaults to /data/repos.
-    """
-    override = os.environ.get("CASTLE_REPOS_DIR")
-    if override:
-        return Path(override).expanduser().resolve()
-    return Path("/data/repos")
+
+def _resolve_root_path(
+    env_var: str, yaml_value: object, anchor: Path, default: Path
+) -> Path:
+    """Resolve a configurable root with precedence: env var > castle.yaml > default.
+
+    `~` is expanded; a relative path is anchored to `anchor` (the dir containing
+    castle.yaml) — never cwd, so the CLI (shell cwd) and the api service (unit cwd)
+    resolve identically. The built-in default is returned as-is (so it compares equal
+    for the "persist only when non-default" check in save_config)."""
+    raw = os.environ.get(env_var) or yaml_value
+    if not raw:
+        return default
+    p = Path(str(raw)).expanduser()
+    if not p.is_absolute():
+        p = anchor / p
+    return p.resolve()
 
 
 CASTLE_HOME = _resolve_castle_home()
@@ -65,9 +67,13 @@ CODE_DIR = CASTLE_HOME / "code"
 ARTIFACTS_DIR = CASTLE_HOME / "artifacts"
 SPECS_DIR = ARTIFACTS_DIR / "specs"
 CONTENT_DIR = ARTIFACTS_DIR / "content"
-DATA_DIR = _resolve_data_dir()
 SECRETS_DIR = CASTLE_HOME / "secrets"
-REPOS_DIR = _resolve_repos_dir()
+# data_dir and repos_dir are deliberately NOT module constants. Unlike the CASTLE_HOME
+# family above (env-or-default — the dir that *holds* castle.yaml can't be configured
+# inside it), these are per-instance settings read from castle.yaml. A module global
+# would be a second copy of that value, resolved once at import against one process's
+# environment — exactly what let the CLI and the api service drift. They live only on
+# the loaded CastleConfig; read config.data_dir / config.repos_dir (see load_config).
 
 # User tool directories — the single source of truth for "where our CLIs live".
 # Used both at build time (dev-verb subprocess PATH) and at run time (generated
@@ -173,6 +179,11 @@ class CastleConfig:
     # Launchable agent CLIs for the dashboard terminal UX (assistant-agnostic).
     # Optional; empty means the API falls back to a built-in default set.
     agents: dict[str, AgentSpec] = field(default_factory=dict)
+    # Configurable roots — the single source of truth (no module-constant twin).
+    # load_config sets them (env > castle.yaml > default); a bare constructor gets the
+    # built-in defaults so tests/callers that don't care stay valid.
+    data_dir: Path = field(default_factory=lambda: _DEFAULT_DATA_DIR)
+    repos_dir: Path = field(default_factory=lambda: _DEFAULT_REPOS_DIR)
     # Construction convenience only (not stored): a flat name→spec dict is routed
     # into the per-kind stores by kind_for. Lets callers/tests hand us a flat map
     # without pre-splitting it; there is still no flat `deployments` attribute.
@@ -416,6 +427,16 @@ def load_config(root: Path | None = None) -> CastleConfig:
     if data.get("repo"):
         repo_path = Path(data["repo"]).expanduser()
 
+    # Configurable roots: env > this file's data_dir/repos_dir > default, anchored to
+    # `root` (the dir holding this castle.yaml) so a per-call load_config is correct
+    # regardless of the import-time constants (which resolved against CASTLE_HOME).
+    data_dir = _resolve_root_path(
+        "CASTLE_DATA_DIR", data.get("data_dir"), root, _DEFAULT_DATA_DIR
+    )
+    repos_dir = _resolve_root_path(
+        "CASTLE_REPOS_DIR", data.get("repos_dir"), root, _DEFAULT_REPOS_DIR
+    )
+
     programs: dict[str, ProgramSpec] = {}
     for name, comp_data in _load_resource_dir(root / "programs").items():
         prog = _parse_program(name, comp_data)
@@ -442,6 +463,8 @@ def load_config(root: Path | None = None) -> CastleConfig:
         gateway=gateway,
         programs=programs,
         agents=agents,
+        data_dir=data_dir,
+        repos_dir=repos_dir,
         **stores,
     )
     return config
@@ -622,6 +645,13 @@ def save_config(config: CastleConfig) -> None:
     data: dict = {"gateway": gateway_data}
     if config.repo:
         data["repo"] = str(config.repo)
+    # Persist the configurable roots only when non-default, keeping castle.yaml minimal.
+    # These MUST round-trip: save_config rewrites the file from scratch, so a root that
+    # isn't re-emitted here would be silently dropped on the next apply.
+    if config.data_dir != _DEFAULT_DATA_DIR:
+        data["data_dir"] = str(config.data_dir)
+    if config.repos_dir != _DEFAULT_REPOS_DIR:
+        data["repos_dir"] = str(config.repos_dir)
     if config.agents:
         data["agents"] = {
             n: s.model_dump(exclude_none=True, exclude_defaults=True)
@@ -649,13 +679,25 @@ def save_config(config: CastleConfig) -> None:
             path.unlink()
 
 
-def ensure_dirs() -> None:
-    """Ensure castle directories exist."""
+def ensure_dirs(config: CastleConfig) -> None:
+    """Ensure castle directories exist. Takes the config so the data dir comes from the
+    one source of truth (config.data_dir), not a process-resolved global."""
     CASTLE_HOME.mkdir(parents=True, exist_ok=True)
     CODE_DIR.mkdir(parents=True, exist_ok=True)
     SPECS_DIR.mkdir(parents=True, exist_ok=True)
     CONTENT_DIR.mkdir(parents=True, exist_ok=True)
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    # The data dir can live outside $HOME (a dedicated volume), so its parent may be
+    # unwritable or absent — fail loud with a fix, not a bare PermissionError.
+    data_dir = config.data_dir
+    try:
+        data_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        raise CastleDirError(
+            f"Cannot create data dir {data_dir}: {e.strerror or e}. "
+            f"Set data_dir: in {CASTLE_HOME / 'castle.yaml'} (or export CASTLE_DATA_DIR) "
+            f"to a writable path, or create it: "
+            f"sudo mkdir -p {data_dir} && sudo chown $(id -un) {data_dir}"
+        ) from e
     SECRETS_DIR.mkdir(parents=True, exist_ok=True)
     os.chmod(SECRETS_DIR, 0o700)
     # Generated per-deployment secret env files (EnvironmentFile= / --env-file)

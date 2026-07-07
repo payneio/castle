@@ -12,6 +12,7 @@ doubles as a scriptable smoke test after `./install.sh` or `castle apply`.
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import socket
 from dataclasses import dataclass
@@ -135,6 +136,37 @@ def _check_configuration(config) -> list[Check]:
                 hint="add 'repo: <path-to-castle-checkout>' to ~/.castle/castle.yaml",
             )
         )
+
+    # data dir must exist and be writable — the exact condition that crashes apply
+    # (ensure_dirs) when data_dir points at a non-existent volume like /data.
+    ddir = config.data_dir
+    if ddir.is_dir() and os.access(ddir, os.W_OK):
+        checks.append(Check(OK, "data dir writable", detail=str(ddir)))
+    else:
+        checks.append(
+            Check(
+                FAIL,
+                "data dir missing or not writable",
+                detail=str(ddir),
+                hint=f"set data_dir: in ~/.castle/castle.yaml, or: "
+                f"sudo mkdir -p {ddir} && sudo chown $(id -un) {ddir}",
+            )
+        )
+
+    # Drift guard: castle.yaml is the single source of truth for the roots. An env var
+    # override is per-process, so it's the one way the CLI and the api service can still
+    # diverge (env set in your shell, absent in the service unit — the original bug).
+    for var in ("CASTLE_DATA_DIR", "CASTLE_REPOS_DIR"):
+        if var in os.environ:
+            checks.append(
+                Check(
+                    WARN,
+                    f"{var} overrides castle.yaml",
+                    detail=f"{var}={os.environ[var]}",
+                    hint=f"set data_dir:/repos_dir: in castle.yaml and unset {var}, so "
+                    "every process (CLI and api) resolves the same roots",
+                )
+            )
 
     missing = [n for n in (_GATEWAY, _API, _DASHBOARD) if not config.deployments_named(n)]
     if not missing:

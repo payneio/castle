@@ -279,6 +279,19 @@ create_directories() {
         printf 'gateway:\n  port: 9000\n' > "${CASTLE_HOME}/castle.yaml"
         log_ok "seeded ~/.castle/castle.yaml"
     fi
+
+    # Persist the chosen roots into castle.yaml so every later `castle` (CLI, in the
+    # shell) and `castle-api` (service) invocation resolves the SAME dirs from the file
+    # — not from a per-process env var that only one of them happens to have. Only when
+    # non-default, to keep the file minimal; idempotent (grep-guarded), like repo: below.
+    if [ "${DATA_DIR}" != "/data/castle" ]; then
+        grep -q "^data_dir:" "${CASTLE_HOME}/castle.yaml" 2>/dev/null \
+            || printf 'data_dir: %s\n' "${DATA_DIR}" >> "${CASTLE_HOME}/castle.yaml"
+    fi
+    if [ "${REPOS_DIR}" != "/data/repos" ]; then
+        grep -q "^repos_dir:" "${CASTLE_HOME}/castle.yaml" 2>/dev/null \
+            || printf 'repos_dir: %s\n' "${REPOS_DIR}" >> "${CASTLE_HOME}/castle.yaml"
+    fi
 }
 
 # ---------------------------------------------------------------------------

@@ -21,7 +21,7 @@ import subprocess
 import time
 from pathlib import Path
 
-from castle_core.config import DATA_DIR, CastleConfig
+from castle_core.config import CastleConfig
 from castle_core.manifest import SystemdDeployment, TlsMaterial
 
 _KEY_MODE_FILES = {"key.pem", "combined.pem"}  # secret → 0600; certs → 0644
@@ -55,9 +55,10 @@ def wildcard_cert(domain: str) -> tuple[Path, Path] | None:
     return None
 
 
-def tls_dir_for(config_key: str) -> Path:
-    """Where a deployment's materialized cert files live (``${tls_dir}``)."""
-    return DATA_DIR / config_key / "tls"
+def tls_dir_for(data_dir: Path, config_key: str) -> Path:
+    """Where a deployment's materialized cert files live (``${tls_dir}``). `data_dir`
+    is the instance root (config.data_dir) — the single source of truth."""
+    return data_dir / config_key / "tls"
 
 
 def _tls_of(dep: object) -> object | None:
@@ -121,7 +122,7 @@ def materialize_tls(config: CastleConfig, name: str, dep: object) -> bool:
     crt, key = crt_path.read_bytes(), key_path.read_bytes()
 
     config_key = dep.program or name  # type: ignore[attr-defined]
-    tls_dir = tls_dir_for(config_key)
+    tls_dir = tls_dir_for(config.data_dir, config_key)
     wanted = _wanted_files(tls_dir, tls.material, crt, key)  # type: ignore[attr-defined]
 
     if all(p.exists() and p.read_bytes() == c for p, c in wanted.items()):

@@ -11,7 +11,7 @@ import argparse
 import tomllib
 from pathlib import Path
 
-from castle_cli.config import REPOS_DIR, load_config, save_config
+from castle_cli.config import load_config, save_config
 from castle_cli.manifest import BuildSpec, CommandsSpec, ProgramSpec
 
 
@@ -74,7 +74,7 @@ def run_add(args: argparse.Namespace) -> int:
         repo_url = target
         name = args.name or Path(target.rstrip("/")).name.removesuffix(".git")
         # Default local clone location; cloned later via `castle clone`.
-        source = str(REPOS_DIR / name)
+        source = str(config.repos_dir / name)
         src_path = Path(source)
     else:
         src_path = Path(target).expanduser().resolve()

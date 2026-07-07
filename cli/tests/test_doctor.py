@@ -6,7 +6,8 @@ from argparse import Namespace
 from pathlib import Path
 from unittest.mock import patch
 
-from castle_cli.commands.doctor import run_doctor
+import pytest
+from castle_cli.commands.doctor import FAIL, OK, WARN, _check_configuration, run_doctor
 
 
 class TestDoctor:
@@ -37,3 +38,50 @@ class TestDoctor:
         out = capsys.readouterr().out  # type: ignore[attr-defined]
         assert "failed to load" in out
         assert "bad yaml" in out
+
+
+class TestDataDirChecks:
+    """The drift-prevention checks: data_dir must be writable, and a CASTLE_DATA_DIR env
+    override (the one way the CLI and api can still diverge) must be surfaced."""
+
+    def _config(self, castle_root: Path):
+        from castle_cli.config import load_config
+
+        return load_config(castle_root)
+
+    def test_writable_dir_ok_no_warn(
+        self, castle_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("CASTLE_DATA_DIR", raising=False)
+        monkeypatch.delenv("CASTLE_REPOS_DIR", raising=False)
+        cfg = self._config(castle_root)
+        cfg.data_dir = tmp_path  # exists + writable
+        checks = _check_configuration(cfg)
+        by_label = {c.label: c for c in checks}
+        assert by_label["data dir writable"].status == OK
+        assert not any("overrides castle.yaml" in c.label for c in checks)
+
+    def test_missing_dir_fails_with_hint(
+        self, castle_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("CASTLE_DATA_DIR", raising=False)
+        cfg = self._config(castle_root)
+        missing = tmp_path / "nope"
+        cfg.data_dir = missing
+        fail = next(
+            c for c in _check_configuration(cfg) if "data dir" in c.label and c.status == FAIL
+        )
+        assert str(missing) in fail.detail
+        assert fail.hint  # offers a concrete fix
+
+    def test_env_override_warns(
+        self, castle_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A CASTLE_DATA_DIR env var overrides the single-source-of-truth file — the
+        exact CLI/api divergence we fixed. Doctor must WARN."""
+        monkeypatch.setenv("CASTLE_DATA_DIR", str(tmp_path))
+        cfg = self._config(castle_root)
+        cfg.data_dir = tmp_path
+        warn = next(c for c in _check_configuration(cfg) if "overrides castle.yaml" in c.label)
+        assert warn.status == WARN
+        assert "CASTLE_DATA_DIR" in warn.detail

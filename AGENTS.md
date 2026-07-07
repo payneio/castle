@@ -247,8 +247,12 @@ defaults:
 | `${secret:NAME}` | contents of `~/.castle/secrets/NAME` (mode 700) |
 
 **Never** put secrets in `castle.yaml` or project dirs — use `${secret:…}`.
-Roots: **`CASTLE_HOME`** (config/code/artifacts/secrets, default `~/.castle`) and
-**`CASTLE_DATA_DIR`** (program data, default `/data/castle`) — both env-overridable.
+Roots: **`CASTLE_HOME`** (config/code/artifacts/secrets, default `~/.castle`,
+env-only — it *contains* castle.yaml) and **program data** (base of `${data_dir}`,
+default `/data/castle`) + **repos** (default `/data/repos`). The latter two resolve
+**env > `castle.yaml` > default** — set `data_dir:` / `repos_dir:` in `castle.yaml`
+(the single source of truth both the CLI and the api read), not a per-shell env var
+that only one of them sees. → **`docs/registry.md`** (castle.yaml globals).
 
 ---
 

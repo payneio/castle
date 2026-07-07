@@ -18,9 +18,9 @@ class TestCreateCommand:
         with (
             patch("castle_cli.commands.create.load_config") as mock_load,
             patch("castle_cli.commands.create.save_config") as mock_save,
-            patch("castle_cli.commands.create.REPOS_DIR", repos),
         ):
             config = load_config(castle_root)
+            config.repos_dir = repos
             mock_load.return_value = config
 
             from castle_cli.commands.create import run_create
@@ -57,9 +57,9 @@ class TestCreateCommand:
         with (
             patch("castle_cli.commands.create.load_config") as mock_load,
             patch("castle_cli.commands.create.save_config"),
-            patch("castle_cli.commands.create.REPOS_DIR", repos),
         ):
             config = load_config(castle_root)
+            config.repos_dir = repos
             mock_load.return_value = config
 
             from castle_cli.commands.create import run_create
@@ -84,9 +84,9 @@ class TestCreateCommand:
         with (
             patch("castle_cli.commands.create.load_config") as mock_load,
             patch("castle_cli.commands.create.save_config"),
-            patch("castle_cli.commands.create.REPOS_DIR", repos),
         ):
             config = load_config(castle_root)
+            config.repos_dir = repos
             mock_load.return_value = config
 
             from castle_cli.commands.create import run_create
@@ -138,9 +138,9 @@ class TestCreateCommand:
         with (
             patch("castle_cli.commands.create.load_config") as mock_load,
             patch("castle_cli.commands.create.save_config"),
-            patch("castle_cli.commands.create.REPOS_DIR", tmp_path / "repos"),
         ):
             config = load_config(castle_root)
+            config.repos_dir = tmp_path / "repos"
             mock_load.return_value = config
 
             from castle_cli.commands.create import run_create

@@ -59,7 +59,28 @@ The core `castle.yaml` contains configuration settings that apply globally to yo
 gateway:
   port: 9000
 repo: /data/repos/castle
+data_dir: /data/castle     # optional — where program/service data lives
+repos_dir: /data/repos     # optional — default home for new program source repos
 ```
+
+**`data_dir` / `repos_dir` — the configurable roots.** Both are optional and omitted
+by default (the built-ins `/data/castle` and `/data/repos` apply). Each resolves with
+precedence **env var > `castle.yaml` > built-in default**:
+
+| root | env override | castle.yaml key | default |
+|------|--------------|-----------------|---------|
+| program data (`${data_dir}` base) | `CASTLE_DATA_DIR` | `data_dir:` | `/data/castle` |
+| new-repo home (`castle create`/`add`/`clone`) | `CASTLE_REPOS_DIR` | `repos_dir:` | `/data/repos` |
+
+Put the value in `castle.yaml`, not an env var. The `castle` CLI and the `castle-api`
+service each resolve config independently in their own process; a per-shell env var is
+seen by only one of them, so the two silently diverge (and `apply` crashes if the
+resolved dir — e.g. a non-existent `/data/castle` — can't be created). Persisting the
+choice in `castle.yaml` is the single source of truth both read. `install.sh` writes
+these keys when you install with `CASTLE_DATA_DIR`/`CASTLE_REPOS_DIR` set; `castle
+doctor` flags a data dir that isn't writable, or an env var that's overriding the file.
+(`CASTLE_HOME`, the dir that *contains* castle.yaml, stays env-or-default `~/.castle` —
+it can't be defined inside the file it locates.)
 
 ### Resource Configuration Files (`programs/`, `deployments/`)
 

@@ -11,6 +11,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from castle_core.config import CastleDirError
 from castle_core.deploy import apply
 
 router = APIRouter(tags=["apply"])
@@ -52,6 +53,10 @@ def run_apply(request: ApplyRequest | None = None) -> ApplyResponse:
         result = apply(target_name=name, plan=plan)
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
+    except CastleDirError as e:
+        # A fixable misconfiguration (e.g. data_dir points somewhere unwritable), not a
+        # server fault — return the actionable message so the dashboard can show it.
+        raise HTTPException(status_code=422, detail=str(e)) from e
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
 
