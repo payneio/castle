@@ -1,11 +1,12 @@
-import { useParams } from "react-router-dom"
-import { Clock } from "lucide-react"
+import { useParams, Link } from "react-router-dom"
+import { Clock, Package } from "lucide-react"
 import { useJob } from "@/services/api/hooks"
 import { LogViewer } from "@/components/LogViewer"
 import { DetailHeader } from "@/components/detail/DetailHeader"
 import { ServiceControls } from "@/components/detail/ServiceControls"
 import { SystemdPanel } from "@/components/detail/SystemdPanel"
 import { ConfigPanel } from "@/components/detail/ConfigPanel"
+import { RelatedDeployments } from "@/components/detail/RelatedDeployments"
 
 export function ScheduledDetailPage() {
   const { name } = useParams<{ name: string }>()
@@ -39,20 +40,32 @@ export function ScheduledDetailPage() {
         <ServiceControls name={deployment.id} enabled={deployment.enabled} />
       </DetailHeader>
 
-      {deployment.schedule && (
-        <div className="bg-[var(--card)] border border-[var(--border)] rounded-lg p-5 mb-6">
-          <h2 className="text-sm font-semibold text-[var(--muted)] uppercase tracking-wider mb-3">
-            Schedule
-          </h2>
-          <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
-            <span className="text-[var(--muted)]">Cron</span>
-            <span className="flex items-center gap-2 min-w-0 break-all font-mono">
-              <Clock size={14} className="shrink-0 text-[var(--muted)]" />
-              {deployment.schedule}
-            </span>
-          </div>
+      <div className="bg-[var(--card)] border border-[var(--border)] rounded-lg p-5 mb-6">
+        <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+          {deployment.schedule && (
+            <>
+              <span className="text-[var(--muted)]">Cron</span>
+              <span className="flex items-center gap-2 min-w-0 break-all font-mono">
+                <Clock size={14} className="shrink-0 text-[var(--muted)]" />
+                {deployment.schedule}
+              </span>
+            </>
+          )}
+          {deployment.program && (
+            <>
+              <span className="text-[var(--muted)]">Program</span>
+              <Link
+                to={`/programs/${deployment.program}`}
+                className="flex items-center gap-1.5 min-w-0 text-[var(--primary)] hover:underline"
+              >
+                <Package size={14} className="shrink-0" /> {deployment.program}
+              </Link>
+            </>
+          )}
         </div>
-      )}
+      </div>
+
+      <RelatedDeployments name={deployment.id} />
 
       <ConfigPanel deployment={deployment} configSection="jobs" onRefetch={refetch} />
 

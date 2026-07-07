@@ -3,6 +3,7 @@ import { Loader2, Package } from "lucide-react"
 import { useDeployment, useSetEnabled } from "@/services/api/hooks"
 import { DetailHeader } from "@/components/detail/DetailHeader"
 import { ConfigPanel } from "@/components/detail/ConfigPanel"
+import { RelatedDeployments } from "@/components/detail/RelatedDeployments"
 
 export function ToolDetailPage() {
   const { name } = useParams<{ name: string }>()
@@ -62,6 +63,8 @@ export function ToolDetailPage() {
           <Package size={14} /> {program}
         </Link>
       </div>
+
+      <RelatedDeployments name={deployment.id} />
 
       <ConfigPanel deployment={deployment} configSection="tools" onRefetch={refetch} />
     </div>

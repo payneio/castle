@@ -518,6 +518,10 @@ def get_service(name: str) -> ServiceDetail:
         # Serve the editable spec (reach/root/program) when it's in castle.yaml.
         spec = config.deployment(deployed.kind, name) if config is not None else None
         if spec is not None:
+            # The registry Deployment carries no `program` ref, so backfill it from
+            # the spec — lets the detail page link back to the program (statics too).
+            if summary.program is None:
+                summary.program = getattr(spec, "program", None)
             manifest = spec.model_dump(mode="json", exclude_none=True)
         else:
             manifest = {
@@ -622,6 +626,12 @@ def get_job(name: str) -> JobDetail:
         summary = _job_from_deployed(name, deployed)
         if config is not None and summary.source is None:
             summary.source = _backfill_source(name, config)
+        # The registry Deployment carries no `program` ref — backfill from the spec
+        # so the job page can link back to its program (matches the service path).
+        if summary.program is None and config is not None:
+            spec = config.deployment("job", name)
+            if spec is not None:
+                summary.program = getattr(spec, "program", None)
         manifest = {
             "manager": deployed.manager,
             "launcher": deployed.launcher,

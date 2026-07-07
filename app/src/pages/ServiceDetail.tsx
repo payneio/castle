@@ -8,6 +8,7 @@ import { DetailHeader } from "@/components/detail/DetailHeader"
 import { ServiceControls } from "@/components/detail/ServiceControls"
 import { SystemdPanel } from "@/components/detail/SystemdPanel"
 import { ConfigPanel } from "@/components/detail/ConfigPanel"
+import { RelatedDeployments } from "@/components/detail/RelatedDeployments"
 
 export function ServiceDetailPage() {
   const { name } = useParams<{ name: string }>()
@@ -35,8 +36,11 @@ export function ServiceDetailPage() {
   // A static is a caddy-served site, not a systemd unit — no start/stop, no logs;
   // it shows its served URL and the dir it serves instead of a port/launcher.
   const isStatic = deployment.kind === "static" || deployment.manager === "caddy"
-  const servedUrl = subdomainUrl(deployment.subdomain ?? deployment.id)
   const root = (deployment.manifest?.root as string | undefined) ?? undefined
+  // The gateway address to launch: a static is always served there (falls back to
+  // its id); a systemd service only when it's actually proxied (has a subdomain).
+  const launchLabel = deployment.subdomain ?? (isStatic ? deployment.id : undefined)
+  const launchUrl = launchLabel ? subdomainUrl(launchLabel) : null
 
   return (
     <div className="max-w-3xl mx-auto px-6 py-8">
@@ -48,12 +52,22 @@ export function ServiceDetailPage() {
         stack={deployment.stack}
         source={deployment.source}
       >
-        {!isStatic && (
-          <div className="flex items-center gap-2">
-            {health && <HealthBadge status={health.status} latency={health.latency_ms} />}
-            <ServiceControls name={deployment.id} enabled={deployment.enabled} />
-          </div>
-        )}
+        <div className="flex items-center gap-2">
+          {!isStatic && health && <HealthBadge status={health.status} latency={health.latency_ms} />}
+          {launchUrl && (
+            <a
+              href={launchUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={`Open ${launchLabel}`}
+              aria-label={`Open ${launchLabel} in a new tab`}
+              className="p-1.5 rounded-md text-[var(--muted)] hover:text-[var(--primary)] hover:bg-[var(--background)] transition-colors"
+            >
+              <ExternalLink size={16} />
+            </a>
+          )}
+          {!isStatic && <ServiceControls name={deployment.id} enabled={deployment.enabled} />}
+        </div>
       </DetailHeader>
 
       <div className="bg-[var(--card)] border border-[var(--border)] rounded-lg p-5 mb-6">
@@ -68,17 +82,6 @@ export function ServiceDetailPage() {
                 ● served by the gateway
                 <span className="text-xs text-[var(--muted)]"> · manager: caddy</span>
               </span>
-              {servedUrl && (
-                <>
-                  <span className="text-[var(--muted)]">Served at</span>
-                  <a
-                    href={servedUrl}
-                    className="flex items-center gap-1 min-w-0 break-all text-[var(--primary)] hover:underline font-mono"
-                  >
-                    <ExternalLink size={12} className="shrink-0" />{deployment.subdomain ?? deployment.id}
-                  </a>
-                </>
-              )}
               {root && (
                 <>
                   <span className="text-[var(--muted)]">Root</span>
@@ -99,19 +102,6 @@ export function ServiceDetailPage() {
             <>
               <span className="text-[var(--muted)]">Health</span>
               <span className="font-mono break-all">{deployment.health_path}</span>
-            </>
-          )}
-          {/* A static already shows its gateway URL as "Served at" above; only a
-              proxied (systemd) service surfaces the same thing as "Subdomain". */}
-          {!isStatic && deployment.subdomain && (
-            <>
-              <span className="text-[var(--muted)]">Subdomain</span>
-              <a
-                href={subdomainUrl(deployment.subdomain) ?? undefined}
-                className="flex items-center gap-1 min-w-0 break-all text-[var(--primary)] hover:underline font-mono"
-              >
-                <ExternalLink size={12} className="shrink-0" />{deployment.subdomain}
-              </a>
             </>
           )}
           {deployment.launcher && (
@@ -159,6 +149,8 @@ export function ServiceDetailPage() {
           </pre>
         </div>
       )}
+
+      <RelatedDeployments name={deployment.id} />
 
       <ConfigPanel
         deployment={deployment}
