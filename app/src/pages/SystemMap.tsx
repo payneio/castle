@@ -436,6 +436,9 @@ export function SystemMapPage() {
   const kindRef = useRef<Record<string, string>>({})
   const reachRef = useRef<Record<string, "internal" | "public">>({})
   const focusRef = useRef<string | null>(null)
+  // True while a connection is being dragged — the resync must not replace nodes
+  // mid-drag (a background refetch would otherwise silently abort the connection).
+  const connectingRef = useRef(false)
   // Manual node positions (persisted), and the react-flow instance for fitView.
   const posRef = useRef<PosMap | null>(null)
   if (posRef.current == null) posRef.current = loadPositions()
@@ -923,6 +926,10 @@ export function SystemMapPage() {
     kindRef.current = built.kindOf
     reachRef.current = built.reachOf
     focusRef.current = focus
+    // Don't rebuild the node/edge set while a connection is being dragged — replacing
+    // the source node mid-drag silently cancels the connection (drag-to-expose "does
+    // nothing"). The mutation that follows the drop re-syncs us anyway.
+    if (connectingRef.current) return
     setNodes(materialize(built))
     // External consumption is drawn only while the consumer is selected — a dashed
     // line to each of its reference nodes (kept off-canvas otherwise to avoid a
@@ -1040,6 +1047,15 @@ export function SystemMapPage() {
     },
     [applyReach, addDep],
   )
+
+  const onConnectStart = useCallback(() => {
+    connectingRef.current = true
+  }, [])
+  // Re-sync on connect end (a refetch may have been skipped mid-drag).
+  const onConnectEnd = useCallback(() => {
+    connectingRef.current = false
+    setNodes((ns) => [...ns])
+  }, [setNodes])
 
   // Click a dashed amber suggestion to accept it → declares the requires.
   const onEdgeClick = useCallback(
@@ -1211,6 +1227,8 @@ export function SystemMapPage() {
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
+        onConnectStart={onConnectStart}
+        onConnectEnd={onConnectEnd}
         onEdgeClick={onEdgeClick}
         onNodeDragStop={onNodeDragStop}
         onEdgesDelete={onEdgesDelete}

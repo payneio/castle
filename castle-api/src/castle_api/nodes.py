@@ -97,10 +97,13 @@ _TCP_PROTOCOL = {5432: "pg", 7687: "bolt", 1883: "mqtt", 6379: "redis"}
 
 
 def _endpoints_of_registry(d: object) -> list[dict]:
-    """Derive display endpoints from a registry deployment (mirrors relations)."""
+    """Derive display endpoints from a registry deployment. Mirrors the local
+    relations derivation, which gates the http endpoint on being exposed — here the
+    registry's `subdomain` is that signal (a reach:off service has none). Without
+    this, remote reach:off services show a phantom port (e.g. castle-gateway :9000)."""
     eps: list[dict] = []
     port = getattr(d, "port", None)
-    if port is not None:
+    if port is not None and getattr(d, "subdomain", None):
         eps.append({"protocol": "http", "port": port})
     tcp = getattr(d, "tcp_port", None)
     if tcp is not None:
