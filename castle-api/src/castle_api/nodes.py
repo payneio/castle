@@ -66,15 +66,14 @@ def _deployed_to_summaries(registry: object, hostname: str) -> list[DeploymentSu
 @router.get("/mesh/status", response_model=MeshStatus)
 def get_mesh_status(request: Request) -> MeshStatus:
     """Get the current state of the mesh coordination layer."""
-    mqtt_client = getattr(request.app.state, "mqtt_client", None)
+    nats_client = getattr(request.app.state, "nats_client", None)
 
     peers = list(mesh_state.all_nodes(include_stale=True).keys())
 
     return MeshStatus(
-        enabled=settings.mqtt_enabled,
-        mqtt_connected=mqtt_client.connected if mqtt_client else False,
-        mqtt_broker_host=mqtt_client.broker_host if mqtt_client else None,
-        mqtt_broker_port=mqtt_client.broker_port if mqtt_client else None,
+        enabled=settings.nats_enabled,
+        connected=nats_client.connected if nats_client else False,
+        nats_url=str(nats_client.servers) if nats_client else None,
         mdns_enabled=settings.mdns_enabled,
         peer_count=len(peers),
         peers=peers,

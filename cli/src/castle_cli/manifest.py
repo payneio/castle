@@ -4,7 +4,6 @@ from castle_core.manifest import *  # noqa: F401, F403
 from castle_core.manifest import (  # noqa: F401 — explicit re-exports for type checkers
     BuildSpec,
     CaddyDeployment,
-    Capability,
     CommandsSpec,
     DefaultsSpec,
     DeploymentBase,

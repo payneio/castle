@@ -174,6 +174,15 @@ SuccessExitStatus=143
             reload_argv[0] = resolved_reload
         unit += f"ExecReload={' '.join(reload_argv)}\n"
 
+    # Post-start hooks (e.g. OpenBao auto-unseal). `-` prefix → failure is ignored,
+    # so a hiccup in the hook never fails the unit.
+    for cmd in (sd.exec_start_post if sd else []):
+        argv = cmd.split()
+        resolved = shutil.which(argv[0])
+        if resolved:
+            argv[0] = resolved
+        unit += f"ExecStartPost=-{' '.join(argv)}\n"
+
     if sd and sd.no_new_privileges:
         unit += "NoNewPrivileges=true\n"
 

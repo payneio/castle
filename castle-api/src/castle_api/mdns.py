@@ -1,8 +1,7 @@
-"""mDNS discovery for castle mesh — zero-config LAN peer and broker discovery.
+"""mDNS discovery for castle mesh — zero-config LAN peer discovery.
 
-Advertises this node as _castle._tcp and browses for:
-  - _castle._tcp  — peer castle nodes
-  - _mqtt._tcp    — MQTT broker address
+Advertises this node as _castle._tcp and browses for _castle._tcp peers. This is
+the on-LAN convenience path; cross-network meshes use explicit NATS seed URLs.
 """
 
 from __future__ import annotations
@@ -15,11 +14,10 @@ from zeroconf import ServiceBrowser, ServiceInfo, ServiceStateChange, Zeroconf
 logger = logging.getLogger(__name__)
 
 CASTLE_SERVICE_TYPE = "_castle._tcp.local."
-MQTT_SERVICE_TYPE = "_mqtt._tcp.local."
 
 
 class CastleMDNS:
-    """Advertise this castle node and discover peers + MQTT broker via mDNS."""
+    """Advertise this castle node and discover peers via mDNS."""
 
     def __init__(
         self,
@@ -38,7 +36,6 @@ class CastleMDNS:
         self.peers: dict[
             str, dict
         ] = {}  # hostname -> {gateway_port, api_port, addresses}
-        self.mqtt_broker: dict | None = None  # {host, port} or None
 
     def _on_service_state_change(
         self,
@@ -55,8 +52,6 @@ class CastleMDNS:
 
             if service_type == CASTLE_SERVICE_TYPE:
                 self._handle_castle_peer(info)
-            elif service_type == MQTT_SERVICE_TYPE:
-                self._handle_mqtt_broker(info)
 
         elif state_change == ServiceStateChange.Removed:
             if service_type == CASTLE_SERVICE_TYPE:
@@ -89,20 +84,6 @@ class CastleMDNS:
         }
         logger.info("mDNS: discovered peer %s at %s", peer_hostname, addresses)
 
-    def _handle_mqtt_broker(self, info: ServiceInfo) -> None:
-        """Process a discovered MQTT broker."""
-        addresses = [
-            socket.inet_ntoa(addr) for addr in info.addresses if len(addr) == 4
-        ]
-        if addresses:
-            self.mqtt_broker = {
-                "host": addresses[0],
-                "port": info.port,
-            }
-            logger.info(
-                "mDNS: discovered MQTT broker at %s:%d", addresses[0], info.port
-            )
-
     def start(self) -> None:
         """Start advertising and browsing."""
         self._zeroconf = Zeroconf()
@@ -123,18 +104,11 @@ class CastleMDNS:
             "mDNS: advertising %s on port %d", self._hostname, self._gateway_port
         )
 
-        # Browse for peers and MQTT broker
+        # Browse for peer castle nodes
         self._browsers.append(
             ServiceBrowser(
                 self._zeroconf,
                 CASTLE_SERVICE_TYPE,
-                handlers=[self._on_service_state_change],
-            )
-        )
-        self._browsers.append(
-            ServiceBrowser(
-                self._zeroconf,
-                MQTT_SERVICE_TYPE,
                 handlers=[self._on_service_state_change],
             )
         )

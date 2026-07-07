@@ -19,25 +19,23 @@ export function MeshPanel({ mesh }: MeshPanelProps) {
           <span
             className={cn(
               "inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full",
-              mesh.mqtt_connected
+              mesh.connected
                 ? "bg-green-800/50 text-green-300"
                 : "bg-red-800/50 text-red-300",
             )}
           >
-            {mesh.mqtt_connected ? (
+            {mesh.connected ? (
               <Wifi size={10} />
             ) : (
               <WifiOff size={10} />
             )}
-            {mesh.mqtt_connected ? "connected" : "disconnected"}
+            {mesh.connected ? "connected" : "disconnected"}
           </span>
         </div>
 
         <div className="flex items-center gap-4 text-xs text-[var(--muted)]">
-          {mesh.mqtt_broker_host && (
-            <span className="font-mono">
-              mqtt://{mesh.mqtt_broker_host}:{mesh.mqtt_broker_port}
-            </span>
+          {mesh.nats_url && (
+            <span className="font-mono">{mesh.nats_url}</span>
           )}
           {mesh.mdns_enabled && (
             <span>mDNS active</span>

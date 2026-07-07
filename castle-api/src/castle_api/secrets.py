@@ -1,4 +1,4 @@
-"""Secrets management — read and write ~/.castle/secrets/."""
+"""Secrets management — routes through the active backend (file or OpenBao)."""
 
 from __future__ import annotations
 
@@ -6,8 +6,13 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 
 from castle_core.config import SECRETS_DIR
+from castle_core.secret_backends import build_backend
 
 router = APIRouter(prefix="/secrets", tags=["secrets"])
+
+
+def _backend():
+    return build_backend(SECRETS_DIR)
 
 
 class SecretValue(BaseModel):
@@ -17,31 +22,27 @@ class SecretValue(BaseModel):
 @router.get("")
 def list_secrets() -> list[str]:
     """List all secret names (not values)."""
-    if not SECRETS_DIR.exists():
-        return []
-    return sorted(f.name for f in SECRETS_DIR.iterdir() if f.is_file())
+    return _backend().list_names()
 
 
 @router.get("/{name}")
 def get_secret(name: str) -> dict:
     """Get a secret value."""
     _validate_name(name)
-    path = SECRETS_DIR / name
-    if not path.exists():
+    value = _backend().read(name)
+    if value is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Secret '{name}' not found",
         )
-    return {"name": name, "value": path.read_text().strip()}
+    return {"name": name, "value": value}
 
 
 @router.put("/{name}")
 def set_secret(name: str, body: SecretValue) -> dict:
     """Set a secret value."""
     _validate_name(name)
-    SECRETS_DIR.mkdir(parents=True, exist_ok=True)
-    path = SECRETS_DIR / name
-    path.write_text(body.value.strip() + "\n")
+    _backend().write(name, body.value)
     return {"name": name, "ok": True}
 
 
@@ -49,9 +50,7 @@ def set_secret(name: str, body: SecretValue) -> dict:
 def delete_secret(name: str) -> dict:
     """Delete a secret."""
     _validate_name(name)
-    path = SECRETS_DIR / name
-    if path.exists():
-        path.unlink()
+    _backend().delete(name)
     return {"name": name, "ok": True}
 
 

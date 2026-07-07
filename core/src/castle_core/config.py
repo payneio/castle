@@ -184,6 +184,9 @@ class CastleConfig:
     # built-in defaults so tests/callers that don't care stay valid.
     data_dir: Path = field(default_factory=lambda: _DEFAULT_DATA_DIR)
     repos_dir: Path = field(default_factory=lambda: _DEFAULT_REPOS_DIR)
+    # Fleet role: "authority" (may write shared config/secrets to the mesh) or
+    # "follower" (reconciles from it). Static — pinned here, no election.
+    role: str = "follower"
     # Construction convenience only (not stored): a flat name→spec dict is routed
     # into the per-kind stores by kind_for. Lets callers/tests hand us a flat map
     # without pre-splitting it; there is still no flat `deployments` attribute.
@@ -316,10 +319,15 @@ def resolve_env_vars(
 
 
 def _read_secret(name: str) -> str:
-    """Read a secret from ~/.castle/secrets/<name>. Returns placeholder if not found."""
-    secret_path = SECRETS_DIR / name
-    if secret_path.exists():
-        return secret_path.read_text().strip()
+    """Resolve a secret via the active backend (file by default; OpenBao opt-in).
+
+    Returns a ``<MISSING_SECRET:...>`` placeholder if unresolved (never raises).
+    """
+    from castle_core.secret_backends import build_backend
+
+    value = build_backend(SECRETS_DIR).read(name)
+    if value is not None:
+        return value
     return f"<MISSING_SECRET:{name}>"
 
 
@@ -465,6 +473,7 @@ def load_config(root: Path | None = None) -> CastleConfig:
         agents=agents,
         data_dir=data_dir,
         repos_dir=repos_dir,
+        role=data.get("role", "follower"),
         **stores,
     )
     return config

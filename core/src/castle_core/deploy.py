@@ -189,6 +189,7 @@ def _node_config(config: CastleConfig) -> NodeConfig:
         public_domain=config.gateway.public_domain,
         tunnel_id=config.gateway.tunnel_id,
         cert_hook=config.gateway.cert_hook,
+        role=config.role,
     )
 
 

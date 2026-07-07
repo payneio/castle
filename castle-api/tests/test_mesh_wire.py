@@ -1,10 +1,10 @@
-"""Tests for MQTT client serialization logic."""
+"""Tests for the transport-agnostic mesh wire format (registry (de)serialization)."""
 
 import json
 
 from castle_core.registry import Deployment, NodeConfig, NodeRegistry
 
-from castle_api.mqtt_client import _json_to_registry, _registry_to_json
+from castle_api.mesh_wire import json_to_registry, registry_to_json
 
 
 def _make_registry() -> NodeRegistry:
@@ -45,15 +45,15 @@ class TestRegistrySerialization:
 
     def test_round_trip(self) -> None:
         original = _make_registry()
-        json_str = _registry_to_json(original)
-        restored = _json_to_registry(json_str)
+        json_str = registry_to_json(original)
+        restored = json_to_registry(json_str)
 
         assert restored.node.hostname == "tower"
         assert restored.node.gateway_port == 9000
 
     def test_deployed_components_preserved(self) -> None:
         original = _make_registry()
-        restored = _json_to_registry(_registry_to_json(original))
+        restored = json_to_registry(registry_to_json(original))
 
         svc = restored.get("service", "my-svc")
         assert svc is not None
@@ -68,7 +68,7 @@ class TestRegistrySerialization:
 
     def test_job_fields_preserved(self) -> None:
         original = _make_registry()
-        restored = _json_to_registry(_registry_to_json(original))
+        restored = json_to_registry(registry_to_json(original))
 
         job = restored.get("job", "my-job")
         assert job is not None
@@ -87,7 +87,7 @@ class TestRegistrySerialization:
                 ),
             },
         )
-        restored = _json_to_registry(_registry_to_json(reg))
+        restored = json_to_registry(registry_to_json(reg))
         bare = restored.get("service", "bare")
         assert bare.port is None
         assert bare.health_path is None
@@ -95,10 +95,22 @@ class TestRegistrySerialization:
         assert bare.schedule is None
         assert bare.managed is False
 
+    def test_node_role_preserved(self) -> None:
+        reg = NodeRegistry(
+            node=NodeConfig(hostname="civil", role="authority"), deployed={}
+        )
+        restored = json_to_registry(registry_to_json(reg))
+        assert restored.node.role == "authority"
+
+    def test_node_role_defaults_follower(self) -> None:
+        reg = NodeRegistry(node=NodeConfig(hostname="n"), deployed={})
+        restored = json_to_registry(registry_to_json(reg))
+        assert restored.node.role == "follower"
+
     def test_no_secrets_in_payload(self) -> None:
-        """env vars, run_cmd, and castle_root must not appear in MQTT payload."""
+        """env vars, run_cmd, and castle_root must never appear on the wire."""
         original = _make_registry()
-        json_str = _registry_to_json(original)
+        json_str = registry_to_json(original)
         data = json.loads(json_str)
 
         # No castle_root in node
@@ -106,5 +118,5 @@ class TestRegistrySerialization:
 
         # No env or run_cmd in any component
         for name, comp in data["deployed"].items():
-            assert "env" not in comp, f"{name} has env in MQTT payload"
-            assert "run_cmd" not in comp, f"{name} has run_cmd in MQTT payload"
+            assert "env" not in comp, f"{name} has env in payload"
+            assert "run_cmd" not in comp, f"{name} has run_cmd in payload"
