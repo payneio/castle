@@ -256,6 +256,20 @@ function LaneNode({ data }: NodeProps) {
   )
 }
 
+// A full-width labeled rule separating the remote machine bands above from this
+// node's own deployments below.
+function DividerNode({ data }: NodeProps) {
+  const d = data as { label: string; width: number }
+  return (
+    <div className="flex items-center gap-2" style={{ width: d.width }}>
+      <span className="whitespace-nowrap text-[11px] font-semibold uppercase tracking-wide text-[var(--card-foreground)]">
+        {d.label}
+      </span>
+      <div className="flex-1 border-t border-dashed border-[var(--border)]" />
+    </div>
+  )
+}
+
 // The host + a coarse protocol from a reference's base_url (for chips/labels).
 const SCHEME_PROTO: Record<string, string> = { https: "http", http: "http", postgres: "pg", postgresql: "pg", bolt: "bolt", mqtt: "mqtt", redis: "redis" }
 function hostOf(url: string | null): string {
@@ -308,12 +322,16 @@ function ExternalNode({ data }: NodeProps) {
 // A deployment on another castle node (mesh-discovered). Read-only — you manage
 // remote deployments from that node.
 function RemoteNode({ data }: NodeProps) {
-  const d = data as { label: string; kind: string; sub?: string }
+  const d = data as { label: string; kind: string; sub?: string; focusDim?: boolean; focused?: boolean }
   const color = KIND_COLOR[d.kind] ?? "#8b949e"
   return (
     <div
-      className="flex w-[132px] items-stretch overflow-hidden rounded-md border border-dashed bg-[var(--card)] text-xs opacity-90"
-      style={{ borderColor: color }}
+      className="flex w-[132px] items-stretch overflow-hidden rounded-md border border-dashed bg-[var(--card)] text-xs"
+      style={{
+        borderColor: color,
+        opacity: d.focusDim ? 0.12 : 0.9,
+        boxShadow: d.focused ? `0 0 0 2px ${color}` : undefined,
+      }}
       title="remote (on another node)"
     >
       <div className="w-1 shrink-0" style={{ background: color }} />
@@ -336,13 +354,41 @@ const nodeTypes = {
   program: ProgramNode,
   external: ExternalNode,
   remote: RemoteNode,
+  divider: DividerNode,
 }
 
+interface Consume {
+  id: string
+  name: string
+  kind: string
+  external: boolean
+  host?: string
+  protocol: string
+  node: string | null
+  alternatives: string[]
+}
+interface Dependent {
+  id: string
+  name: string
+  kind: string
+  node: string | null
+}
+interface NodeMeta {
+  label: string
+  kind: string
+  remote: boolean
+  node: string | null
+  provides: string[]
+  capsConsumes: string[]
+}
 interface Built {
   nodes: Node[]
   edges: Edge[]
   kindOf: Record<string, string>
   reachOf: Record<string, "internal" | "public">
+  consumes: Map<string, Consume[]>
+  consumedBy: Map<string, Dependent[]>
+  meta: Map<string, NodeMeta>
 }
 
 interface MenuItem {
@@ -396,7 +442,8 @@ export function SystemMapPage() {
   const rfRef = useRef<ReactFlowInstance<Node, Edge> | null>(null)
 
   const built = useMemo<Built>(() => {
-    if (!graph) return { nodes: [], edges: [], kindOf: {}, reachOf: {} }
+    if (!graph)
+      return { nodes: [], edges: [], kindOf: {}, reachOf: {}, consumes: new Map(), consumedBy: new Map(), meta: new Map() }
 
     const scheduleOf = new Map((jobs ?? []).map((j) => [j.id, j.schedule]))
     // A deployment only links to a program if that program actually exists in the
@@ -490,55 +537,16 @@ export function SystemMapPage() {
       })
     })
 
-    // Other machines (mesh-discovered). Each is a band above the local lanes, with
-    // its deployments in the SAME kind-columns as local, draggable, and the shared
-    // lane headers lifted above the topmost band so they head every machine.
+    // Mesh-discovered deployments grouped by machine. Their nodes are built *below*
+    // the local block (after we know where it ends), so the local node stays on top.
     const byMachine = new Map<string, MeshDeployment[]>()
     for (const md of meshResp?.deployments ?? []) {
       const arr = byMachine.get(md.node) ?? []
       arr.push(md)
       byMachine.set(md.node, arr)
     }
-    let bandBaseline = TOP - 70 // first band sits just above local; bands stack upward
-    let headersY = TOP - 40 // rises above the bands when machines are present
-    for (const [machine, deps] of byMachine) {
-      const perLaneM: Record<string, number> = {}
-      const laid = deps
-        .filter((md) => LANES[md.kind])
-        .map((md) => {
-          const lane = LANES[md.kind]
-          const row = (perLaneM[md.kind] = (perLaneM[md.kind] ?? 0) + 1) - 1
-          return { md, x: lane.x, row }
-        })
-      const rows = Math.max(1, ...Object.values(perLaneM))
-      const bandTop = bandBaseline - (rows - 1) * ROW_H
-      for (const { md, x, row } of laid) {
-        nodes.push({
-          id: `__remote_${machine}_${md.name}__`,
-          type: "remote",
-          position: { x, y: bandTop + row * ROW_H },
-          selectable: true,
-          draggable: true,
-          deletable: false,
-          data: {
-            label: md.name,
-            kind: md.kind,
-            sub: md.endpoints[0] ? `:${md.endpoints[0].port}` : undefined,
-          },
-        })
-      }
-      nodes.push({
-        id: `__machine_${machine}__`,
-        type: "lane",
-        position: { x: PROG_X, y: bandTop },
-        selectable: false,
-        draggable: false,
-        deletable: false,
-        data: { label: `⬡ ${machine}` },
-      })
-      headersY = Math.min(headersY, bandTop - 44)
-      bandBaseline = bandTop - (ROW_H + 44) // gap before the next machine (upward)
-    }
+    const remoteId = (node: string, name: string) => `__remote_${node}_${name}__`
+    const remoteInfo = new Map<string, { md: MeshDeployment; machine: string }>()
 
     const maxRows = Math.max(1, ...Object.values(perLane))
     const midY = TOP + ((maxRows - 1) * ROW_H) / 2
@@ -568,12 +576,76 @@ export function SystemMapPage() {
       nodes.push({
         id: `__lane_${title}__`,
         type: "lane",
-        position: { x, y: headersY },
+        position: { x, y: TOP - 40 },
         data: { label: title },
         selectable: false,
         draggable: false,
         deletable: false,
       })
+    }
+
+    // Local node label (top), then — below its deployments — a divider and each
+    // other machine as a band in the SAME columns (so cross-node edges align).
+    nodes.push({
+      id: "__machine_local__",
+      type: "lane",
+      position: { x: PROG_X, y: TOP - 62 },
+      selectable: false,
+      draggable: false,
+      deletable: false,
+      data: { label: `⬡ ${gateway?.hostname ?? "local"} · this node` },
+    })
+    const localBottom = TOP + maxRows * ROW_H
+    if (byMachine.size > 0) {
+      nodes.push({
+        id: "__divider_machines__",
+        type: "divider",
+        position: { x: PROG_X, y: localBottom + 12 },
+        selectable: false,
+        draggable: false,
+        deletable: false,
+        data: { label: "other machines", width: EXTERNAL_X - PROG_X + 180 },
+      })
+    }
+    let bandTop = localBottom + 54
+    for (const [machine, deps] of byMachine) {
+      const perLaneM: Record<string, number> = {}
+      const laid = deps
+        .filter((md) => LANES[md.kind])
+        .map((md) => {
+          const lane = LANES[md.kind]
+          const row = (perLaneM[md.kind] = (perLaneM[md.kind] ?? 0) + 1) - 1
+          return { md, x: lane.x, row }
+        })
+      const rows = Math.max(1, ...Object.values(perLaneM))
+      nodes.push({
+        id: `__machine_${machine}__`,
+        type: "lane",
+        position: { x: PROG_X, y: bandTop - 22 },
+        selectable: false,
+        draggable: false,
+        deletable: false,
+        data: { label: `⬡ ${machine}` },
+      })
+      for (const { md, x, row } of laid) {
+        const id = remoteId(machine, md.name)
+        remoteInfo.set(id, { md, machine })
+        kindOf[id] = md.kind
+        nodes.push({
+          id,
+          type: "remote",
+          position: { x, y: bandTop + row * ROW_H },
+          selectable: true,
+          draggable: true,
+          deletable: false,
+          data: {
+            label: md.name,
+            kind: md.kind,
+            sub: md.endpoints[0] ? `:${md.endpoints[0].port}` : undefined,
+          },
+        })
+      }
+      bandTop += rows * ROW_H + 54
     }
 
     const present = new Set(nodes.map((n) => n.id))
@@ -678,7 +750,8 @@ export function SystemMapPage() {
       s.add(md.name)
       meshByNode.set(md.node, s)
     }
-    const remoteId = (node: string, name: string) => `__remote_${node}_${name}__`
+    // Cross-node relations (source id → target id), also fed into the focus adjacency.
+    const xrel: [string, string][] = []
     for (const md of meshDeps) {
       for (const ref of md.requires ?? []) {
         let target: string | null = null
@@ -693,6 +766,7 @@ export function SystemMapPage() {
               break
             }
         if (!target) continue
+        xrel.push([remoteId(md.node, md.name), target])
         edges.push({
           id: `xnode:${md.node}:${md.name}->${ref}`,
           source: remoteId(md.node, md.name),
@@ -709,23 +783,75 @@ export function SystemMapPage() {
       }
     }
 
-    return { nodes, edges, kindOf, reachOf }
+    // Unified focus adjacency over node IDs (local names + remote ids) so the
+    // inspect panel + highlight work identically for local and remote nodes.
+    const localByName = new Map(graph.nodes.map((n) => [n.name, n]))
+    const infoOf = (id: string) => {
+      const ln = localByName.get(id)
+      if (ln)
+        return { label: ln.name, kind: ln.kind, remote: false, node: null as string | null, endpoints: ln.endpoints, base_url: ln.base_url }
+      const ri = remoteInfo.get(id)
+      if (ri)
+        return { label: ri.md.name, kind: ri.md.kind, remote: true, node: ri.machine, endpoints: ri.md.endpoints, base_url: ri.md.base_url }
+      return null
+    }
+    // Providers of a distinctive (non-http) protocol, across all nodes — "alternatives".
+    const provByProto = new Map<string, { label: string; node: string | null }[]>()
+    const addProv = (proto: string, label: string, node: string | null) => {
+      if (proto === "http") return
+      const a = provByProto.get(proto) ?? []
+      a.push({ label, node })
+      provByProto.set(proto, a)
+    }
+    for (const n of graph.nodes) for (const ep of n.endpoints) addProv(ep.protocol, n.name, null)
+    for (const [, ri] of remoteInfo) for (const ep of ri.md.endpoints) addProv(ep.protocol, ri.md.name, ri.machine)
+
+    type Consume = { id: string; name: string; kind: string; external: boolean; host?: string; protocol: string; node: string | null; alternatives: string[] }
+    const consumes = new Map<string, Consume[]>()
+    const consumedBy = new Map<string, { id: string; name: string; kind: string; node: string | null }[]>()
+    const relate = (srcId: string, dstId: string) => {
+      const si = infoOf(srcId)
+      const di = infoOf(dstId)
+      if (!si || !di) return
+      const proto = di.base_url ? protoOf(di.base_url) : (di.endpoints?.[0]?.protocol ?? "system")
+      const alts =
+        proto === "http" || proto === "system"
+          ? []
+          : (provByProto.get(proto) ?? [])
+              .filter((p) => p.label !== di.label)
+              .map((p) => (p.node ? `${p.label} (${p.node})` : p.label))
+      const cs = consumes.get(srcId) ?? []
+      cs.push({ id: dstId, name: di.label, kind: di.kind, external: di.kind === "reference", host: di.base_url ? hostOf(di.base_url) : undefined, protocol: proto, node: di.node, alternatives: alts })
+      consumes.set(srcId, cs)
+      const cb = consumedBy.get(dstId) ?? []
+      cb.push({ id: srcId, name: si.label, kind: si.kind, node: si.node })
+      consumedBy.set(dstId, cb)
+    }
+    for (const e of graph.edges)
+      if (e.kind === "deployment" && present.has(e.src) && present.has(e.dst)) relate(e.src, e.dst)
+    for (const [s, d] of xrel) relate(s, d)
+
+    const meta = new Map<string, { label: string; kind: string; remote: boolean; node: string | null; provides: string[]; capsConsumes: string[] }>()
+    for (const n of graph.nodes)
+      meta.set(n.name, { label: n.name, kind: n.kind, remote: false, node: null, provides: n.provides ?? [], capsConsumes: n.consumes ?? [] })
+    for (const [id, ri] of remoteInfo)
+      meta.set(id, { label: ri.md.name, kind: ri.md.kind, remote: true, node: ri.machine, provides: [], capsConsumes: [] })
+
+    return { nodes, edges, kindOf, reachOf, consumes, consumedBy, meta }
   }, [graph, jobs, programs, gateway, suggestionsResp, meshResp])
 
   // The lit neighborhood for the focused node: itself + everything it consumes +
-  // everything that consumes it (from the authoritative graph edges). null = no focus.
+  // everything that consumes it — from the unified adjacency, so local and remote
+  // nodes behave identically. null = no focus.
   const litOf = useCallback(
     (f: string | null): Set<string> | null => {
-      if (!f || !graph) return null
+      if (!f) return null
       const lit = new Set<string>([f])
-      for (const e of graph.edges) {
-        if (e.kind !== "deployment") continue
-        if (e.src === f) lit.add(e.dst)
-        if (e.dst === f) lit.add(e.src)
-      }
+      for (const c of built.consumes.get(f) ?? []) lit.add(c.id)
+      for (const c of built.consumedBy.get(f) ?? []) lit.add(c.id)
       return lit
     },
-    [graph],
+    [built],
   )
 
   // Turn a Built into live nodes: inject the (stable) menu/program openers, override
@@ -737,7 +863,7 @@ export function SystemMapPage() {
       return b.nodes.map((n) => {
         const focusDim = lit ? !lit.has(n.id) : false
         const focused = n.id === focusRef.current
-        const inspectable = n.type === "map" || n.type === "external"
+        const inspectable = n.type === "map" || n.type === "external" || n.type === "remote"
         let data = n.data
         if (n.type === "map") data = { ...data, onMenu: openMenu, onProgram: openProgram }
         if (inspectable) data = { ...data, focusDim, focused }
@@ -794,7 +920,7 @@ export function SystemMapPage() {
 
   // Single-node selection = inspect (dim + panel); 0 or many = no focus (drag mode).
   const onSelectionChange = useCallback((p: { nodes: Node[] }) => {
-    const picks = p.nodes.filter((n) => n.type === "map" || n.type === "external")
+    const picks = p.nodes.filter((n) => n.type === "map" || n.type === "external" || n.type === "remote")
     setFocus(picks.length === 1 ? picks[0].id : null)
   }, [])
 
@@ -1007,47 +1133,24 @@ export function SystemMapPage() {
   }, [menu, built, navigate, restart, applyReach])
 
   // The inspected node's consumes / consumed_by, resolved from the graph edges.
+  // The inspected node's consumes / consumed_by — from the unified adjacency, so a
+  // remote node's panel works identically to a local one.
   const focusInfo = useMemo(() => {
-    if (!focus || !graph) return null
-    const node = graph.nodes.find((n) => n.name === focus)
-    if (!node) return null
-    const kindByName = new Map(graph.nodes.map((n) => [n.name, n.kind]))
-    const refByName = new Map(graph.nodes.filter((n) => n.kind === "reference").map((n) => [n.name, n]))
-    const epByName = new Map(graph.nodes.map((n) => [n.name, n.endpoints]))
-    // Candidates for an interface: other providers exposing the same protocol. Only
-    // meaningful for distinctive protocols — "http" isn't an interface, it's a transport.
-    const providersOf = (proto: string, exclude: string): string[] =>
-      proto === "http" || proto === "system"
-        ? []
-        : graph.nodes
-            .filter((n) => n.name !== exclude && n.name !== focus && n.endpoints.some((e) => e.protocol === proto))
-            .map((n) => n.name)
-    const consumes = graph.edges
-      .filter((e) => e.kind === "deployment" && e.src === focus)
-      .map((e) => {
-        const ref = refByName.get(e.dst)
-        const protocol = ref ? protoOf(ref.base_url) : (epByName.get(e.dst)?.[0]?.protocol ?? "system")
-        return {
-          name: e.dst,
-          kind: kindByName.get(e.dst) ?? "",
-          external: !!ref,
-          host: ref ? hostOf(ref.base_url) : undefined,
-          protocol,
-          alternatives: ref ? [] : providersOf(protocol, e.dst),
-        }
-      })
-    const consumedBy = graph.edges
-      .filter((e) => e.kind === "deployment" && e.dst === focus)
-      .map((e) => ({ name: e.src, kind: kindByName.get(e.src) ?? "" }))
+    if (!focus) return null
+    const m = built.meta.get(focus)
+    if (!m) return null
     return {
-      name: node.name,
-      kind: node.kind,
-      provides: node.provides ?? [],
-      capsConsumes: node.consumes ?? [],
-      consumes,
-      consumedBy,
+      id: focus,
+      name: m.label,
+      kind: m.kind,
+      remote: m.remote,
+      node: m.node,
+      provides: m.provides,
+      capsConsumes: m.capsConsumes,
+      consumes: built.consumes.get(focus) ?? [],
+      consumedBy: built.consumedBy.get(focus) ?? [],
     }
-  }, [focus, graph])
+  }, [focus, built])
 
   const addExternal = useCallback(
     (name: string, base_url: string) => {
@@ -1148,13 +1251,8 @@ export function SystemMapPage() {
         <InspectPanel
           info={focusInfo}
           onClose={() => setFocus(null)}
-          onOpen={(name, kind) => navigate(detailPath(name, kind))}
-          onUnlink={(target, targetKind) => {
-            const del = target
-            // A reference target's chip has no line; drop the requires from the focus.
-            void targetKind
-            removeDep(focusInfo.name, focusInfo.kind, del)
-          }}
+          onOpen={(name, kind, node) => navigate(node ? `/node/${node}` : detailPath(name, kind))}
+          onUnlink={(ref) => removeDep(focusInfo.name, focusInfo.kind, ref)}
         />
       )}
 
@@ -1272,21 +1370,16 @@ function InspectPanel({
   info: {
     name: string
     kind: string
+    remote: boolean
+    node: string | null
     provides: string[]
     capsConsumes: string[]
-    consumes: {
-      name: string
-      kind: string
-      external: boolean
-      host?: string
-      protocol: string
-      alternatives: string[]
-    }[]
-    consumedBy: { name: string; kind: string }[]
+    consumes: Consume[]
+    consumedBy: Dependent[]
   }
   onClose: () => void
-  onOpen: (name: string, kind: string) => void
-  onUnlink: (target: string, targetKind: string) => void
+  onOpen: (name: string, kind: string, node: string | null) => void
+  onUnlink: (ref: string) => void
 }) {
   return (
     <div className="absolute right-3 top-3 z-20 flex max-h-[calc(100%-1.5rem)] w-64 flex-col overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--card)] text-xs shadow-xl">
@@ -1294,10 +1387,15 @@ function InspectPanel({
         <span className="min-w-0 flex-1 truncate font-semibold text-[var(--card-foreground)]" title={info.name}>
           {info.name}
         </span>
+        {info.node && (
+          <span className="shrink-0 rounded bg-[#e879f9]/20 px-1 text-[9px] text-[#e879f9]" title="on another machine">
+            {info.node}
+          </span>
+        )}
         <span className="shrink-0 rounded bg-black/30 px-1.5 py-0.5 text-[9px] uppercase text-[var(--muted)]">
           {info.kind}
         </span>
-        <button onClick={() => onOpen(info.name, info.kind)} title="Open" className="text-[var(--muted)] hover:text-[var(--card-foreground)]">
+        <button onClick={() => onOpen(info.name, info.kind, info.node)} title="Open" className="text-[var(--muted)] hover:text-[var(--card-foreground)]">
           <ExternalLink size={13} />
         </button>
         <button onClick={onClose} title="Close" className="text-[var(--muted)] hover:text-[var(--card-foreground)]">
@@ -1322,7 +1420,7 @@ function InspectPanel({
         <PanelSection title={`Consumes (${info.consumes.length})`}>
           {info.consumes.length === 0 && <Empty />}
           {info.consumes.map((c) => (
-            <div key={c.name} className="group py-0.5">
+            <div key={c.id} className="group py-0.5">
               <div className="flex items-center gap-1.5">
                 <span
                   className="shrink-0 rounded px-1 text-[9px] font-medium"
@@ -1338,18 +1436,25 @@ function InspectPanel({
                 ) : (
                   <button
                     className="min-w-0 flex-1 truncate text-left text-[var(--card-foreground)] hover:underline"
-                    onClick={() => onOpen(c.name, c.kind)}
+                    onClick={() => onOpen(c.name, c.kind, c.node)}
                   >
                     {c.name}
                   </button>
                 )}
-                <button
-                  onClick={() => onUnlink(c.name, c.kind)}
-                  title="Remove this dependency"
-                  className="shrink-0 text-[var(--muted)] opacity-0 hover:text-red-400 group-hover:opacity-100"
-                >
-                  <X size={11} />
-                </button>
+                {c.node && (
+                  <span className="shrink-0 rounded bg-[#e879f9]/20 px-1 text-[9px] text-[#e879f9]" title="on another machine">
+                    {c.node}
+                  </span>
+                )}
+                {!info.remote && (
+                  <button
+                    onClick={() => onUnlink(c.name)}
+                    title="Remove this dependency"
+                    className="shrink-0 text-[var(--muted)] opacity-0 hover:text-red-400 group-hover:opacity-100"
+                  >
+                    <X size={11} />
+                  </button>
+                )}
               </div>
               {c.alternatives.length > 0 && (
                 <div className="pl-6 text-[9px] text-[var(--muted)]" title={`other ${c.protocol} providers`}>
@@ -1363,11 +1468,16 @@ function InspectPanel({
           {info.consumedBy.length === 0 && <Empty />}
           {info.consumedBy.map((c) => (
             <button
-              key={c.name}
-              className="block w-full truncate py-0.5 text-left text-[var(--card-foreground)] hover:underline"
-              onClick={() => onOpen(c.name, c.kind)}
+              key={c.id}
+              className="flex w-full items-center gap-1.5 py-0.5 text-left text-[var(--card-foreground)] hover:underline"
+              onClick={() => onOpen(c.name, c.kind, c.node)}
             >
-              {c.name}
+              <span className="min-w-0 flex-1 truncate">{c.name}</span>
+              {c.node && (
+                <span className="shrink-0 rounded bg-[#e879f9]/20 px-1 text-[9px] text-[#e879f9]" title="on another machine">
+                  {c.node}
+                </span>
+              )}
             </button>
           ))}
         </PanelSection>
