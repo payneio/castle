@@ -680,6 +680,19 @@ def save_config(config: CastleConfig) -> None:
             n: s.model_dump(exclude_none=True, exclude_defaults=True)
             for n, s in config.agents.items()
         }
+    # MUST round-trip (save rewrites from scratch): the fleet role and the
+    # `secrets:` backend block are not otherwise re-emitted, so they'd be silently
+    # dropped on the next save — reverting the node to a follower on the file
+    # backend. `role` lives on the config; `secrets` isn't modeled, so preserve it
+    # from the existing file.
+    if config.role and config.role != "follower":
+        data["role"] = config.role
+    try:
+        existing = yaml.safe_load((config.root / "castle.yaml").read_text()) or {}
+        if existing.get("secrets"):
+            data["secrets"] = existing["secrets"]
+    except Exception:
+        pass
 
     config_path = config.root / "castle.yaml"
     with open(config_path, "w") as f:
