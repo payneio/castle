@@ -34,8 +34,11 @@ from castle_api.stream import broadcast
 logger = logging.getLogger(__name__)
 
 REGISTRY_BUCKET = "castle-registry"
+PRESENCE_BUCKET = "castle-presence"
+CONFIG_BUCKET = "castle-config"
 HEARTBEAT_SEC = 30.0
 PRUNE_SEC = 30.0
+PRESENCE_TTL = 90.0  # a node whose presence key expires within this is gone
 
 
 class CastleNATSClient:
@@ -52,6 +55,8 @@ class CastleNATSClient:
         self._servers = servers
         self._nc: nats.NATS | None = None
         self._kv = None
+        self._presence_kv = None
+        self._config_kv = None
         self._tasks: list[asyncio.Task] = []
         self._last_json: dict[str, str] = {}
         self._online: set[str] = set()
@@ -64,6 +69,11 @@ class CastleNATSClient:
     def servers(self) -> str | list[str]:
         return self._servers
 
+    @property
+    def role(self) -> str:
+        """This node's fleet role — 'authority' or 'follower'."""
+        return self._local_registry.node.role
+
     async def start(self) -> None:
         """Connect, publish our registry, seed state, and start watchers."""
         self._nc = await nats.connect(
@@ -72,22 +82,39 @@ class CastleNATSClient:
             max_reconnect_attempts=-1,  # reconnect forever — nodes come and go
         )
         js = self._nc.jetstream()
-        try:
-            self._kv = await js.key_value(REGISTRY_BUCKET)
-        except Exception:
-            self._kv = await js.create_key_value(
-                config=KeyValueConfig(bucket=REGISTRY_BUCKET, history=1)
-            )
+        self._kv = await self._ensure_bucket(js, REGISTRY_BUCKET, history=1)
+        # Presence: a short-TTL key each node renews; its expiry = the node is gone.
+        self._presence_kv = await self._ensure_bucket(
+            js, PRESENCE_BUCKET, history=1, ttl=PRESENCE_TTL
+        )
+        # Shared config: authority-written, followers watch + reconcile.
+        self._config_kv = await self._ensure_bucket(js, CONFIG_BUCKET, history=5)
 
         await self.publish_registry(self._local_registry)
+        await self._presence_kv.put(self._local_hostname, b"online")
         await self._seed_existing()
 
         self._tasks = [
             asyncio.create_task(self._watch_loop()),
+            asyncio.create_task(self._config_watch_loop()),
             asyncio.create_task(self._heartbeat_loop()),
             asyncio.create_task(self._prune_loop()),
         ]
-        logger.info("NATS mesh client started (servers=%s)", self._servers)
+        logger.info(
+            "NATS mesh client started (servers=%s, role=%s)",
+            self._servers,
+            self.role,
+        )
+
+    @staticmethod
+    async def _ensure_bucket(js, bucket: str, *, history: int = 1, ttl=None):
+        """Bind an existing KV bucket or create it."""
+        try:
+            return await js.key_value(bucket)
+        except Exception:
+            return await js.create_key_value(
+                config=KeyValueConfig(bucket=bucket, history=history, ttl=ttl)
+            )
 
     async def stop(self) -> None:
         """Delete our key (immediate offline to peers) and disconnect."""
@@ -100,9 +127,15 @@ class CastleNATSClient:
         if self._kv is not None:
             with contextlib.suppress(Exception):
                 await self._kv.delete(self._local_hostname)
-        if self._nc is not None:
+        if self._presence_kv is not None:
             with contextlib.suppress(Exception):
-                await self._nc.drain()
+                await self._presence_kv.delete(self._local_hostname)
+        if self._nc is not None:
+            # Bound the drain so a wedged connection can't hang systemd shutdown.
+            with contextlib.suppress(Exception):
+                await asyncio.wait_for(self._nc.drain(), timeout=5.0)
+            with contextlib.suppress(Exception):
+                await self._nc.close()
             self._nc = None
         logger.info("NATS mesh client stopped")
 
@@ -172,6 +205,46 @@ class CastleNATSClient:
             await asyncio.sleep(HEARTBEAT_SEC)
             with contextlib.suppress(Exception):
                 await self.publish_registry(self._local_registry)
+            if self._presence_kv is not None:
+                with contextlib.suppress(Exception):
+                    await self._presence_kv.put(self._local_hostname, b"online")
+
+    # --- Shared config (authority writes, followers reconcile) ---
+
+    async def get_shared_config(self, key: str) -> str | None:
+        """Read a shared-config value from the mesh (None if unset)."""
+        if self._config_kv is None:
+            return None
+        try:
+            entry = await self._config_kv.get(key)
+            return entry.value.decode() if entry.value else None
+        except Exception:
+            return None
+
+    async def put_shared_config(self, key: str, value: str) -> None:
+        """Write a shared-config value. Only the authority may write."""
+        if self.role != "authority":
+            raise PermissionError("only the authority node may write shared config")
+        if self._config_kv is None:
+            raise RuntimeError("config bucket not available")
+        await self._config_kv.put(key, value.encode())
+
+    async def _config_watch_loop(self) -> None:
+        """Watch shared config; announce changes so followers can reconcile.
+
+        The reconcile action (trigger `castle apply` on a follower) hangs off this
+        SSE event; it's inert on the authority and on a single node.
+        """
+        if self._config_kv is None:
+            return
+        watcher = await self._config_kv.watchall()
+        async for entry in watcher:
+            if entry is None:
+                continue
+            op = "delete" if entry.operation in ("DEL", "PURGE") else "put"
+            await broadcast(
+                "mesh", {"event": "config_changed", "key": entry.key, "op": op}
+            )
 
     async def _prune_loop(self) -> None:
         """Mark crashed peers (no refresh within the stale TTL) offline."""

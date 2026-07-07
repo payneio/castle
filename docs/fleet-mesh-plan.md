@@ -1,7 +1,7 @@
 # Fleet Mesh Plan — OpenBao + NATS
 
 **Status:** in progress on branch `feat/fleet-mesh-nats-openbao`.
-Phases 0–1 complete + single-node verified (live cutover done). Phases 2–4 pending.
+Phases 0–2 complete + single-node verified (live). Phases 3–4 pending (need 2nd node).
 
 ## Context
 
@@ -195,6 +195,28 @@ needed: restore `CASTLE_API_MQTT_*` env — but note `mqtt_client.py` is deleted
 so revert = `git checkout main -- castle-api` then re-apply. The old Mosquitto
 `mqtt` service is left running (dormant) as a safety net; retire it once the
 second node is proven on NATS.
+
+### Phase 2 — DONE + single-node verified + tested (2026-07-07)
+
+- **`role` field** on `NodeConfig` + `CastleConfig`, wired end-to-end:
+  castle.yaml top-level `role:` → config → `_node_config` → registry.yaml →
+  mesh wire. **`civil` pinned `role: authority`**; default `follower`.
+- **Presence** (`castle-presence`) — a TTL KV bucket each node renews on the
+  heartbeat; expiry = the node is gone. Delete-on-stop for immediate departure.
+- **Shared config** (`castle-config`) — `get_shared_config` / `put_shared_config`
+  (authority-gated: followers raise `PermissionError`), plus a watch loop that
+  broadcasts a `config_changed` SSE (the follower `castle apply` reconcile hook
+  hangs off this — inert on one node).
+- Hardened `stop()` to bound the NATS drain (can't hang systemd shutdown).
+- Verified live: all three buckets present, `civil=online` presence,
+  `"role": "authority"` on the wire, authority write + follower-deny exercised
+  against the running `castle-nats`.
+- **Tests added:** `core/tests/test_fleet_role.py` (role config load + registry
+  round-trip), `castle-api/tests/test_nats_client.py` (role gating, hermetic),
+  role round-trip in `test_mesh_wire.py`. Suites: **200 core + 93 api** pass.
+
+**Pending second node:** the follower-side reconcile (watch `castle-config` →
+`castle apply`) is wired as an SSE hook but only meaningful with a peer.
 
 ## Decisions (resolved)
 

@@ -26,6 +26,8 @@ def registry_to_json(registry: NodeRegistry) -> str:
             # acme domain — lets peers build launch URLs (<subdomain>.<gateway_domain>)
             # for this node's exposed apps. Omitted when the node has no domain.
             "gateway_domain": registry.node.gateway_domain,
+            # fleet role — so peers know which node is the config/secret authority.
+            "role": registry.node.role,
         },
         "deployed": {},
     }
@@ -73,6 +75,7 @@ def json_to_registry(payload: str) -> NodeRegistry:
         castle_root=node_data.get("castle_root"),
         gateway_port=node_data.get("gateway_port", 9000),
         gateway_domain=node_data.get("gateway_domain"),
+        role=node_data.get("role", "follower"),
     )
     deployed: dict[str, Deployment] = {}
     for key, comp_data in data.get("deployed", {}).items():

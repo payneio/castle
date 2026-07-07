@@ -95,6 +95,18 @@ class TestRegistrySerialization:
         assert bare.schedule is None
         assert bare.managed is False
 
+    def test_node_role_preserved(self) -> None:
+        reg = NodeRegistry(
+            node=NodeConfig(hostname="civil", role="authority"), deployed={}
+        )
+        restored = json_to_registry(registry_to_json(reg))
+        assert restored.node.role == "authority"
+
+    def test_node_role_defaults_follower(self) -> None:
+        reg = NodeRegistry(node=NodeConfig(hostname="n"), deployed={})
+        restored = json_to_registry(registry_to_json(reg))
+        assert restored.node.role == "follower"
+
     def test_no_secrets_in_payload(self) -> None:
         """env vars, run_cmd, and castle_root must never appear on the wire."""
         original = _make_registry()
