@@ -16,6 +16,7 @@ from castle_core.manifest import (
     HttpExposeSpec,
     HttpInternal,
     ProgramSpec,
+    Reach,
     RunPython,
     SystemdDeployment,
 )
@@ -157,7 +158,7 @@ def _service(port: int, *, expose: bool) -> SystemdDeployment:
         manager="systemd",
         run=RunPython(launcher="python", program="svc"),
         expose=ExposeSpec(http=HttpExposeSpec(internal=HttpInternal(port=port))),
-        proxy=expose,
+        reach=Reach.INTERNAL if expose else Reach.OFF,
     )
 
 

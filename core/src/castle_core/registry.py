@@ -167,34 +167,12 @@ def load_registry(path: Path | None = None) -> NodeRegistry:
 
     deployed: dict[str, Deployment] = {}
     for key, comp_data in data.get("deployed", {}).items():
-        # Key is the composite "<kind>/<name>" (new) or a bare name (legacy).
-        key_kind, name = key.split("/", 1) if "/" in key else (None, key)
-        # New shape carries manager/launcher/kind; legacy carries runner/behavior.
-        manager = comp_data.get("manager")
-        launcher = comp_data.get("launcher")
-        if manager is None:
-            runner = comp_data.get("runner", "command")
-            manager = {"static": "caddy", "path": "path", "remote": "none"}.get(
-                runner, "systemd"
-            )
-            if manager == "systemd":
-                launcher = runner
-        kind = comp_data.get("kind") or key_kind
-        if kind is None:
-            behavior = comp_data.get("behavior")
-            if comp_data.get("schedule"):
-                kind = "job"
-            elif manager == "caddy" or behavior == "frontend":
-                kind = "static"
-            elif manager == "path" or behavior == "tool":
-                kind = "tool"
-            elif manager == "none":
-                kind = "reference"
-            else:
-                kind = "service"
+        # Key is the composite "<kind>/<name>"; manager/kind are always present
+        # (save_registry writes them). registry.yaml is regenerated every apply.
+        kind, name = key.split("/", 1)
         deployed[NodeRegistry.key(kind, name)] = Deployment(
-            manager=manager,
-            launcher=launcher,
+            manager=comp_data["manager"],
+            launcher=comp_data.get("launcher"),
             run_cmd=comp_data.get("run_cmd", []),
             stop_cmd=comp_data.get("stop_cmd", []),
             env=comp_data.get("env", {}),

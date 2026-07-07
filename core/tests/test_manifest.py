@@ -111,9 +111,9 @@ class TestSystemdDeployment:
         )
         assert s.manage.systemd.enable is True
 
-    def test_reach_ladder_and_legacy_mapping(self) -> None:
-        """`reach` is canonical; legacy proxy/public map to it, and the derived
-        proxy/public accessors reflect it (public implies internal)."""
+    def test_reach_ladder_and_accessors(self) -> None:
+        """`reach` is canonical; the derived proxy/public accessors reflect it
+        (public implies internal)."""
         # An exposed reach needs an expose block (see test_reach_requires_expose),
         # so give the base one; reach off doesn't, tested separately below.
         base = dict(
@@ -122,21 +122,15 @@ class TestSystemdDeployment:
             run=RunPython(launcher="python", program="svc"),
             expose={"http": {"internal": {"port": 9001}}},
         )
-        # legacy input still parses
-        s_proxy = SystemdDeployment.model_validate({**base, "proxy": True})
-        assert s_proxy.reach == Reach.INTERNAL
-        assert s_proxy.proxy is True and s_proxy.public is False
-        s_pub = SystemdDeployment.model_validate({**base, "proxy": True, "public": True})
-        assert s_pub.reach == Reach.PUBLIC
+        s_internal = SystemdDeployment(**base, reach=Reach.INTERNAL)
+        assert s_internal.proxy is True and s_internal.public is False
+        s_pub = SystemdDeployment(**base, reach=Reach.PUBLIC)
         assert s_pub.proxy is True and s_pub.public is True
-        # legacy public alone now simply means public (which implies internal)
-        assert SystemdDeployment.model_validate({**base, "public": True}).reach == Reach.PUBLIC
-        # new canonical field (reach off needs no expose block)
+        # reach off needs no expose block
         no_expose = dict(
             id="svc", manager="systemd", run=RunPython(launcher="python", program="svc")
         )
         assert SystemdDeployment(**no_expose, reach=Reach.OFF).reach == Reach.OFF
-        assert SystemdDeployment(**base, reach=Reach.PUBLIC).public is True
 
     def test_reach_requires_expose(self) -> None:
         """An exposed reach with no expose block is rejected (it would otherwise
@@ -146,9 +140,6 @@ class TestSystemdDeployment:
         for reach in ("internal", "public"):
             with pytest.raises(ValueError, match="requires an `expose` block"):
                 SystemdDeployment.model_validate({**base, "reach": reach})
-        # legacy public: true with no expose maps to reach public → same rejection
-        with pytest.raises(ValueError, match="requires an `expose` block"):
-            SystemdDeployment.model_validate({**base, "public": True})
 
     def test_tcp_exposure_is_not_http_exposed(self) -> None:
         """A raw-TCP service is reachable by name+port but never HTTP-routed."""

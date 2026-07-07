@@ -351,13 +351,17 @@ seed_control_plane() {
         printf 'repo: %s\n' "$CASTLE_ROOT" >> "${CASTLE_HOME}/castle.yaml"
     fi
 
-    local seeded=0 f dst
+    local seeded=0 f dst rel
     for f in "${CASTLE_ROOT}"/bootstrap/programs/*.yaml; do
         dst="${CASTLE_HOME}/programs/$(basename "$f")"
         [ -f "$dst" ] || { cp "$f" "$dst"; seeded=1; }
     done
-    for f in "${CASTLE_ROOT}"/bootstrap/deployments/*.yaml; do
-        dst="${CASTLE_HOME}/deployments/$(basename "$f")"
+    # Deployments are seeded into the per-kind layout (deployments/<kind>/<name>.yaml),
+    # mirroring bootstrap/deployments/<kind>/ — the shape the loader reads.
+    for f in "${CASTLE_ROOT}"/bootstrap/deployments/*/*.yaml; do
+        rel="${f#"${CASTLE_ROOT}"/bootstrap/deployments/}"
+        dst="${CASTLE_HOME}/deployments/${rel}"
+        mkdir -p "$(dirname "$dst")"
         [ -f "$dst" ] || { sed "s#__SPECS_DIR__#${specs}#g" "$f" > "$dst"; seeded=1; }
     done
 

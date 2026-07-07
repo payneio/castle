@@ -14,24 +14,82 @@ import pytest
 import yaml
 
 
-def write_castle_config(root: Path, config: dict) -> None:
-    """Scatter a nested castle config dict into the directory-per-resource layout.
+def _modernize_deployment(spec: dict) -> dict:
+    """Translate a test's legacy deployment dict to the current manager-discriminated
+    shape. Production dropped this read-compat once every machine migrated; the tests
+    keep authoring the terse legacy shape, so the translation lives here instead.
 
-    `config` uses the legacy nested shape (gateway/repo at top level, plus
-    programs/services/jobs mappings); this writes castle.yaml with globals and
-    one file per resource under programs/, services/, jobs/.
+    - ``proxy``/``public`` booleans → ``reach`` (internal/public).
+    - ``run.runner`` → ``manager`` (+ ``run.launcher`` for the systemd process kinds).
+    """
+    d = dict(spec)
+    proxy = bool(d.pop("proxy", False))
+    public = bool(d.pop("public", False))
+    if "reach" not in d:
+        if public:
+            d["reach"] = "public"
+        elif proxy:
+            d["reach"] = "internal"
+    if "manager" not in d:
+        run = dict(d.pop("run", None) or {})
+        runner = run.get("runner")
+        if runner == "static":
+            d["manager"] = "caddy"
+            if run.get("root"):
+                d["root"] = run["root"]
+        elif runner == "path":
+            d["manager"] = "path"
+        elif runner == "remote":
+            d["manager"] = "none"
+            for k in ("base_url", "health_url"):
+                if run.get(k):
+                    d[k] = run[k]
+        else:
+            launch = {k: v for k, v in run.items() if k != "runner"}
+            launch["launcher"] = runner
+            d["manager"] = "systemd"
+            d["run"] = launch
+    return d
+
+
+def _store_for(spec: dict) -> str:
+    """The deployments/<store>/ subdir for a (modernized) deployment spec."""
+    if spec.get("schedule"):
+        return "jobs"
+    return {
+        "systemd": "services",
+        "caddy": "statics",
+        "path": "tools",
+        "none": "references",
+    }[spec["manager"]]
+
+
+def write_castle_config(root: Path, config: dict) -> None:
+    """Scatter a nested castle config dict into the on-disk layout.
+
+    `config` uses the terse nested shape (gateway/repo at top level, plus
+    programs/services/jobs mappings); this writes castle.yaml with globals, one file
+    per program under programs/, and each deployment under deployments/<kind>/ after
+    modernizing its legacy fields (see `_modernize_deployment`).
     """
     globals_data = {k: v for k, v in config.items() if k in ("gateway", "repo")}
     (root / "castle.yaml").write_text(yaml.dump(globals_data, default_flow_style=False))
-    for section in ("programs", "services", "jobs"):
-        entries = config.get(section) or {}
-        if not entries:
-            continue
-        section_dir = root / section
-        section_dir.mkdir(parents=True, exist_ok=True)
-        for name, spec in entries.items():
-            (section_dir / f"{name}.yaml").write_text(
+
+    programs = config.get("programs") or {}
+    if programs:
+        (root / "programs").mkdir(parents=True, exist_ok=True)
+        for name, spec in programs.items():
+            (root / "programs" / f"{name}.yaml").write_text(
                 yaml.dump(spec, default_flow_style=False)
+            )
+
+    for section in ("services", "jobs", "deployments"):
+        for name, spec in (config.get(section) or {}).items():
+            modern = _modernize_deployment(spec)
+            store_dir = root / "deployments" / _store_for(modern)
+            store_dir.mkdir(parents=True, exist_ok=True)
+            (store_dir / f"{name}.yaml").write_text(
+                yaml.dump(modern, default_flow_style=False)
             )
 
 

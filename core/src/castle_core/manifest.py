@@ -5,7 +5,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Annotated, Literal, Union
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 EnvMap = dict[str, str]
 
@@ -25,36 +25,12 @@ class Reach(str, Enum):
     ``public``   → *also* projected to the internet (HTTP via the tunnel origin;
                    TCP via ``cloudflared access tcp``). Implies ``internal``.
 
-    Replaces the old ``proxy``/``public`` booleans; ``proxy``/``public`` survive as
-    derived read-only accessors and as accepted *legacy input* (normalized below).
+    ``proxy``/``public`` survive as derived read-only accessors on the deployment.
     """
 
     OFF = "off"
     INTERNAL = "internal"
     PUBLIC = "public"
-
-
-def _reach_from_legacy(data: object, default: Reach) -> object:
-    """Map legacy ``proxy``/``public`` booleans on a raw deployment dict to ``reach``.
-
-    Runs as a ``mode="before"`` validator. When ``reach`` is given explicitly it
-    wins (legacy keys are dropped); otherwise ``reach`` is derived from the old
-    booleans: ``public`` → PUBLIC, ``proxy`` → INTERNAL, else ``default``. Non-dict
-    input (e.g. model re-validation) passes through untouched.
-    """
-    if not isinstance(data, dict):
-        return data
-    d = dict(data)
-    proxy = bool(d.pop("proxy", False))
-    public = bool(d.pop("public", False))
-    if "reach" not in d:
-        if public:
-            d["reach"] = Reach.PUBLIC
-        elif proxy:
-            d["reach"] = Reach.INTERNAL
-        else:
-            d["reach"] = default
-    return d
 
 
 # ---------------------
@@ -416,10 +392,8 @@ class DeploymentBase(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     id: str = ""
-    # The program this deployment materializes. (`component` = legacy alias.)
-    program: str | None = Field(
-        default=None, validation_alias=AliasChoices("program", "component")
-    )
+    # The program this deployment materializes.
+    program: str | None = None
     description: str | None = None
     defaults: DefaultsSpec | None = None
     # Deployment-to-deployment preconditions: other deployments this one needs
@@ -446,11 +420,6 @@ class SystemdDeployment(DeploymentBase):
     # How far this process is exposed (off | internal | public). See `Reach`.
     reach: Reach = Reach.OFF
     manage: ManageSpec | None = None
-
-    @model_validator(mode="before")
-    @classmethod
-    def _normalize_reach(cls, data: object) -> object:
-        return _reach_from_legacy(data, default=Reach.OFF)
 
     @model_validator(mode="after")
     def _validate_reach(self) -> SystemdDeployment:
@@ -518,11 +487,6 @@ class CaddyDeployment(DeploymentBase):
     # A static site is inherently served at its subdomain, so `reach` is
     # `internal` or `public` (never `off`). `public` = also project via the tunnel.
     reach: Reach = Reach.INTERNAL
-
-    @model_validator(mode="before")
-    @classmethod
-    def _normalize_reach(cls, data: object) -> object:
-        return _reach_from_legacy(data, default=Reach.INTERNAL)
 
     @model_validator(mode="after")
     def _validate_reach(self) -> CaddyDeployment:

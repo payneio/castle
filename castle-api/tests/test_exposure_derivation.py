@@ -74,9 +74,12 @@ def public_client(
             "reach": "internal",
         },
     }
-    (root / "deployments").mkdir()
+    _store = {"caddy": "statics", "path": "tools", "none": "references"}
     for name, spec in deps.items():
-        (root / "deployments" / f"{name}.yaml").write_text(yaml.dump(spec))
+        store = "jobs" if spec.get("schedule") else _store.get(spec["manager"], "services")
+        store_dir = root / "deployments" / store
+        store_dir.mkdir(parents=True, exist_ok=True)
+        (store_dir / f"{name}.yaml").write_text(yaml.dump(spec))
 
     reg = NodeRegistry(
         node=NodeConfig(
@@ -88,38 +91,42 @@ def public_client(
             public_domain="pub.test",
         ),
         deployed={
-            "calc": Deployment(
+            NodeRegistry.key("static", "calc"): Deployment(
                 manager="caddy",
                 run_cmd=[],
+                name="calc",
                 kind="static",
                 subdomain="calc",
                 public=True,
                 static_root=str(root / "calc" / "public"),
             ),
-            "web": Deployment(
+            NodeRegistry.key("service", "web"): Deployment(
                 manager="systemd",
                 launcher="python",
                 run_cmd=["x"],
+                name="web",
                 kind="service",
                 port=9001,
                 subdomain="web",
                 public=True,
                 managed=True,
             ),
-            "intern": Deployment(
+            NodeRegistry.key("service", "intern"): Deployment(
                 manager="systemd",
                 launcher="python",
                 run_cmd=["x"],
+                name="intern",
                 kind="service",
                 port=9002,
                 subdomain="intern",
                 public=False,
                 managed=True,
             ),
-            "pg": Deployment(
+            NodeRegistry.key("service", "pg"): Deployment(
                 manager="systemd",
                 launcher="container",
                 run_cmd=["x"],
+                name="pg",
                 kind="service",
                 port=None,
                 subdomain=None,

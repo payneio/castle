@@ -9,7 +9,7 @@ expose:
     internal:
       port: 9020
     health_path: /health
-proxy: true
+reach: internal
 manage:
   systemd: {}
 defaults:

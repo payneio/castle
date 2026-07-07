@@ -37,7 +37,7 @@ class TestApplyPlan:
     def test_disabled_active_deployment_deactivates(self, castle_root: Path) -> None:
         """A deployment with enabled:false that's currently up → 'deactivate'."""
         # Turn the tool off in config.
-        tool = castle_root / "services" / "test-tool.yaml"
+        tool = castle_root / "deployments" / "tools" / "test-tool.yaml"
         tool.write_text(tool.read_text() + "enabled: false\n")
 
         result = _plan(castle_root, active={"test-tool": True})
@@ -47,7 +47,7 @@ class TestApplyPlan:
 
     def test_disabled_inactive_is_unchanged(self, castle_root: Path) -> None:
         """enabled:false and already down → nothing to do."""
-        tool = castle_root / "services" / "test-tool.yaml"
+        tool = castle_root / "deployments" / "tools" / "test-tool.yaml"
         tool.write_text(tool.read_text() + "enabled: false\n")
 
         result = _plan(castle_root, active={})

@@ -13,7 +13,6 @@ from castle_core.config import (
     KINDS,
     CastleConfig,
     _DEPLOYMENT_ADAPTER,
-    _normalize_deployment_dict,
     _program_to_yaml_dict,
     _spec_to_yaml_dict,
     load_config,
@@ -160,16 +159,11 @@ def save_yaml(request: ConfigSaveRequest) -> ConfigSaveResponse:
         except Exception as e:
             errors.append(f"programs.{name}: {e}")
 
-    # Validate deployments (accepting a legacy services:/jobs: split too, which
-    # the normalizer folds into the single manager-discriminated collection).
+    # Validate deployments (a flat name→spec map in the manager-discriminated shape).
     deployments = {}
-    raw_deps: dict = dict(data.get("deployments") or {})
-    for legacy in ("services", "jobs"):
-        raw_deps.update(data.get(legacy) or {})
-    for name, dep_data in raw_deps.items():
+    for name, dep_data in (data.get("deployments") or {}).items():
         try:
-            dep_copy = _normalize_deployment_dict(dict(dep_data) if dep_data else {})
-            dep_copy = dict(dep_copy)
+            dep_copy = dict(dep_data) if dep_data else {}
             dep_copy["id"] = name
             deployments[name] = _DEPLOYMENT_ADAPTER.validate_python(dep_copy)
         except Exception as e:
@@ -331,9 +325,7 @@ def _save_deployment(name: str, config_dict: dict, kind: str | None = None) -> d
         existing = named[0][1]
     else:
         try:
-            probe = _DEPLOYMENT_ADAPTER.validate_python(
-                _normalize_deployment_dict({**incoming, "id": name})
-            )
+            probe = _DEPLOYMENT_ADAPTER.validate_python({**incoming, "id": name})
             existing = config.deployment(kind_for(probe), name)
         except Exception:
             existing = None
@@ -352,7 +344,7 @@ def _save_deployment(name: str, config_dict: dict, kind: str | None = None) -> d
                 merged["description"] = config.programs[prog].description
 
     try:
-        dep = _DEPLOYMENT_ADAPTER.validate_python(_normalize_deployment_dict(merged))
+        dep = _DEPLOYMENT_ADAPTER.validate_python(merged)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,

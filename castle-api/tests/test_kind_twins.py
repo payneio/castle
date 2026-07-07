@@ -21,15 +21,17 @@ from castle_core.config import load_config
 # so the trio passes subdomain-uniqueness validation.
 _SVC = {
     "program": "backup",
-    "run": {"runner": "python", "program": "backup"},
+    "manager": "systemd",
+    "run": {"launcher": "python", "program": "backup"},
     "manage": {"systemd": {}},
 }
 _JOB = {
     "program": "backup",
-    "run": {"runner": "command", "argv": ["backup"]},
+    "manager": "systemd",
+    "run": {"launcher": "command", "argv": ["backup"]},
     "schedule": "0 3 * * *",
 }
-_TOOL = {"program": "backup", "run": {"runner": "path"}}
+_TOOL = {"program": "backup", "manager": "path"}
 
 
 def _put(client: TestClient, section: str, name: str, cfg: dict) -> None:

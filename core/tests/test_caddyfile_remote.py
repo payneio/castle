@@ -12,8 +12,8 @@ from castle_core.registry import Deployment, NodeConfig, NodeRegistry
 
 def _config_requiring_widget(root: Path) -> None:
     (root / "castle.yaml").write_text(yaml.safe_dump({"gateway": {"port": 18000}}))
-    svc_dir = root / "services"
-    svc_dir.mkdir()
+    svc_dir = root / "deployments" / "services"
+    svc_dir.mkdir(parents=True)
     (svc_dir / "consumer.yaml").write_text(
         yaml.safe_dump(
             {

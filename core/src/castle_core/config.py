@@ -352,42 +352,9 @@ def _parse_program(name: str, data: dict) -> ProgramSpec:
     return ProgramSpec.model_validate(data_copy)
 
 
-def _normalize_deployment_dict(data: dict) -> dict:
-    """Map a legacy service/job entry to the manager-discriminated shape.
-
-    Legacy entries carry `run.runner` (including static/path/remote); new entries
-    carry `manager` and (for systemd) `run.launcher`. New-shape entries pass through.
-    """
-    if "manager" in data:
-        return data
-    d = dict(data)
-    run = dict(d.pop("run", None) or {})
-    runner = run.get("runner")
-    if runner == "static":
-        d["manager"] = "caddy"
-        if run.get("root"):
-            d["root"] = run["root"]
-    elif runner == "path":
-        d["manager"] = "path"
-    elif runner == "remote":
-        d["manager"] = "none"
-        if run.get("base_url"):
-            d["base_url"] = run["base_url"]
-        if run.get("health_url"):
-            d["health_url"] = run["health_url"]
-    else:
-        # A process launcher (python/command/container/compose/node) → systemd.
-        d["manager"] = "systemd"
-        launch = {k: v for k, v in run.items() if k != "runner"}
-        launch["launcher"] = runner
-        d["run"] = launch
-    return d
-
-
 def _parse_deployment(name: str, data: dict) -> DeploymentSpec:
-    """Parse a deployment entry (new or legacy shape) into a DeploymentSpec."""
-    data_copy = _normalize_deployment_dict(data)
-    data_copy = dict(data_copy)
+    """Parse a deployment entry (manager-discriminated shape) into a DeploymentSpec."""
+    data_copy = dict(data)
     data_copy["id"] = name
     return _DEPLOYMENT_ADAPTER.validate_python(data_copy)
 
@@ -515,31 +482,16 @@ def _validate_subdomains(stores: dict[str, dict[str, DeploymentSpec]]) -> None:
 def _load_deployments(root: Path) -> dict[str, dict[str, DeploymentSpec]]:
     """Load the per-kind deployment stores for a config root.
 
-    New layout: ``deployments/<store>/<name>.yaml`` (store = services|jobs|tools|
-    statics|references). Read-compat for the pre-migration layouts: flat
-    ``deployments/*.yaml`` files, and the older ``services/``+``jobs/`` split. Every
-    file is routed to its store by ``kind_for(spec)`` — the dir is a namespace, the
-    spec's manager/schedule is the source of truth (they must agree post-migration).
+    Layout: ``deployments/<store>/<name>.yaml`` (store = services|jobs|tools|statics|
+    references). Every file is routed to its store by ``kind_for(spec)`` — the dir is
+    a namespace, the spec's manager/schedule is the source of truth.
     """
     stores: dict[str, dict[str, DeploymentSpec]] = {s: {} for s in _KIND_STORE.values()}
-
-    def route(name: str, data: dict) -> None:
-        spec = _parse_deployment(name, data)
-        stores[_KIND_STORE[kind_for(spec)]][name] = spec
-
     dep_dir = root / "deployments"
-    # New per-kind subdirs.
     for store in _KIND_STORE.values():
         for name, data in _load_resource_dir(dep_dir / store).items():
-            route(name, data)
-    # Legacy flat deployments/*.yaml (top-level only — subdirs handled above).
-    for name, data in _load_resource_dir(dep_dir).items():
-        route(name, data)
-    # Oldest layout: services/ + jobs/ dirs, only if there's no deployments/ dir.
-    if not dep_dir.is_dir():
-        for legacy in ("services", "jobs"):
-            for name, data in _load_resource_dir(root / legacy).items():
-                route(name, data)
+            spec = _parse_deployment(name, data)
+            stores[_KIND_STORE[kind_for(spec)]][name] = spec
     return stores
 
 
@@ -750,10 +702,6 @@ def save_config(config: CastleConfig) -> None:
             dep_dir / store,
             {n: _spec_to_yaml_dict(d) for n, d in config.store_for(kind).items()},
         )
-    # Migration cleanup: drop any pre-migration flat deployments/*.yaml files.
-    if dep_dir.is_dir():
-        for path in dep_dir.glob("*.yaml"):
-            path.unlink()
 
 
 def ensure_dirs(config: CastleConfig) -> None:
