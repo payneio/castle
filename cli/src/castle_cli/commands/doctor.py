@@ -281,8 +281,6 @@ def _check_runtime(config) -> list[Check]:
 
 
 def _check_tls_exposure(config) -> list[Check]:
-    from castle_core.config import SECRETS_DIR
-
     checks: list[Check] = []
     gw = config.gateway
     tls = (gw.tls or "off").lower()
@@ -329,15 +327,17 @@ def _check_tls_exposure(config) -> list[Check]:
         token_name = {"cloudflare": "CLOUDFLARE_API_TOKEN"}.get(
             provider, f"{provider.upper()}_API_TOKEN"
         )
-        if (SECRETS_DIR / token_name).exists():
+        from castle_core.config import read_secret
+
+        if read_secret(token_name):
             checks.append(Check(OK, "provider token present", detail=token_name))
         else:
             checks.append(
                 Check(
                     FAIL,
                     "provider token missing",
-                    detail=f"~/.castle/secrets/{token_name}",
-                    hint=f"printf '%s' <token> > ~/.castle/secrets/{token_name} && chmod 600 $_",
+                    detail=token_name,
+                    hint="set it via the dashboard Secrets page (or the file/vault backend)",
                 )
             )
 

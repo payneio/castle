@@ -103,7 +103,7 @@ export function SecretsEditor({ secrets, onSecretsChange }: SecretsEditorProps) 
   const handleAdd = () => {
     const envKey = prompt("Environment variable name (e.g. MY_API_KEY):")
     if (!envKey) return
-    const secretName = prompt("Secret file name (stored in ~/.castle/secrets/):", envKey)
+    const secretName = prompt("Secret name (in the active backend — file or vault):", envKey)
     if (!secretName) return
     onSecretsChange({ ...secrets, [envKey]: secretName })
     setStates((prev) => ({

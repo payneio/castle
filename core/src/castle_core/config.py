@@ -252,7 +252,7 @@ def resolve_env_split(
     partitioning lets callers keep secrets out of unit files and process argv
     (routing them through a mode-0600 env file) while inlining the rest.
 
-    - ``${secret:NAME}`` reads `~/.castle/secrets/NAME`.
+    - ``${secret:NAME}`` resolves via the active secret backend (file or OpenBao).
     - ``${port}`` / ``${data_dir}`` / ``${name}`` / ``${public_url}`` (and
       anything else in ``context``) expand to castle's computed values, so a
       service maps them to whatever env var its program reads (e.g.

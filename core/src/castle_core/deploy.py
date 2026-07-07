@@ -15,7 +15,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from castle_core.config import (
-    SECRETS_DIR,
     SPECS_DIR,
     CastleConfig,
     ensure_dirs,
@@ -362,10 +361,12 @@ def _acme_preflight(config: CastleConfig, messages: list[str]) -> None:
             f"Add to services/{_GATEWAY_NAME}.yaml → defaults.env: "
             f"{token_env}: ${{secret:{token_env}}}"
         )
-    if not (SECRETS_DIR / token_env).exists():
+    from castle_core.config import read_secret
+
+    if not read_secret(token_env):
         messages.append(
-            f"Warning: secret '{token_env}' not found in {SECRETS_DIR} — place the "
-            f"DNS-provider API token there (Cloudflare token scope: Zone:DNS:Edit)."
+            f"Warning: secret '{token_env}' is not set in the secret backend — add "
+            f"the DNS-provider API token (Cloudflare token scope: Zone:DNS:Edit)."
         )
 
 
