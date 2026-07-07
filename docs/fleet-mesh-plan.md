@@ -1,7 +1,8 @@
 # Fleet Mesh Plan — OpenBao + NATS
 
 **Status:** in progress on branch `feat/fleet-mesh-nats-openbao`.
-Phases 0–2 complete + single-node verified (live). Phases 3–4 pending (need 2nd node).
+Phases 0–2 + Phase 4 (secret-read backend) complete + single-node verified (live).
+Phase 3 (cross-node routing/breaker) and Phase 4 hardening pending the 2nd node.
 
 ## Context
 
@@ -217,6 +218,34 @@ second node is proven on NATS.
 
 **Pending second node:** the follower-side reconcile (watch `castle-config` →
 `castle apply`) is wired as an SSE hook but only meaningful with a peer.
+
+### Phase 4 — secret-read backend DONE + verified + tested (2026-07-07)
+
+- New `core/castle_core/secret_backends.py`: `SecretBackend` protocol,
+  `FileSecretBackend` (the historical behavior), `OpenBaoBackend` (KV-v2 read with
+  file fallback), and `build_backend()` selecting via `CASTLE_SECRET_BACKEND`
+  (default **file** — production is byte-for-byte unchanged until opted in).
+- `_read_secret` (the single chokepoint, `config.py`) now delegates to the active
+  backend. `${secret:NAME}` syntax untouched.
+- OpenBao token bootstraps from the file backend (it can't live in the vault it
+  unlocks); a missing key / auth failure / unreachable server all fall through to
+  file, so a partly-migrated vault keeps working.
+- Verified live against the running `castle-openbao`: a secret stored in the vault
+  resolves through `${secret:...}` in openbao mode; file-only secrets resolve via
+  fallback; missing → placeholder; **default file mode unchanged**.
+- **Tests:** `core/tests/test_secret_backends.py` (file hit/miss, backend
+  selection, unreachable-vault + empty-token fallback). Suites: **206 core + 93 api**.
+
+**Remaining for full OpenBao production use (documented, not blocking — nothing
+uses the backend until `CASTLE_SECRET_BACKEND=openbao`):**
+1. **Write path** — `castle-api/secrets.py` CRUD still writes to files; in openbao
+   mode dashboard-set secrets land in file (resolve via fallback) rather than the
+   vault. Add `write`/`delete` to the backends + route the API writer through them.
+2. **Auto-unseal on boot** (Phase 0 deferral) — OpenBao re-seals on container
+   restart. Wire an unseal step (manifest `exec_start_post` or a companion
+   oneshot reading `OPENBAO_UNSEAL_KEY`). Not urgent while the backend is unused.
+3. **TLS hardening** — NATS + OpenBao are plaintext localhost. Required before
+   cross-network or moving real secrets: NATS mTLS + auth, OpenBao TLS listener.
 
 ## Decisions (resolved)
 

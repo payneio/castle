@@ -319,10 +319,15 @@ def resolve_env_vars(
 
 
 def _read_secret(name: str) -> str:
-    """Read a secret from ~/.castle/secrets/<name>. Returns placeholder if not found."""
-    secret_path = SECRETS_DIR / name
-    if secret_path.exists():
-        return secret_path.read_text().strip()
+    """Resolve a secret via the active backend (file by default; OpenBao opt-in).
+
+    Returns a ``<MISSING_SECRET:...>`` placeholder if unresolved (never raises).
+    """
+    from castle_core.secret_backends import build_backend
+
+    value = build_backend(SECRETS_DIR).read(name)
+    if value is not None:
+        return value
     return f"<MISSING_SECRET:{name}>"
 
 
