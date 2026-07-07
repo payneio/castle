@@ -22,3 +22,12 @@ def test_set_override_rejected_on_file_backend(client: TestClient) -> None:
 
 def test_get_missing_override_is_404(client: TestClient) -> None:
     assert client.get("/secrets/overrides/primer/NOPE").status_code == 404
+
+
+def test_secrets_info_reports_backend(client: TestClient) -> None:
+    r = client.get("/secrets/info")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["backend"] == "file"  # conftest forces file in tests
+    assert body["writable"] is True
+    assert "role" in body

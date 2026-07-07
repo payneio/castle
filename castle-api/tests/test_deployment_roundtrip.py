@@ -78,3 +78,34 @@ class TestProgramEditSafety:
         assert m["description"] == "renamed"  # change applied
         assert m["source"].endswith("wired-in")  # source preserved
         assert m["commands"]["lint"] == [["make", "lint"]]  # commands preserved
+
+
+def test_deployment_edit_leaves_castle_yaml_globals_untouched(client, castle_root):
+    """The regression that bit us: a config-editor deployment edit must NOT rewrite
+    castle.yaml globals (role/secrets). Scoped writes guarantee this."""
+    import yaml
+
+    cy = castle_root / "castle.yaml"
+    data = yaml.safe_load(cy.read_text())
+    data["role"] = "authority"
+    data["secrets"] = {"backend": "openbao", "addr": "https://v:8200"}
+    cy.write_text(yaml.safe_dump(data))
+    before = cy.read_text()
+
+    resp = client.put("/config/deployments/test-svc", json={"config": {"reach": "off"}})
+    assert resp.status_code == 200
+    assert cy.read_text() == before, "deployment edit rewrote castle.yaml globals"
+
+
+def test_program_edit_leaves_castle_yaml_globals_untouched(client, castle_root):
+    import yaml
+
+    cy = castle_root / "castle.yaml"
+    data = yaml.safe_load(cy.read_text())
+    data["role"] = "authority"
+    cy.write_text(yaml.safe_dump(data))
+    before = cy.read_text()
+
+    resp = client.put("/config/programs/wired-in", json={"config": {"version": "9.9.9"}})
+    assert resp.status_code == 200
+    assert cy.read_text() == before, "program edit rewrote castle.yaml globals"

@@ -86,6 +86,24 @@ def test_write_deployment_file_leaves_globals_untouched(castle_root: Path) -> No
     assert cy.read_text() == before  # globals byte-identical — nothing touched them
 
 
+def test_write_program_file_leaves_globals_untouched(castle_root: Path) -> None:
+    """Scoped program write must not rewrite castle.yaml globals either."""
+    from castle_core.config import load_config, write_program_file
+
+    cy = castle_root / "castle.yaml"
+    data = yaml.safe_load(cy.read_text())
+    data["role"] = "authority"
+    data["secrets"] = {"backend": "openbao"}
+    cy.write_text(yaml.safe_dump(data))
+    before = cy.read_text()
+
+    config = load_config(castle_root)
+    name = next(iter(config.programs))
+    write_program_file(config, name)
+
+    assert cy.read_text() == before
+
+
 def test_registry_role_round_trip(tmp_path: Path) -> None:
     reg = NodeRegistry(
         node=NodeConfig(hostname="civil", role="authority"), deployed={}
