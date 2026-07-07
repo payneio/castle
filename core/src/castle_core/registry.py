@@ -203,6 +203,7 @@ def load_registry(path: Path | None = None) -> NodeRegistry:
             schedule=comp_data.get("schedule"),
             managed=comp_data.get("managed", False),
             enabled=comp_data.get("enabled", True),
+            requires=comp_data.get("requires", []),
         )
 
     return NodeRegistry(node=node, deployed=deployed)
@@ -283,6 +284,8 @@ def save_registry(registry: NodeRegistry, path: Path | None = None) -> None:
         # registries byte-identical and matches the load-side default.
         if not comp.enabled:
             entry["enabled"] = comp.enabled
+        if comp.requires:
+            entry["requires"] = comp.requires
         data["deployed"][key] = entry
 
     with open(path, "w") as f:
