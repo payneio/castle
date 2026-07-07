@@ -28,6 +28,7 @@ from nats.js.api import KeyValueConfig
 from castle_core.registry import NodeRegistry
 
 from castle_api.mesh import mesh_state
+from castle_api.mesh_gateway import refresh_remote_routes
 from castle_api.mesh_wire import json_to_registry, registry_to_json
 from castle_api.stream import broadcast
 
@@ -93,6 +94,7 @@ class CastleNATSClient:
         await self.publish_registry(self._local_registry)
         await self._presence_kv.put(self._local_hostname, b"online")
         await self._seed_existing()
+        await refresh_remote_routes()  # establish any cross-node routes on startup
 
         self._tasks = [
             asyncio.create_task(self._watch_loop()),
@@ -182,6 +184,7 @@ class CastleNATSClient:
                         await broadcast(
                             "mesh", {"event": "node_updated", "hostname": key}
                         )
+                        asyncio.create_task(refresh_remote_routes())
             except Exception:
                 logger.exception("Error handling mesh entry for %s", key)
 
@@ -199,6 +202,7 @@ class CastleNATSClient:
         self._online.discard(hostname)
         self._last_json.pop(hostname, None)
         await broadcast("mesh", {"event": "node_offline", "hostname": hostname})
+        asyncio.create_task(refresh_remote_routes())
 
     async def _heartbeat_loop(self) -> None:
         while True:

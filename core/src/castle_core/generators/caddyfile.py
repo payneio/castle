@@ -121,8 +121,10 @@ def compute_routes(
     """Build the ordered list of gateway routes. Every route is a host route whose
     address is the service/frontend **name** (published at ``<name>.<domain>``);
     ``proxy`` routes reverse-proxy a local port, ``static`` routes file-serve a
-    frontend's dist. Path routes no longer exist. ``remote_registries`` is accepted
-    for signature compatibility but cross-node routing is out of scope here."""
+    frontend's dist. Path routes no longer exist. When ``remote_registries`` is
+    given (online peers, keyed by hostname), ``remote`` routes are added for
+    services this node **consumes** (a local ``requires`` ref satisfied by a peer)
+    — so a consumed cross-node service is reachable at ``<ref>.<domain>``."""
     if config is None:
         try:
             from castle_core.config import load_config
@@ -141,7 +143,48 @@ def compute_routes(
     for name, kind, target in _local_routes(config, registry):
         routes.append(GatewayRoute(name, kind, target, name, node))
 
+    if remote_registries:
+        routes.extend(_remote_routes(config, registry, remote_registries))
+
     return routes
+
+
+def _remote_routes(
+    config: CastleConfig | None,
+    registry: NodeRegistry,
+    remote_registries: dict[str, NodeRegistry],
+) -> list[GatewayRoute]:
+    """Routes to services this node consumes from online peers.
+
+    A route is emitted for each local ``requires`` ref that (a) isn't satisfied
+    locally and (b) is provided by an exposed service on some peer. The route is
+    only present while the peer is (presence expiry removes the peer from
+    ``remote_registries``, which *is* the circuit-breaker: gone → no route)."""
+    # Refs this node consumes.
+    consumed: set[str] = set()
+    local_names: set[str] = set()
+    if config is not None:
+        for _kind, name, dep in config.all_deployments():
+            local_names.add(name)
+            for req in getattr(dep, "requires", []) or []:
+                ref = getattr(req, "ref", None)
+                if ref and getattr(req, "kind", "deployment") == "deployment":
+                    consumed.add(ref)
+    # Drop refs already satisfied locally.
+    consumed -= local_names
+
+    out: list[GatewayRoute] = []
+    for host, remote in sorted(remote_registries.items()):
+        addr = remote.node.address or host
+        for _kind, name, dep in remote.all():
+            if name not in consumed:
+                continue
+            if dep.subdomain and dep.port:
+                out.append(
+                    GatewayRoute(name, "remote", f"{addr}:{dep.port}", name, host)
+                )
+                consumed.discard(name)  # first online provider wins
+    return out
 
 
 def _host_matcher_block(label: str, host: str, target: str) -> list[str]:
@@ -154,6 +197,27 @@ def _host_matcher_block(label: str, host: str, target: str) -> list[str]:
         f"    {matcher} host {host}",
         f"    handle {matcher} {{",
         f"        reverse_proxy {target}",
+        "    }",
+        "",
+    ]
+
+
+def _host_remote_block(label: str, host: str, target: str) -> list[str]:
+    """A remote (cross-node) host route with a fail-fast breaker: a short dial
+    timeout + passive health, so an unreachable peer 502s in ~2s instead of
+    hanging. (Presence removal drops the route entirely — this guards the
+    there-but-wedged case.)"""
+    matcher = f"@host_{label.replace('-', '_').replace('.', '_')}"
+    return [
+        f"    {matcher} host {host}",
+        f"    handle {matcher} {{",
+        f"        reverse_proxy {target} {{",
+        "            lb_try_duration 1s",
+        "            fail_duration 30s",
+        "            transport http {",
+        "                dial_timeout 2s",
+        "            }",
+        "        }",
         "    }",
         "",
     ]
@@ -237,6 +301,8 @@ def generate_caddyfile_from_registry(
                 host = f"{r.address}.{domain}"
                 if r.kind == "static":
                     lines += _host_static_block(r.name or r.address, host, r.target)
+                elif r.kind == "remote":
+                    lines += _host_remote_block(r.name or r.address, host, r.target)
                 else:
                     lines += _host_matcher_block(r.name or r.address, host, r.target)
             lines.append("}")

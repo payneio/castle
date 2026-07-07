@@ -28,6 +28,8 @@ def registry_to_json(registry: NodeRegistry) -> str:
             "gateway_domain": registry.node.gateway_domain,
             # fleet role — so peers know which node is the config/secret authority.
             "role": registry.node.role,
+            # routable host peers proxy to for this node's services.
+            "address": registry.node.address,
         },
         "deployed": {},
     }
@@ -76,6 +78,7 @@ def json_to_registry(payload: str) -> NodeRegistry:
         gateway_port=node_data.get("gateway_port", 9000),
         gateway_domain=node_data.get("gateway_domain"),
         role=node_data.get("role", "follower"),
+        address=node_data.get("address"),
     )
     deployed: dict[str, Deployment] = {}
     for key, comp_data in data.get("deployed", {}).items():

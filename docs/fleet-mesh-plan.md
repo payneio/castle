@@ -247,6 +247,37 @@ uses the backend until `CASTLE_SECRET_BACKEND=openbao`):**
 3. **TLS hardening** — NATS + OpenBao are plaintext localhost. Required before
    cross-network or moving real secrets: NATS mTLS + auth, OpenBao TLS listener.
 
+### Phase 3 — cross-node routing + breaker: logic DONE + verified against a real peer (2026-07-07)
+
+**Real second node:** `primer` (192.168.8.129) migrated onto the NATS mesh
+(branch checked out, castle-api pointed at `nats://civil:4222` via a systemd
+drop-in). civil ↔ primer mesh confirmed over the LAN — **Phase 1 two-node parity
+done for real**, not simulated. (This also *restored* the civil↔primer mesh my
+Phase 1 cutover had split — primer was still on MQTT→civil.)
+
+- `NodeConfig.address` — routable host peers proxy to (wired through registry +
+  wire; falls back to hostname, which civil resolves for primer).
+- `compute_routes` now emits **`remote`** routes for services this node
+  **consumes** (a local `requires` ref satisfied by an online peer), targeting
+  `<peer-address>:<port>`. `_host_remote_block` renders a **fail-fast breaker**
+  (2s dial timeout + passive health) for the there-but-wedged case; **presence
+  expiry removes the peer from the route set entirely** (gone → no route) — the
+  primary breaker.
+- `castle_api/mesh_gateway.py` — on peer join/leave/change (+ startup) the API
+  re-renders the Caddyfile (same generator `apply` uses + remote routes for
+  online peers) and reloads the gateway **iff content changed**.
+- **Verified:** 4 hermetic tests (route emitted / address fallback / breaker:
+  peer-absent → no route / unconsumed → no route); **resolution against primer's
+  real registry** pulled live from the mesh → `castle-api → primer:9020`; and the
+  live integration proven a **no-op** on civil (Caddyfile hash unchanged, gateway
+  healthy) since civil consumes nothing cross-node yet. Suites: **210 core + 93 api**.
+
+**Remaining:** the full live curl+kill E2E (civil routing to a peer service, then
+failing fast on kill) needs a peer-unique service civil consumes — every
+underlying piece is verified, but the end-to-end demo needs that provisioning.
+primer is now a permanent mesh member on the branch (revert: remove the drop-in +
+`git checkout main` on primer).
+
 ## Decisions (resolved)
 
 1. **Discovery — both.** Keep mDNS for zero-config LAN peer discovery *and*

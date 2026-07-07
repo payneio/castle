@@ -32,6 +32,10 @@ class NodeConfig:
     tunnel_id: str | None = None
     # Emit the cert_obtained → `castle tls reconcile` hook (needs events-exec plugin).
     cert_hook: bool = False
+    # Routable host peers use to reach this node's services (LAN IP/hostname).
+    # Defaults to the hostname; set explicitly when the hostname isn't resolvable
+    # cross-node. Used to build `remote` gateway routes to this node.
+    address: str | None = None
     # Fleet role: "authority" may write shared config/secrets to the mesh;
     # "follower" reconciles from it. Static (no election) — the authority is
     # pinned in castle.yaml. When the authority is down, shared state is
@@ -158,6 +162,7 @@ def load_registry(path: Path | None = None) -> NodeRegistry:
         tunnel_id=node_data.get("tunnel_id"),
         cert_hook=node_data.get("cert_hook", False),
         role=node_data.get("role", "follower"),
+        address=node_data.get("address"),
     )
 
     deployed: dict[str, Deployment] = {}
@@ -249,6 +254,8 @@ def save_registry(registry: NodeRegistry, path: Path | None = None) -> None:
         data["node"]["cert_hook"] = registry.node.cert_hook
     if registry.node.role and registry.node.role != "follower":
         data["node"]["role"] = registry.node.role
+    if registry.node.address:
+        data["node"]["address"] = registry.node.address
 
     for key, comp in registry.deployed.items():
         entry: dict = {
