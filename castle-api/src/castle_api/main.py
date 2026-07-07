@@ -68,6 +68,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 local_hostname=registry.node.hostname,
                 local_registry=registry,
                 servers=settings.nats_url,
+                token=settings.nats_token,
             )
             await nats_client.start()
             app.state.nats_client = nats_client

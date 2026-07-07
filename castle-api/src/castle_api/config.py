@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     # Mesh coordination (all off by default — single-node works without them)
     nats_enabled: bool = False
     nats_url: str = "nats://localhost:4222"
+    nats_token: str | None = None
     mdns_enabled: bool = False
 
     model_config = {
