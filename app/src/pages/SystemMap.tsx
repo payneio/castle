@@ -19,6 +19,7 @@ import "@xyflow/react/dist/style.css"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import {
   BoxSelect,
+  ChevronDown,
   ExternalLink,
   Globe,
   LayoutGrid,
@@ -1310,7 +1311,26 @@ export function SystemMapPage() {
   )
 }
 
+const LEGEND_KEY = "castle-map-legend-open"
+
 function Legend() {
+  const [open, setOpen] = useState(() => {
+    try {
+      return localStorage.getItem(LEGEND_KEY) !== "false"
+    } catch {
+      return true
+    }
+  })
+  const toggle = () =>
+    setOpen((o) => {
+      const next = !o
+      try {
+        localStorage.setItem(LEGEND_KEY, String(next))
+      } catch {
+        /* storage disabled */
+      }
+      return next
+    })
   const items = [
     { c: PROTO_COLOR.http, label: "consumes — http" },
     { c: PROTO_COLOR.pg, label: "consumes — pg / db" },
@@ -1322,28 +1342,39 @@ function Legend() {
     { c: "#2ea043", label: "public — internet" },
   ]
   return (
-    <div className="absolute bottom-3 right-3 z-10 flex flex-col gap-1.5 rounded-md border border-[var(--border)] bg-[var(--card)]/90 px-3 py-2 text-[11px] text-[var(--muted)]">
-      {items.map((i) => (
-        <div key={i.label} className="flex items-center gap-2">
-          <span
-            className="inline-block w-5 shrink-0"
-            style={
-              i.dashed
-                ? { borderTop: `2px dashed ${i.c}` }
-                : { height: 2, borderRadius: 2, background: i.c }
-            }
-          />
-          {i.label}
+    <div className="absolute bottom-3 right-3 z-10 overflow-hidden rounded-md border border-[var(--border)] bg-[var(--card)]/90 text-[11px] text-[var(--muted)]">
+      <button
+        onClick={toggle}
+        className="flex w-full items-center gap-1.5 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide hover:text-[var(--card-foreground)]"
+      >
+        <ChevronDown size={12} className={`transition-transform ${open ? "" : "-rotate-90"}`} />
+        Legend
+      </button>
+      {open && (
+        <div className="flex flex-col gap-1.5 px-3 pb-2">
+          {items.map((i) => (
+            <div key={i.label} className="flex items-center gap-2">
+              <span
+                className="inline-block w-5 shrink-0"
+                style={
+                  i.dashed
+                    ? { borderTop: `2px dashed ${i.c}` }
+                    : { height: 2, borderRadius: 2, background: i.c }
+                }
+              />
+              {i.label}
+            </div>
+          ))}
+          <div className="mt-1 border-t border-[var(--border)] pt-1.5 leading-relaxed">
+            Click a node to inspect its consumes / consumed-by.
+            <br />
+            Drag a node → <span className="text-[#2ea043]">Internet</span> to publish, →{" "}
+            <span className="text-[#58a6ff]">LAN</span> for internal; drag node→node to add a consumes.
+            <br />
+            Select a line or node + <kbd className="rounded bg-black/40 px-1">Del</kbd> to remove.
+          </div>
         </div>
-      ))}
-      <div className="mt-1 border-t border-[var(--border)] pt-1.5 leading-relaxed">
-        Click a node to inspect its consumes / consumed-by.
-        <br />
-        Drag a node → <span className="text-[#2ea043]">Internet</span> to publish, →{" "}
-        <span className="text-[#58a6ff]">LAN</span> for internal; drag node→node to add a consumes.
-        <br />
-        Select a line or node + <kbd className="rounded bg-black/40 px-1">Del</kbd> to remove.
-      </div>
+      )}
     </div>
   )
 }
