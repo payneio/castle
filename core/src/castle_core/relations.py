@@ -77,8 +77,6 @@ class Node:
     reach: str | None = None  # off|internal|public (systemd/caddy), else None
     endpoints: list[Endpoint] = field(default_factory=list)  # sockets it exposes
     base_url: str | None = None  # the target URL, for kind=="reference" (external)
-    provides: list[str] = field(default_factory=list)  # capability types (from program)
-    consumes: list[str] = field(default_factory=list)  # capability types (from program)
 
 
 @dataclass
@@ -242,7 +240,6 @@ def build_model(
         )
         prog_name = _program_of(name, dep)
         repo_key = repo_of.get(prog_name)
-        prog = config.programs.get(prog_name) if prog_name else None
         nodes.append(
             Node(
                 name=name,
@@ -257,8 +254,6 @@ def build_model(
                 reach=getattr(getattr(dep, "reach", None), "value", None),
                 endpoints=_endpoints_of(dep),
                 base_url=getattr(dep, "base_url", None),
-                provides=[c.type for c in prog.provides] if prog else [],
-                consumes=[c.type for c in prog.consumes] if prog else [],
             )
         )
     return Model(repos=list(repos.values()), nodes=nodes, edges=edges)

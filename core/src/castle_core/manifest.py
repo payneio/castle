@@ -277,12 +277,6 @@ class CommandsSpec(BaseModel):
 # ---------------------
 
 
-class Capability(BaseModel):
-    type: str
-    name: str | None = None
-    meta: dict[str, str] = Field(default_factory=dict)
-
-
 class Requirement(BaseModel):
     """A precondition — another **deployment** that must exist for this one to be
     *functional* (``ref`` = the target deployment's name). ``bind`` names the env
@@ -389,9 +383,6 @@ class ProgramSpec(BaseModel):
     install_extras: list[str] = Field(default_factory=list)
     version: str | None = None
     build: BuildSpec | None = None
-
-    provides: list[Capability] = Field(default_factory=list)
-    consumes: list[Capability] = Field(default_factory=list)
 
     tags: list[str] = Field(default_factory=list)
 

@@ -399,8 +399,6 @@ interface NodeMeta {
   kind: string
   remote: boolean
   node: string | null
-  provides: string[]
-  capsConsumes: string[]
   reach: string | null
   exposable: boolean
   launchUrl?: string
@@ -882,8 +880,6 @@ export function SystemMapPage() {
         kind: n.kind,
         remote: false,
         node: null,
-        provides: n.provides ?? [],
-        capsConsumes: n.consumes ?? [],
         reach: n.reach,
         exposable: n.kind === "service" || n.kind === "static",
         launchUrl: n.kind === "reference" ? (n.base_url ?? undefined) : launchOf(n),
@@ -894,8 +890,6 @@ export function SystemMapPage() {
         kind: ri.md.kind,
         remote: true,
         node: ri.machine,
-        provides: [],
-        capsConsumes: [],
         reach: null,
         exposable: false,
         launchUrl: remoteLaunchOf(ri.md),
@@ -1193,8 +1187,6 @@ export function SystemMapPage() {
       kind: m.kind,
       remote: m.remote,
       node: m.node,
-      provides: m.provides,
-      capsConsumes: m.capsConsumes,
       launchUrl: m.launchUrl,
       reach: m.reach,
       exposable: m.exposable,
@@ -1422,8 +1414,6 @@ function InspectPanel({
     remote: boolean
     node: string | null
     launchUrl?: string
-    provides: string[]
-    capsConsumes: string[]
     consumes: Consume[]
     consumedBy: Dependent[]
   }
@@ -1486,20 +1476,6 @@ function InspectPanel({
                 )
               })}
             </div>
-          </PanelSection>
-        )}
-        {(info.provides.length > 0 || info.capsConsumes.length > 0) && (
-          <PanelSection title="Capabilities">
-            {info.provides.map((t) => (
-              <span key={`p-${t}`} className="mr-1 inline-block rounded bg-green-900/40 px-1 text-[9px] text-green-300" title="provides">
-                provides {t}
-              </span>
-            ))}
-            {info.capsConsumes.map((t) => (
-              <span key={`c-${t}`} className="mr-1 inline-block rounded bg-blue-900/40 px-1 text-[9px] text-blue-300" title="needs">
-                needs {t}
-              </span>
-            ))}
           </PanelSection>
         )}
         <PanelSection title={`Consumes (${info.consumes.length})`}>
