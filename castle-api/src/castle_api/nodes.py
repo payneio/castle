@@ -115,16 +115,18 @@ def _endpoints_of_registry(d: object) -> list[dict]:
 def mesh_deployments() -> dict:
     """Flattened remote (mesh-discovered) deployments with derived endpoints — the
     data the System Map needs to render other machines. Local node excluded (it's
-    already in /graph). Cross-node dependency *edges* need `requires` in the mesh
-    payload, which the registry doesn't carry yet."""
+    already in /graph). Each entry carries its node's `domain` (gateway acme domain)
+    so peers can build launch URLs `<subdomain>.<domain>` for exposed apps."""
     out: list[dict] = []
     for hostname, remote in mesh_state.all_nodes(include_stale=True).items():
+        domain = getattr(remote.registry.node, "gateway_domain", None)
         for _kind, name, d in remote.registry.all():
             out.append(
                 {
                     "name": name,
                     "kind": d.kind,
                     "node": hostname,
+                    "domain": domain,
                     "port": d.port,
                     "base_url": getattr(d, "base_url", None),
                     "subdomain": d.subdomain,

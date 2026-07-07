@@ -78,12 +78,20 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
       })
     }
     for (const md of mesh?.deployments ?? []) {
+      // A remote app is launchable at <subdomain>.<node-domain> when the node has an
+      // acme domain and the app is http-exposed (subdomain set); references carry base_url.
+      const remoteLaunch =
+        md.kind === "reference"
+          ? (md.base_url ?? undefined)
+          : md.subdomain && md.domain
+            ? `https://${md.subdomain}.${md.domain}`
+            : undefined
       out.push({
         id: `${md.node}/${md.name}`,
         name: md.name,
         kind: md.kind,
         machine: md.node,
-        launchUrl: undefined, // remote launch URL isn't in the mesh payload yet
+        launchUrl: remoteLaunch,
         detailPath: `/node/${md.node}`,
         mapNodeId: `__remote_${md.node}_${md.name}__`,
       })

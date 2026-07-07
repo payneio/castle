@@ -168,6 +168,7 @@ export interface MeshDeployment {
   name: string
   kind: string
   node: string // the remote hostname
+  domain: string | null // the node's gateway acme domain — for <subdomain>.<domain> launch URLs
   port: number | null
   base_url: string | null
   subdomain: string | null

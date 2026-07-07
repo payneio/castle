@@ -37,6 +37,9 @@ def _registry_to_json(registry: NodeRegistry) -> str:
         "node": {
             "hostname": registry.node.hostname,
             "gateway_port": registry.node.gateway_port,
+            # acme domain — lets peers build launch URLs (<subdomain>.<gateway_domain>)
+            # for this node's exposed apps. Omitted when the node has no domain.
+            "gateway_domain": registry.node.gateway_domain,
         },
         "deployed": {},
     }
@@ -83,6 +86,7 @@ def _json_to_registry(payload: str) -> NodeRegistry:
         hostname=node_data.get("hostname", ""),
         castle_root=node_data.get("castle_root"),
         gateway_port=node_data.get("gateway_port", 9000),
+        gateway_domain=node_data.get("gateway_domain"),
     )
     deployed: dict[str, Deployment] = {}
     for key, comp_data in data.get("deployed", {}).items():

@@ -324,11 +324,18 @@ function ExternalNode({ data }: NodeProps) {
 // A deployment on another castle node (mesh-discovered). Read-only — you manage
 // remote deployments from that node.
 function RemoteNode({ data }: NodeProps) {
-  const d = data as { label: string; kind: string; sub?: string; focusDim?: boolean; focused?: boolean }
+  const d = data as {
+    label: string
+    kind: string
+    sub?: string
+    launchUrl?: string
+    focusDim?: boolean
+    focused?: boolean
+  }
   const color = KIND_COLOR[d.kind] ?? "#8b949e"
   return (
     <div
-      className="flex w-[132px] items-stretch overflow-hidden rounded-md border border-dashed bg-[var(--card)] text-xs"
+      className="group relative flex w-[132px] items-stretch overflow-hidden rounded-md border border-dashed bg-[var(--card)] text-xs"
       style={{
         borderColor: color,
         opacity: d.focusDim ? 0.12 : 0.9,
@@ -336,6 +343,18 @@ function RemoteNode({ data }: NodeProps) {
       }}
       title="remote (on another node)"
     >
+      {d.launchUrl && (
+        <a
+          href={d.launchUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="absolute right-0.5 top-0.5 z-10 rounded bg-[var(--card)]/80 p-0.5 text-[var(--muted)] opacity-0 hover:text-[var(--primary)] group-hover:opacity-100"
+          title={`Launch ${d.launchUrl}`}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <ExternalLink size={12} />
+        </a>
+      )}
       <div className="w-1 shrink-0" style={{ background: color }} />
       <div className="min-w-0 flex-1 px-2 py-1">
         <div className="truncate text-[var(--card-foreground)]" title={d.label}>
@@ -473,6 +492,14 @@ export function SystemMapPage() {
       if (n.kind === "static") return `https://${n.name}.${domain}`
       if (n.kind === "service" && n.endpoints.some((e) => e.protocol === "http"))
         return `https://${n.name}.${domain}`
+      return undefined
+    }
+
+    // Remote launch: <subdomain>.<node-domain>, using the node's own acme domain
+    // carried in the mesh payload. References launch at their base_url.
+    const remoteLaunchOf = (md: MeshDeployment): string | undefined => {
+      if (md.kind === "reference") return md.base_url ?? undefined
+      if (md.subdomain && md.domain) return `https://${md.subdomain}.${md.domain}`
       return undefined
     }
 
@@ -658,6 +685,7 @@ export function SystemMapPage() {
             label: md.name,
             kind: md.kind,
             sub: md.endpoints[0] ? `:${md.endpoints[0].port}` : undefined,
+            launchUrl: remoteLaunchOf(md),
           },
         })
       }
@@ -870,7 +898,7 @@ export function SystemMapPage() {
         capsConsumes: [],
         reach: null,
         exposable: false,
-        launchUrl: ri.md.base_url ?? undefined,
+        launchUrl: remoteLaunchOf(ri.md),
       })
 
     return { nodes, edges, kindOf, reachOf, consumes, consumedBy, meta }
