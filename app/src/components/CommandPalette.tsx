@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { ExternalLink, Gauge, Maximize2, Package, Search } from "lucide-react"
+import { ExternalLink, Gauge, Maximize2, Search } from "lucide-react"
 import { useGateway, useGraph, useMeshDeployments, usePrograms } from "@/services/api/hooks"
 import { kindIcon } from "@/lib/labels"
+
+const ProgramIcon = kindIcon("program")
 
 // The command palette — the keyboard twin of the System map's inspect panel. ⌘K
 // from anywhere: an empty query is the "Start Menu" (launchable apps); typing
@@ -233,7 +235,7 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
                   title="Go to program (source)"
                   className="shrink-0 text-[var(--muted)] hover:text-[var(--card-foreground)]"
                 >
-                  <Package size={13} />
+                  <ProgramIcon size={13} />
                 </button>
               )}
               <button

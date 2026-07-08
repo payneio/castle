@@ -1,18 +1,18 @@
 import type { LucideIcon } from "lucide-react"
-import { Box, Clock, LayoutTemplate, Package, Server, Waypoints, Wrench } from "lucide-react"
+import { Box, Clock, LayoutTemplate, Server, SquareCode, Waypoints, Wrench } from "lucide-react"
 
 // Canonical kind → icon — the single source of truth so the nav, Overview tiles,
 // cards, the System map, and the command palette all speak one visual language.
 // (Colors live in KindBadge; labels/descriptions are below.) `program` is the
-// catalog pseudo-kind, not a deployment kind — the same Package glyph the
-// Programs nav entry and Overview tile use.
+// catalog pseudo-kind, not a deployment kind — the SquareCode glyph the Programs
+// nav entry and Overview tile use.
 export const KIND_ICONS: Record<string, LucideIcon> = {
   service: Server,
   job: Clock,
   tool: Wrench,
   static: LayoutTemplate,
   reference: Waypoints,
-  program: Package,
+  program: SquareCode,
 }
 
 export function kindIcon(kind: string): LucideIcon {

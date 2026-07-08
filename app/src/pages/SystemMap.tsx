@@ -31,6 +31,7 @@ import {
   Plus,
   RotateCw,
   Router,
+  SquareCode,
   Trash2,
   X,
 } from "lucide-react"
@@ -169,7 +170,7 @@ function MapNode({ data }: NodeProps) {
             d.onProgram?.(d.program!)
           }}
         >
-          <Package size={11} />
+          <SquareCode size={11} />
         </button>
       ) : (
         // No program (inline infra) — a same-size, non-interactive cell with a
