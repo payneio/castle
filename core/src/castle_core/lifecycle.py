@@ -11,8 +11,10 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -68,14 +70,38 @@ def _uv_tool_packages() -> set[str]:
     return pkgs
 
 
-def _on_path(name: str) -> bool:
-    """Whether a tool is installed, PATH-independent and script-name-independent.
+def _own_venv_bins() -> set[str]:
+    """Bin dirs of the *running* interpreter's virtualenv.
 
-    Checks, in order: the console script on PATH, the script in ~/.local/bin
-    (uv's install dir), and finally `uv tool list` by *package* name — the last
-    catches tools whose executable is named differently from the program.
+    Excluded from install detection: when the api server (or a dev `castle`) runs
+    inside a project venv via `uv run`, a tool merely *colocated* there — e.g. an
+    editable a dev accidentally `uv pip install`ed while that venv was active — must
+    not read as "installed on PATH" for the user. We only strip *our own* venv, not
+    every venv, so tools legitimately installed elsewhere on PATH still count.
     """
-    if shutil.which(name) is not None:
+    bins = {os.path.normpath(os.path.dirname(sys.executable))}  # the interpreter's own bin
+    bins.add(os.path.normpath(os.path.join(sys.prefix, "bin")))  # venv root → bin
+    venv = os.environ.get("VIRTUAL_ENV")
+    if venv:
+        bins.add(os.path.normpath(os.path.join(venv, "bin")))
+    return bins
+
+
+def _on_path(name: str) -> bool:
+    """Whether a tool is installed, script-name-independent and blind to our own venv.
+
+    Checks, in order: the console script on PATH (minus the running interpreter's
+    own venv bin — see :func:`_own_venv_bins`), the script in ~/.local/bin (uv's
+    install dir), and finally `uv tool list` by *package* name — the last catches
+    tools whose executable is named differently from the program.
+    """
+    exclude = _own_venv_bins()
+    search = os.pathsep.join(
+        p
+        for p in (os.environ.get("PATH") or os.defpath).split(os.pathsep)
+        if p and os.path.normpath(p) not in exclude
+    )
+    if shutil.which(name, path=search) is not None:
         return True
     if (Path.home() / ".local" / "bin" / name).exists():
         return True
