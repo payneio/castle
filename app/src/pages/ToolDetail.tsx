@@ -1,9 +1,12 @@
 import { useParams, Link } from "react-router-dom"
-import { Loader2, Package } from "lucide-react"
-import { useDeployment, useSetEnabled } from "@/services/api/hooks"
+import { Loader2 } from "lucide-react"
+import { useApply, useDeployment, useSetEnabled } from "@/services/api/hooks"
+import { kindIcon } from "@/lib/labels"
 import { DetailHeader } from "@/components/detail/DetailHeader"
 import { ConfigPanel } from "@/components/detail/ConfigPanel"
 import { RelatedDeployments } from "@/components/detail/RelatedDeployments"
+
+const ProgramIcon = kindIcon("program")
 
 export function ToolDetailPage() {
   const { name } = useParams<{ name: string }>()
@@ -60,7 +63,7 @@ export function ToolDetailPage() {
           to={`/programs/${program}`}
           className="inline-flex items-center gap-1.5 text-sm text-[var(--primary)] hover:underline"
         >
-          <Package size={14} /> {program}
+          <ProgramIcon size={14} /> {program}
         </Link>
       </div>
 
@@ -83,8 +86,15 @@ function PathLifecycle({
   installed: boolean | null
   onDone: () => void
 }) {
-  const { mutate, isPending } = useSetEnabled()
+  const setEnabled = useSetEnabled()
+  const apply = useApply()
   const installed = installedState === true
+  // Drift: the desired state (enabled) and the actual state (installed) disagree —
+  // config says it should be on PATH but isn't, or vice versa. The enable/disable
+  // toggle changes *intent*; converging is a separate act, so offer an Apply button
+  // that reconciles reality to the current intent without flipping it.
+  const drift = installedState !== null && installedState !== enabled
+  const busy = setEnabled.isPending || apply.isPending
   const dot =
     installedState === true
       ? "bg-green-500"
@@ -97,20 +107,34 @@ function PathLifecycle({
         <span className={`h-2 w-2 rounded-full shrink-0 ${dot}`} />
         <span>{installed ? "Installed on PATH" : "Not installed"}</span>
         {!enabled && <span className="text-xs text-amber-400">disabled</span>}
+        {drift && <span className="text-xs text-amber-400">needs apply</span>}
         <span className="text-xs text-[var(--muted)]">manager: path</span>
       </div>
-      <button
-        onClick={() => mutate({ name, enabled: !enabled }, { onSuccess: onDone })}
-        disabled={isPending}
-        className={`flex items-center gap-1.5 px-2.5 py-1 text-sm rounded border transition-colors disabled:opacity-40 ${
-          enabled
-            ? "border-red-800 text-red-400 hover:bg-red-800/30"
-            : "border-green-800 text-green-400 hover:bg-green-800/30"
-        }`}
-      >
-        {isPending && <Loader2 size={14} className="animate-spin" />}
-        {enabled ? "Disable" : "Enable"}
-      </button>
+      <div className="flex items-center gap-2">
+        {drift && (
+          <button
+            onClick={() => apply.mutate({ name }, { onSuccess: onDone })}
+            disabled={busy}
+            title={enabled ? "Converge onto PATH" : "Remove from PATH"}
+            className="flex items-center gap-1.5 px-2.5 py-1 text-sm rounded border border-green-800 text-green-400 hover:bg-green-800/30 transition-colors disabled:opacity-40"
+          >
+            {apply.isPending && <Loader2 size={14} className="animate-spin" />}
+            {enabled ? "Install" : "Uninstall"}
+          </button>
+        )}
+        <button
+          onClick={() => setEnabled.mutate({ name, enabled: !enabled }, { onSuccess: onDone })}
+          disabled={busy}
+          className={`flex items-center gap-1.5 px-2.5 py-1 text-sm rounded border transition-colors disabled:opacity-40 ${
+            enabled
+              ? "border-red-800 text-red-400 hover:bg-red-800/30"
+              : "border-green-800 text-green-400 hover:bg-green-800/30"
+          }`}
+        >
+          {setEnabled.isPending && <Loader2 size={14} className="animate-spin" />}
+          {enabled ? "Disable" : "Enable"}
+        </button>
+      </div>
     </div>
   )
 }
