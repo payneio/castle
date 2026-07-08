@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { ExternalLink, Map as MapIcon, Maximize2, Search } from "lucide-react"
-import { useGateway, useGraph, useMeshDeployments } from "@/services/api/hooks"
+import { ExternalLink, Gauge, Maximize2, Package, Search } from "lucide-react"
+import { useGateway, useGraph, useMeshDeployments, usePrograms } from "@/services/api/hooks"
+import { kindIcon } from "@/lib/labels"
 
-// The command palette — the keyboard twin of the map's inspect panel. ⌘K from
-// anywhere: an empty query is the "Start Menu" (launchable apps); typing searches
-// every deployment. Enter launches (or, for non-launchable, jumps to it on the map).
+// The command palette — the keyboard twin of the System map's inspect panel. ⌘K
+// from anywhere: an empty query is the "Start Menu" (launchable apps); typing
+// searches every deployment and program. One row per real thing: a deployed
+// program is a single row (with a 📦 jump to its source page); a source-only
+// program — one with no deployment — gets its own row. Enter launches (or, for
+// non-launchable, jumps to it in the System map, else opens its detail page).
 interface AppItem {
   id: string
   name: string
@@ -13,7 +17,8 @@ interface AppItem {
   machine: string | null // remote hostname, or null for local
   launchUrl?: string
   detailPath: string
-  mapNodeId: string
+  mapNodeId?: string // set for graph/mesh nodes; absent for catalog-only programs
+  programPath?: string // the source/catalog page behind a deployment (/programs/<program>)
 }
 
 function detailPathFor(kind: string, name: string): string {
@@ -51,12 +56,18 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
   const { data: graph } = useGraph()
   const { data: gateway } = useGateway()
   const { data: mesh } = useMeshDeployments()
+  const { data: programs } = usePrograms()
   const [query, setQuery] = useState("")
   const [sel, setSel] = useState(0)
 
   const apps = useMemo<AppItem[]>(() => {
     const domain = gateway?.domain
     const out: AppItem[] = []
+    // Programs already represented by a local deployment row — so we don't list
+    // them a second time as standalone catalog entries.
+    const deployedPrograms = new Set(
+      (graph?.nodes ?? []).map((n) => n.program).filter((p): p is string => !!p),
+    )
     for (const n of graph?.nodes ?? []) {
       const launchUrl =
         n.kind === "reference"
@@ -75,6 +86,7 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
         launchUrl,
         detailPath: detailPathFor(n.kind, n.name),
         mapNodeId: n.name,
+        programPath: n.program ? `/programs/${n.program}` : undefined,
       })
     }
     for (const md of mesh?.deployments ?? []) {
@@ -96,8 +108,22 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
         mapNodeId: `__remote_${md.node}_${md.name}__`,
       })
     }
+    // Source-only programs — those with no deployment on this node. A deployed
+    // program is already reachable via its deployment row's 📦 icon, so it isn't
+    // repeated here. Not launchable, so these surface only when the user types
+    // (never in the empty "Start Menu"); Enter opens the program detail page.
+    for (const p of programs ?? []) {
+      if (deployedPrograms.has(p.id)) continue
+      out.push({
+        id: `program:${p.id}`,
+        name: p.id,
+        kind: "program",
+        machine: null,
+        detailPath: `/programs/${p.id}`,
+      })
+    }
     return out
-  }, [graph, gateway, mesh])
+  }, [graph, gateway, mesh, programs])
 
   const results = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -109,15 +135,22 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
   const launch = (a: AppItem) => {
     onClose()
     if (a.launchUrl) window.open(a.launchUrl, "_blank", "noreferrer")
-    else navigate(`/map?focus=${encodeURIComponent(a.mapNodeId)}`)
+    else if (a.mapNodeId) navigate(`/map?focus=${encodeURIComponent(a.mapNodeId)}`)
+    else navigate(a.detailPath)
   }
   const goToMap = (a: AppItem) => {
+    if (!a.mapNodeId) return
     onClose()
     navigate(`/map?focus=${encodeURIComponent(a.mapNodeId)}`)
   }
   const details = (a: AppItem) => {
     onClose()
     navigate(a.detailPath)
+  }
+  const goToProgram = (a: AppItem) => {
+    if (!a.programPath) return
+    onClose()
+    navigate(a.programPath)
   }
 
   return (
@@ -159,13 +192,16 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
           {results.length === 0 && (
             <div className="px-3 py-6 text-center text-xs text-[var(--muted)]">No matches.</div>
           )}
-          {results.map((a, i) => (
+          {results.map((a, i) => {
+            const KindIcon = kindIcon(a.kind)
+            return (
             <div
               key={a.id}
               onMouseEnter={() => setSel(i)}
               onClick={() => launch(a)}
               className={`flex cursor-pointer items-center gap-2 px-3 py-2 text-sm ${i === sel ? "bg-white/10" : ""}`}
             >
+              <KindIcon size={14} className="shrink-0 text-[var(--muted)]" />
               <span className="min-w-0 flex-1 truncate text-[var(--card-foreground)]">{a.name}</span>
               {a.machine && (
                 <span className="shrink-0 rounded bg-[#e879f9]/20 px-1 text-[9px] text-[#e879f9]">{a.machine}</span>
@@ -182,13 +218,24 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
                   <ExternalLink size={13} />
                 </button>
               )}
-              <button
-                onClick={(e) => (e.stopPropagation(), goToMap(a))}
-                title="Go to on map"
-                className="shrink-0 text-[var(--muted)] hover:text-[var(--card-foreground)]"
-              >
-                <MapIcon size={13} />
-              </button>
+              {a.mapNodeId && (
+                <button
+                  onClick={(e) => (e.stopPropagation(), goToMap(a))}
+                  title="View in System map"
+                  className="shrink-0 text-[var(--muted)] hover:text-[var(--card-foreground)]"
+                >
+                  <Gauge size={13} />
+                </button>
+              )}
+              {a.programPath && (
+                <button
+                  onClick={(e) => (e.stopPropagation(), goToProgram(a))}
+                  title="Go to program (source)"
+                  className="shrink-0 text-[var(--muted)] hover:text-[var(--card-foreground)]"
+                >
+                  <Package size={13} />
+                </button>
+              )}
               <button
                 onClick={(e) => (e.stopPropagation(), details(a))}
                 title="Castle details"
@@ -197,7 +244,8 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
                 <Maximize2 size={12} />
               </button>
             </div>
-          ))}
+            )
+          })}
         </div>
         <div className="flex items-center justify-between border-t border-[var(--border)] px-3 py-1.5 text-[10px] text-[var(--muted)]">
           <span>↑↓ navigate · ↵ launch/open · esc close</span>
