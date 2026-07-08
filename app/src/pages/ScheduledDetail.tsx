@@ -1,5 +1,6 @@
 import { useParams, Link } from "react-router-dom"
-import { Clock, Package } from "lucide-react"
+import { Clock } from "lucide-react"
+import { kindIcon } from "@/lib/labels"
 import { useJob } from "@/services/api/hooks"
 import { LogViewer } from "@/components/LogViewer"
 import { DetailHeader } from "@/components/detail/DetailHeader"
@@ -7,6 +8,8 @@ import { ServiceControls } from "@/components/detail/ServiceControls"
 import { SystemdPanel } from "@/components/detail/SystemdPanel"
 import { ConfigPanel } from "@/components/detail/ConfigPanel"
 import { RelatedDeployments } from "@/components/detail/RelatedDeployments"
+
+const ProgramIcon = kindIcon("program")
 
 export function ScheduledDetailPage() {
   const { name } = useParams<{ name: string }>()
@@ -58,7 +61,7 @@ export function ScheduledDetailPage() {
                 to={`/programs/${deployment.program}`}
                 className="flex items-center gap-1.5 min-w-0 text-[var(--primary)] hover:underline"
               >
-                <Package size={14} className="shrink-0" /> {deployment.program}
+                <ProgramIcon size={14} className="shrink-0" /> {deployment.program}
               </Link>
             </>
           )}

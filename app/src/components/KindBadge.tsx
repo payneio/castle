@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils"
-import { KIND_DESCRIPTIONS, kindLabel } from "@/lib/labels"
+import { KIND_DESCRIPTIONS, kindIcon, kindLabel } from "@/lib/labels"
 
 // Derived deployment kind → badge color.
 const kindColors: Record<string, string> = {
@@ -12,15 +12,17 @@ const kindColors: Record<string, string> = {
 
 export function KindBadge({ kind }: { kind: string | null }) {
   if (!kind) return null
+  const Icon = kindIcon(kind)
 
   return (
     <span
       className={cn(
-        "inline-block text-[0.65rem] font-semibold uppercase px-1.5 py-0.5 rounded",
+        "inline-flex items-center gap-1 text-[0.65rem] font-semibold uppercase px-1.5 py-0.5 rounded",
         kindColors[kind] ?? "bg-gray-600 text-gray-200",
       )}
       title={KIND_DESCRIPTIONS[kind]}
     >
+      <Icon size={11} className="shrink-0" />
       {kindLabel(kind)}
     </span>
   )

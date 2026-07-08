@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom"
-import { Clock, Globe, Package, Server, Share2, Wrench } from "lucide-react"
+import { Globe, Share2 } from "lucide-react"
+import { KIND_ICONS } from "@/lib/labels"
 import {
   useGateway,
   useJobs,
@@ -33,28 +34,28 @@ export function Overview() {
   const tiles = [
     {
       to: "/services",
-      icon: Server,
+      icon: KIND_ICONS.service,
       label: "Services",
       value: services?.length ?? 0,
       detail: services ? `${upCount(serviceIds)} up` : "",
     },
     {
       to: "/scheduled",
-      icon: Clock,
+      icon: KIND_ICONS.job,
       label: "Scheduled",
       value: jobs?.length ?? 0,
       detail: jobs ? `${jobs.length === 1 ? "job" : "jobs"}` : "",
     },
     {
       to: "/tools",
-      icon: Wrench,
+      icon: KIND_ICONS.tool,
       label: "Tools",
       value: tools?.length ?? 0,
       detail: tools ? "on PATH" : "",
     },
     {
       to: "/programs",
-      icon: Package,
+      icon: KIND_ICONS.program,
       label: "Programs",
       value: programs?.length ?? 0,
       detail: programs ? "in catalog" : "",
