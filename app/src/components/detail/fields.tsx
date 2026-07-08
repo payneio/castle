@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react"
-import { Trash2 } from "lucide-react"
+import { Trash2, X } from "lucide-react"
 import { SecretsEditor } from "@/components/SecretsEditor"
 import { ConfirmModal } from "@/components/ConfirmModal"
 
@@ -89,6 +89,26 @@ export function useEnvSecrets(initial: Record<string, string>) {
   const [env, setEnv] = useState<Record<string, string>>(plain)
   const [secrets, setSecrets] = useState<Record<string, string>>(secretRefs)
 
+  // Inline "add variable" row (replaces a native prompt). `adding` toggles it;
+  // the key is committed only when non-blank and not already an env/secret name.
+  const [adding, setAdding] = useState(false)
+  const [newKey, setNewKey] = useState("")
+  const [newVal, setNewVal] = useState("")
+  const trimmedKey = newKey.trim()
+  const duplicate = trimmedKey !== "" && (trimmedKey in env || trimmedKey in secrets)
+  const canCommit = trimmedKey !== "" && !duplicate
+
+  const cancelNew = () => {
+    setAdding(false)
+    setNewKey("")
+    setNewVal("")
+  }
+  const commitNew = () => {
+    if (!canCommit) return
+    setEnv((p) => ({ ...p, [trimmedKey]: newVal }))
+    cancelNew()
+  }
+
   const merged = (): Record<string, string> => {
     const out: Record<string, string> = { ...env }
     for (const [k, name] of Object.entries(secrets)) out[k] = `\${secret:${name}}`
@@ -134,15 +154,60 @@ export function useEnvSecrets(initial: Record<string, string>) {
               </button>
             </div>
           ))}
-          <button
-            onClick={() => {
-              const key = prompt("Variable name:")
-              if (key) setEnv((p) => ({ ...p, [key]: "" }))
-            }}
-            className="text-xs text-[var(--primary)] hover:underline"
-          >
-            + Add variable
-          </button>
+          {adding ? (
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <input
+                  autoFocus
+                  value={newKey}
+                  onChange={(e) => setNewKey(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") commitNew()
+                    if (e.key === "Escape") cancelNew()
+                  }}
+                  placeholder="VARIABLE_NAME"
+                  className={`w-24 sm:w-56 min-w-0 ${INPUT} text-xs font-mono`}
+                />
+                <span className="text-[var(--muted)] shrink-0">=</span>
+                <input
+                  value={newVal}
+                  onChange={(e) => setNewVal(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") commitNew()
+                    if (e.key === "Escape") cancelNew()
+                  }}
+                  placeholder="value"
+                  className={`flex-1 min-w-0 ${INPUT} text-xs font-mono`}
+                />
+                <button
+                  onClick={commitNew}
+                  disabled={!canCommit}
+                  className="px-2 py-1 text-xs rounded bg-blue-700 hover:bg-blue-600 text-white transition-colors disabled:opacity-40 shrink-0"
+                >
+                  Add
+                </button>
+                <button
+                  onClick={cancelNew}
+                  className="text-[var(--muted)] hover:text-[var(--foreground)] p-0.5 shrink-0"
+                  title="Cancel"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+              {duplicate && (
+                <p className="text-xs text-amber-400">
+                  <span className="font-mono">{trimmedKey}</span> already exists.
+                </p>
+              )}
+            </div>
+          ) : (
+            <button
+              onClick={() => setAdding(true)}
+              className="text-xs text-[var(--primary)] hover:underline"
+            >
+              + Add variable
+            </button>
+          )}
         </div>
       </Field>
       <Field label="Secrets">

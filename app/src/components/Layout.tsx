@@ -6,15 +6,15 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
+  Gauge,
   Globe,
   KeyRound,
   LayoutDashboard,
   Menu,
-  Package,
   Search,
   Server,
   Share2,
-  Map as MapIcon,
+  SquareCode,
   Wrench,
   X,
   type LucideIcon,
@@ -32,6 +32,7 @@ type NavGroup = { label: string; icon: LucideIcon; children: NavLeaf[] }
 // "Deployments" parent. Programs (the catalog) stays top-level.
 const NAV: (NavLeaf | NavGroup)[] = [
   { to: "/", label: "Overview", icon: LayoutDashboard, end: true },
+  { to: "/map", label: "System", icon: Gauge },
   { to: "/gateway", label: "Gateway", icon: Globe },
   {
     label: "Deployments",
@@ -42,8 +43,7 @@ const NAV: (NavLeaf | NavGroup)[] = [
       { to: "/tools", label: "Tools", icon: Wrench },
     ],
   },
-  { to: "/programs", label: "Programs", icon: Package },
-  { to: "/map", label: "System Map", icon: MapIcon },
+  { to: "/programs", label: "Programs", icon: SquareCode },
   { to: "/mesh", label: "Mesh", icon: Share2 },
   { to: "/secrets", label: "Secrets", icon: KeyRound },
 ]
