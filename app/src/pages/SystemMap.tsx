@@ -987,7 +987,7 @@ export function SystemMapPage() {
     setFocus(picks.length === 1 ? picks[0].id : null)
   }, [])
 
-  // "Go to on map" from the command palette (/map?focus=<id>): select + center it.
+  // "Go to on map" from the command palette (/system?focus=<id>): select + center it.
   useEffect(() => {
     const f = searchParams.get("focus")
     if (!f) return

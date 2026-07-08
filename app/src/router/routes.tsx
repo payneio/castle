@@ -1,4 +1,4 @@
-import { createBrowserRouter } from "react-router-dom"
+import { createBrowserRouter, Navigate } from "react-router-dom"
 import { Layout } from "@/components/Layout"
 import { Overview } from "@/pages/Overview"
 import { Services } from "@/pages/Services"
@@ -29,7 +29,9 @@ export const router = createBrowserRouter([
       { path: "gateway", element: <GatewayPage /> },
       { path: "mesh", element: <MeshPage /> },
       { path: "secrets", element: <SecretsPage /> },
-      { path: "map", element: <SystemMapPage /> },
+      { path: "system", element: <SystemMapPage /> },
+      // Back-compat: the page was formerly at /map. Redirect old links/bookmarks.
+      { path: "map", element: <Navigate to="/system" replace /> },
       { path: "services/:name", element: <ServiceDetailPage /> },
       { path: "jobs/:name", element: <ScheduledDetailPage /> },
       { path: "tools/:name", element: <ToolDetailPage /> },

@@ -32,7 +32,7 @@ type NavGroup = { label: string; icon: LucideIcon; children: NavLeaf[] }
 // "Deployments" parent. Programs (the catalog) stays top-level.
 const NAV: (NavLeaf | NavGroup)[] = [
   { to: "/", label: "Overview", icon: LayoutDashboard, end: true },
-  { to: "/map", label: "System", icon: Gauge },
+  { to: "/system", label: "System", icon: Gauge },
   { to: "/gateway", label: "Gateway", icon: Globe },
   {
     label: "Deployments",

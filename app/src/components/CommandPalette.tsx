@@ -26,7 +26,7 @@ interface AppItem {
 function detailPathFor(kind: string, name: string): string {
   if (kind === "job") return `/jobs/${name}`
   if (kind === "tool") return `/tools/${name}`
-  if (kind === "reference") return `/map`
+  if (kind === "reference") return `/system`
   return `/services/${name}`
 }
 
@@ -137,13 +137,13 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
   const launch = (a: AppItem) => {
     onClose()
     if (a.launchUrl) window.open(a.launchUrl, "_blank", "noreferrer")
-    else if (a.mapNodeId) navigate(`/map?focus=${encodeURIComponent(a.mapNodeId)}`)
+    else if (a.mapNodeId) navigate(`/system?focus=${encodeURIComponent(a.mapNodeId)}`)
     else navigate(a.detailPath)
   }
   const goToMap = (a: AppItem) => {
     if (!a.mapNodeId) return
     onClose()
-    navigate(`/map?focus=${encodeURIComponent(a.mapNodeId)}`)
+    navigate(`/system?focus=${encodeURIComponent(a.mapNodeId)}`)
   }
   const details = (a: AppItem) => {
     onClose()
