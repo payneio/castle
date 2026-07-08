@@ -45,25 +45,29 @@ export function ProgramCard({
         <StackBadge stack={program.stack} />
       </div>
 
+      {program.description && (
+        <p className="text-sm text-[var(--muted)] mb-2">{program.description}</p>
+      )}
+
       {/* A program has no kind of its own — show its deployments (name · kind).
+          When a deployment shares the program's name (the common 1:1 case) the
+          name is redundant with the card title, so show just the kind badge.
           Suppressed on kind-specific lenses (e.g. Tools) which already scope to one. */}
       {showDeployments &&
         (program.deployments.length > 0 ? (
-          <div className="flex flex-col gap-1 mb-2">
+          <div className="flex flex-col gap-1">
             {program.deployments.map((d) => (
               <div key={d.name} className="flex items-center gap-1.5 text-xs">
-                <span className="font-mono text-[var(--muted)]">{d.name}</span>
+                {d.name !== program.id && (
+                  <span className="font-mono text-[var(--muted)]">{d.name}</span>
+                )}
                 <KindBadge kind={d.kind} />
               </div>
             ))}
           </div>
         ) : (
-          <p className="text-xs text-[var(--muted)] italic mb-2">no deployment</p>
+          <p className="text-xs text-[var(--muted)] italic">no deployment</p>
         ))}
-
-      {program.description && (
-        <p className="text-sm text-[var(--muted)]">{program.description}</p>
-      )}
     </div>
   )
 }

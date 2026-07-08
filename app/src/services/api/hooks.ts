@@ -385,6 +385,56 @@ export function useProgramSync() {
   })
 }
 
+// Server-side directory browser for the "Add program" flow. Programs live on the
+// server's filesystem, so the picker browses the server's dirs (the browser's own
+// file dialog only sees the client machine). `path` null => the repos dir.
+export interface BrowseEntry {
+  name: string
+  path: string
+  is_program: boolean
+  is_git: boolean
+}
+export interface BrowseResult {
+  path: string
+  parent: string | null
+  repos_dir: string
+  entries: BrowseEntry[]
+}
+export function useBrowse(path: string | null, enabled = true) {
+  return useQuery({
+    queryKey: ["browse", path ?? "@repos"],
+    queryFn: () =>
+      apiClient.get<BrowseResult>(
+        `/fs/browse${path ? `?path=${encodeURIComponent(path)}` : ""}`,
+      ),
+    enabled,
+  })
+}
+
+export interface AdoptResult {
+  ok: boolean
+  program: string
+  source: string
+  stack: string | null
+  repo: string | null
+  commands: string[]
+  is_git_url: boolean
+}
+// Adopt an existing repo as a program (the web `castle program add`). Refreshes
+// the catalog + the derived graph/repo views.
+export function useAdoptProgram() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { target: string; name?: string; description?: string }) =>
+      apiClient.post<AdoptResult>("/programs/adopt", body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["programs"] })
+      qc.invalidateQueries({ queryKey: ["graph"] })
+      qc.invalidateQueries({ queryKey: ["repos"] })
+    },
+  })
+}
+
 export function useRepos() {
   return useQuery({
     queryKey: ["repos"],

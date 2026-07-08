@@ -3,10 +3,19 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, status
+from pydantic import BaseModel
 
 from castle_core import git
+from castle_core.adopt import (
+    AdoptError,
+    build_adopted_program,
+    is_git_url,
+    looks_like_program,
+)
+from castle_core.config import write_program_file
 from castle_core.stacks import available_actions, available_stacks, run_action
 
 from castle_api import stream
@@ -20,6 +29,103 @@ def list_stacks() -> list[str]:
     """Stack names castle has handlers for — populates the dashboard's stack select
     and keeps it in sync with the backend (no hardcoded frontend list)."""
     return available_stacks()
+
+
+# ---------------------------------------------------------------------------
+# Filesystem browse + adopt — powers the dashboard's "Add program" flow, the
+# web equivalent of `castle program add <path|git-url>`. Programs live on the
+# server's filesystem, so the picker browses the *server's* dirs (a browser's
+# native file dialog only sees the client machine).
+# ---------------------------------------------------------------------------
+
+
+@programs_router.get("/fs/browse")
+def browse_filesystem(path: str | None = None) -> dict:
+    """List sub-directories of ``path`` (default: the repos dir) so the dashboard
+    can browse to a program on the server. Directories only; hidden dirs skipped.
+    Each entry is flagged when it looks adoptable (a project manifest or git repo).
+    """
+    config = get_config()
+    base = Path(path).expanduser() if path else config.repos_dir
+    try:
+        base = base.resolve()
+    except OSError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid path: {e}")
+    if not base.exists():
+        raise HTTPException(status_code=404, detail=f"Path does not exist: {base}")
+    if not base.is_dir():
+        raise HTTPException(status_code=400, detail=f"Not a directory: {base}")
+
+    try:
+        children = sorted(base.iterdir(), key=lambda p: p.name.lower())
+    except PermissionError:
+        raise HTTPException(status_code=403, detail=f"Permission denied: {base}")
+
+    entries: list[dict] = []
+    for child in children:
+        if child.name.startswith("."):
+            continue
+        # A single unreadable child (can't stat/traverse) shouldn't sink the whole
+        # listing — skip it rather than 403 the directory.
+        try:
+            if not child.is_dir():
+                continue
+            entries.append(
+                {
+                    "name": child.name,
+                    "path": str(child),
+                    "is_program": looks_like_program(child),
+                    "is_git": (child / ".git").exists(),
+                }
+            )
+        except OSError:
+            continue
+
+    parent = str(base.parent) if base.parent != base else None
+    return {
+        "path": str(base),
+        "parent": parent,
+        "repos_dir": str(config.repos_dir),
+        "entries": entries,
+    }
+
+
+class AdoptRequest(BaseModel):
+    target: str  # a local server path or a git URL
+    name: str | None = None
+    description: str = ""
+
+
+@programs_router.post("/programs/adopt")
+def adopt_program(request: AdoptRequest) -> dict:
+    """Adopt an existing repo as a program (the web `castle program add`).
+
+    ``target`` is a local server path or a git URL. Writes just the new program's
+    file; declaring a deployment (service/job/tool/static) stays a separate step.
+    """
+    target = request.target.strip()
+    if not target:
+        raise HTTPException(status_code=422, detail="A path or git URL is required.")
+
+    config = get_config()
+    try:
+        adopted = build_adopted_program(
+            config, target, name=request.name, description=request.description
+        )
+    except AdoptError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    config.programs[adopted.name] = adopted.spec
+    write_program_file(config, adopted.name)
+    return {
+        "ok": True,
+        "program": adopted.name,
+        "source": adopted.source,
+        "stack": adopted.stack,
+        "repo": adopted.repo,
+        "commands": adopted.commands,
+        "is_git_url": is_git_url(target),
+    }
 
 
 # ---------------------------------------------------------------------------
