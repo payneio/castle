@@ -20,6 +20,15 @@ class Settings(BaseSettings):
     nats_token: str | None = None
     mdns_enabled: bool = False
 
+    # LLM assist (off by default). Calls the litellm proxy's OpenAI-compatible
+    # /chat/completions to generate a tool-call schema for CLIs the deterministic
+    # parser can't structure (subcommand trees). The key is NOT stored here — it's
+    # read from the secret backend by name at call time.
+    llm_enabled: bool = False
+    llm_base_url: str = "https://litellm.civil.payne.io/v1"
+    llm_model: str = "qwen"
+    llm_api_key_secret: str = "LITELLM_MASTER_KEY"
+
     model_config = {
         "env_prefix": "CASTLE_API_",
         "env_file": ".env",

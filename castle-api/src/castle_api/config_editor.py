@@ -6,7 +6,7 @@ import asyncio
 from pathlib import Path
 
 import yaml
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Body, HTTPException, status
 from pydantic import BaseModel
 
 from castle_core.config import (
@@ -452,6 +452,80 @@ def save_tool(name: str, request: ServiceConfigRequest) -> dict:
 @router.delete("/tools/{name}")
 def delete_tool(name: str) -> dict:
     return _delete_deployment(name, kind="tool")
+
+
+@router.post("/tools/{name}/schema")
+async def generate_tool_schema(
+    name: str, deep: bool = False, assist: str | None = None
+) -> dict:
+    """Generate a *draft* tool-call schema (neutral core) from the tool's ``--help``.
+
+    Not saved — the client reviews/edits it and persists via ``PUT
+    /config/tools/{name}`` (the schema rides in the deployment config as
+    ``tool_schema``). Two modes:
+
+    * default (``assist`` unset) — deterministic: parse ``--help``. ``deep`` walks
+      subcommands. 422 if the tool isn't installed / emits no help.
+    * ``assist=llm`` — send the recursive ``--help`` to the litellm proxy for a
+      structured schema (the escape hatch for subcommand trees the parser can only
+      render as a ``command`` string). 503 if LLM assist is disabled; 502 on an
+      upstream/validation failure.
+    """
+    from castle_core.tool_schema import (
+        ToolSchemaError,
+        collect_tool_help,
+        derive_tool_schema,
+    )
+
+    config = get_config()
+    if config.deployment("tool", name) is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Tool '{name}' not found",
+        )
+
+    if assist == "llm":
+        from castle_api.config import settings
+        from castle_api.llm import LLMAssistError, generate_tool_schema_llm
+
+        if not settings.llm_enabled:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="LLM assist is disabled (set CASTLE_API_LLM_ENABLED=true).",
+            )
+        try:
+            help_text = collect_tool_help(config, name)
+        except ToolSchemaError as e:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e)
+            )
+        try:
+            schema = await generate_tool_schema_llm(help_text, name)
+        except LLMAssistError as e:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e)
+            )
+        return {"ok": True, "schema": schema, "assist": "llm"}
+
+    try:
+        schema = derive_tool_schema(config, name, deep=deep)
+    except ToolSchemaError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(e),
+        )
+    return {"ok": True, "schema": schema}
+
+
+@router.post("/tools/schema/validate")
+def validate_tool_schema_endpoint(core: dict = Body(...)) -> dict:
+    """Deterministically validate a tool-call schema core (no LLM) — the shape and
+    that ``parameters`` is a valid JSON Schema. Lets the UI check a hand-edited
+    schema. Returns ``{valid, errors}``."""
+    from castle_core.tool_schema import validate_tool_schema_core
+
+    errors = validate_tool_schema_core(core)
+    return {"valid": not errors, "errors": errors}
 
 
 @router.put("/static/{name}")

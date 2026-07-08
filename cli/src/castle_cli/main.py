@@ -81,12 +81,17 @@ def _build_tool_group(subparsers: argparse._SubParsersAction) -> None:
     grp.set_defaults(resource="tool")
     sub = grp.add_subparsers(dest="tool_command")
 
+    fmt_help = "Render each tool_schema in this envelope (default: openai)"
+    fmt_choices = ("openai", "anthropic", "neutral")
+
     p = sub.add_parser("list", help="List tools with their executable + description")
     p.add_argument("--json", action="store_true", help="Machine-readable output")
+    p.add_argument("--format", choices=fmt_choices, default="openai", help=fmt_help)
 
     p = sub.add_parser("info", help="Show a tool's executable, description, install state")
     _add_name(p, "Tool name")
     p.add_argument("--json", action="store_true", help="Machine-readable output")
+    p.add_argument("--format", choices=fmt_choices, default="openai", help=fmt_help)
 
 
 def _add_service_create(sub: argparse._SubParsersAction, kind: str) -> None:

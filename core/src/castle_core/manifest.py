@@ -506,6 +506,11 @@ class PathDeployment(DeploymentBase):
     """
 
     manager: Literal["path"]
+    # An Anthropic Messages-API tool definition ({name, description, input_schema})
+    # for handing this CLI to an agent. Derived from the tool's ``--help`` (see
+    # ``castle_core.tool_schema``) but editable/overridable — a stored draft the
+    # completion-context builder reads. None → not yet generated.
+    tool_schema: dict | None = None
 
 
 class RemoteDeployment(DeploymentBase):

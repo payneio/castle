@@ -13,8 +13,13 @@ import argparse
 import json
 import tomllib
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from castle_cli.config import load_config
+
+if TYPE_CHECKING:
+    from castle_core.config import CastleConfig
+    from castle_core.manifest import ProgramSpec
 
 BOLD = "\033[1m"
 DIM = "\033[2m"
@@ -24,16 +29,16 @@ GREY = "\033[90m"
 CYAN = "\033[96m"
 
 
-def _is_tool(config: object, name: str) -> bool:
+def _is_tool(config: CastleConfig, name: str) -> bool:
     return any(kind == "tool" for _, kind in config.deployments_of(name))
 
 
-def _tool_programs(config: object) -> dict:
+def _tool_programs(config: CastleConfig) -> dict:
     """Programs with a tool (path) deployment, name-sorted."""
     return {name: comp for name, comp in sorted(config.programs.items()) if _is_tool(config, name)}
 
 
-def _executables(comp: object) -> list[str]:
+def _executables(comp: ProgramSpec) -> list[str]:
     """The console scripts a tool exposes, from its pyproject `[project.scripts]`.
 
     This is the command(s) to actually run — the source of truth even when the
@@ -54,7 +59,16 @@ def _executables(comp: object) -> list[str]:
     return [comp.id]
 
 
-def _tool_record(config: object, name: str, comp: object, installed: bool) -> dict:
+def _tool_record(
+    config: CastleConfig, name: str, comp: ProgramSpec, installed: bool, fmt: str = "openai"
+) -> dict:
+    # The tool-call schema (for handing this CLI to an agent) is stored neutral on
+    # the path deployment; render it into the requested envelope for the --json
+    # context payload. Feed default is openai (litellm-native).
+    from castle_core.tool_schema import render_tool_schema
+
+    dep = config.deployment("tool", name)
+    core = getattr(dep, "tool_schema", None)
     return {
         "name": name,
         "executables": _executables(comp),
@@ -63,6 +77,7 @@ def _tool_record(config: object, name: str, comp: object, installed: bool) -> di
         "stack": comp.stack,
         "source": comp.source,
         "system_dependencies": comp.system_dependencies,
+        "tool_schema": render_tool_schema(core, fmt) if core else None,
     }
 
 
@@ -72,8 +87,10 @@ def run_tool_list(args: argparse.Namespace) -> int:
 
     config = load_config()
     tools = _tool_programs(config)
+    fmt = getattr(args, "format", "openai")
     records = [
-        _tool_record(config, name, comp, tool_installed(name)) for name, comp in tools.items()
+        _tool_record(config, name, comp, tool_installed(name), fmt)
+        for name, comp in tools.items()
     ]
 
     if getattr(args, "json", False):
@@ -112,7 +129,7 @@ def run_tool_info(args: argparse.Namespace) -> int:
 
     comp = config.programs[name]
     installed = tool_installed(name)
-    record = _tool_record(config, name, comp, installed)
+    record = _tool_record(config, name, comp, installed, getattr(args, "format", "openai"))
 
     if getattr(args, "json", False):
         print(json.dumps(record, indent=2))
