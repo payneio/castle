@@ -40,6 +40,7 @@ class GatewayRoute:
     target: str  # static: serve dir; proxy: "localhost:PORT"/base_url; remote: "host:PORT"
     name: str | None = None  # backing program/service
     node: str | None = None
+    public: bool = False  # also served under public_domain
 
     @property
     def is_host(self) -> bool:
@@ -66,15 +67,15 @@ def service_proxy_targets(name: str, dep: SystemdDeployment) -> ProxyTargets:
 
 def _local_routes(
     config: CastleConfig | None, registry: NodeRegistry
-) -> list[tuple[str, str, str]]:
-    """Each local deployment's route as ``(name, kind, target)``, name-sorted.
+) -> list[tuple[str, str, str, bool]]:
+    """Each local deployment's route as ``(name, kind, target, public)``.
 
     ``kind`` is ``static`` (a caddy deployment — file-serve a built dir) or
     ``proxy`` (a proxied systemd process). Prefers ``castle.yaml``
     (``config.deployments``) so a regenerated Caddyfile reflects the current spec;
     falls back to the deployed registry snapshot when config isn't available.
     """
-    out: list[tuple[str, str, str]] = []
+    out: list[tuple[str, str, str, bool]] = []
     if config is not None:
         # Only HTTP-exposed kinds route: static (file-serve) and service (proxy).
         # jobs/tools/references never do.
@@ -86,20 +87,20 @@ def _local_routes(
             if kind == "static" and isinstance(dep, CaddyDeployment):
                 src = _program_source(config, dep.program)
                 if src is not None:
-                    out.append((name, "static", str(src / dep.root)))
+                    out.append((name, "static", str(src / dep.root), bool(dep.public)))
             elif kind == "service" and isinstance(dep, SystemdDeployment):
                 expose, port, base_url = service_proxy_targets(name, dep)
                 if expose and (port or base_url):
-                    out.append((name, "proxy", base_url or f"localhost:{port}"))
+                    out.append((name, "proxy", base_url or f"localhost:{port}", bool(dep.public)))
         return out
     # No config → route from the deployed registry snapshot.
     for _kind, name, d in registry.all():
         if not d.enabled:
             continue
         if d.static_root:
-            out.append((name, "static", d.static_root))
+            out.append((name, "static", d.static_root, d.public))
         elif d.subdomain and (d.port or d.base_url):
-            out.append((name, "proxy", d.base_url or f"localhost:{d.port}"))
+            out.append((name, "proxy", d.base_url or f"localhost:{d.port}", d.public))
     return out
 
 
@@ -140,8 +141,8 @@ def compute_routes(
     # built dir; everything else that's exposed reverse-proxies its port/base_url.
     # (Static frontends are `runner: static` services now — no separate program
     # branch, so routing derives from one place.)
-    for name, kind, target in _local_routes(config, registry):
-        routes.append(GatewayRoute(name, kind, target, name, node))
+    for name, kind, target, is_public in _local_routes(config, registry):
+        routes.append(GatewayRoute(name, kind, target, name, node, is_public))
 
     if remote_registries:
         routes.extend(_remote_routes(config, registry, remote_registries))
@@ -305,6 +306,24 @@ def generate_caddyfile_from_registry(
                     lines += _host_remote_block(r.name or r.address, host, r.target)
                 else:
                     lines += _host_matcher_block(r.name or r.address, host, r.target)
+            lines.append("}")
+            lines.append("")
+        # Public domain: public services are also reachable under a separate zone
+        # (e.g. domain0.org) so LAN clients can access them by their public name.
+        # Central passes TLS through; Caddy obtains a separate wildcard cert.
+        public_domain = node.public_domain
+        public_routes = [r for r in routes if r.public]
+        if public_domain and public_domain != domain and public_routes:
+            lines.append(f"*.{public_domain} {{")
+            for r in public_routes:
+                host = f"{r.address}.{public_domain}"
+                label = f"{r.name or r.address}_pub"
+                if r.kind == "static":
+                    lines += _host_static_block(label, host, r.target)
+                elif r.kind == "remote":
+                    lines += _host_remote_block(label, host, r.target)
+                else:
+                    lines += _host_matcher_block(label, host, r.target)
             lines.append("}")
             lines.append("")
         # Redirect the bare gateway port to the dashboard subdomain.
