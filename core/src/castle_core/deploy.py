@@ -86,13 +86,26 @@ class ApplyResult:
     pruned: list[str] = field(default_factory=list)
     messages: list[str] = field(default_factory=list)
     registry: NodeRegistry | None = None
+    # Gateway routing (the Caddyfile / cloudflared ingress) differs from what's live:
+    # a caddy static/proxy route was added, removed, or had its root/reach changed.
+    # Tracked separately because such a delta touches no systemd unit, so the
+    # activate/restart/deactivate reconcile never classifies it as a change. apply()
+    # rewrites the artifacts and reloads the gateway regardless; this flag just lets
+    # the summary report it instead of a false "already converged".
+    gateway_changed: bool = False
     # True for a `--plan` run: the diff was computed but nothing was written or
     # activated. Lets callers render "would activate…" vs "activated…".
     planned: bool = False
 
     @property
     def changed(self) -> bool:
-        return bool(self.activated or self.restarted or self.deactivated or self.pruned)
+        return bool(
+            self.activated
+            or self.restarted
+            or self.deactivated
+            or self.pruned
+            or self.gateway_changed
+        )
 
 
 def deploy(target_name: str | None = None, root: Path | None = None) -> DeployResult:
@@ -205,6 +218,48 @@ def _unit_bytes(name: str, kind: str) -> str | None:
     return path.read_text() if path.exists() else None
 
 
+def _desired_registry(config: CastleConfig, target_name: str | None) -> NodeRegistry:
+    """The registry ``deploy()`` would write for this (optionally scoped) run.
+
+    Mirrors deploy()'s registry build: a scoped run merges the updated target over
+    the existing on-disk registry; a full run starts fresh. Used to predict
+    gateway-route deltas without writing anything."""
+    node = _node_config(config)
+    if target_name and REGISTRY_PATH.exists():
+        try:
+            registry = NodeRegistry(node=node, deployed=dict(load_registry().deployed))
+        except (FileNotFoundError, ValueError):
+            registry = NodeRegistry(node=node)
+    else:
+        registry = NodeRegistry(node=node)
+    for _kind, name, dep in config.all_deployments():
+        if target_name and name != target_name:
+            continue
+        deployed = _build_deployed(config, name, dep, [])
+        deployed.name = name
+        registry.put(deployed)
+    return registry
+
+
+def _gateway_would_change(config: CastleConfig, target_name: str | None) -> bool:
+    """Whether applying would rewrite the gateway's routing artifacts — the
+    Caddyfile or the cloudflared ingress — vs. what's on disk.
+
+    A pure caddy route change (new static, changed ``root``/``reach``, toggled
+    public) touches no systemd unit, so the activate/restart/deactivate reconcile
+    can't see it; without this the summary reports "already converged" despite a
+    live routing change. Compared before ``deploy()`` rewrites the artifacts, so it
+    reflects the pre-apply delta for both the plan and the real run."""
+    registry = _desired_registry(config, target_name)
+    caddyfile = SPECS_DIR / "Caddyfile"
+    current_caddy = caddyfile.read_text() if caddyfile.exists() else None
+    if generate_caddyfile_from_registry(registry) != current_caddy:
+        return True
+    tunnel_path = SPECS_DIR / "cloudflared.yml"
+    current_tunnel = tunnel_path.read_text() if tunnel_path.exists() else None
+    return generate_tunnel_config(registry) != current_tunnel
+
+
 def apply(
     target_name: str | None = None,
     root: Path | None = None,
@@ -264,6 +319,11 @@ def apply(
             deployed={NodeRegistry.key(k, n): d for (k, n), d in desired.items()},
         )
     )
+    # Gateway routing lives in the Caddyfile / cloudflared ingress, not a systemd
+    # unit, so _classify above can't see a route-only change. Detect it here against
+    # the on-disk artifacts (before deploy() rewrites them) so both the plan and the
+    # real run report it instead of a false "already converged".
+    result.gateway_changed = _gateway_would_change(config, target_name)
 
     if plan:
         # No writes: for systemd, predict the new unit bytes by rendering to a string

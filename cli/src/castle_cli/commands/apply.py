@@ -48,6 +48,8 @@ def run_apply(args: argparse.Namespace) -> int:
         _line(_C["activate"], "would activate  ", result.activated)
         _line(_C["restart"], "would restart   ", result.restarted)
         _line(_C["deactivate"], "would deactivate", result.deactivated)
+        if result.gateway_changed:
+            print(f"  {_C['restart']}would reload    {_C['reset']}  gateway routes")
         return 0
 
     print("\n\033[1mApplied\033[0m")
@@ -57,4 +59,6 @@ def run_apply(args: argparse.Namespace) -> int:
     _line(_C["activate"], "activated  ", result.activated)
     _line(_C["restart"], "restarted  ", result.restarted)
     _line(_C["deactivate"], "deactivated", result.deactivated)
+    if result.gateway_changed:
+        print(f"  {_C['restart']}reloaded   {_C['reset']}  gateway routes")
     return 0
