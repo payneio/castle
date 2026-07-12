@@ -198,10 +198,13 @@ function MapNode({ data }: NodeProps) {
         </div>
         {d.sub && <div className="truncate text-[10px] text-[var(--muted)]">{d.sub}</div>}
       </div>
-      {/* Right handle: drag OUT to connect — to a hub (expose) or another node
-          (declare "requires"). Right target lands incoming dependency lines. */}
+      {/* Right handles: `rs` (source) is what you drag OUT to connect — to a hub
+          (expose) or another node (declare "requires"). `rt` (target) only anchors
+          incoming dependency lines, so it's nudged below `rs`: stacked on top it
+          would swallow the pointer-down (you can't START a drag from a target
+          handle in strict mode) and dragging a fresh line would do nothing. */}
       <Handle id="rs" type="source" position={Position.Right} style={{ ...HANDLE, opacity: 0.9, background: color }} />
-      <Handle id="rt" type="target" position={Position.Right} style={{ ...HANDLE, opacity: 0 }} />
+      <Handle id="rt" type="target" position={Position.Right} style={{ ...HANDLE, opacity: 0, top: "78%" }} />
       <Handle id="lt" type="target" position={Position.Left} isConnectable={false} style={{ ...HANDLE, opacity: 0 }} />
       <Handle id="ls" type="source" position={Position.Left} isConnectable={false} style={{ ...HANDLE, opacity: 0 }} />
     </div>
@@ -474,9 +477,13 @@ export function SystemMapPage() {
     // fallback, but there's no ProgramSpec, so no grip/link.
     const catalog = new Set((programs ?? []).map((p) => p.id))
     const routes = gateway?.routes ?? []
-    const exposed = new Set(routes.map((r) => r.name).filter(Boolean) as string[])
-    const publicSet = new Set(
-      routes.filter((r) => r.public_url).map((r) => r.name).filter(Boolean) as string[],
+    // The gateway's authoritative public (tunnel) URL per exposed name, so a public
+    // service's launch link reads as its internet address, not the internal one.
+    // (Only the *address* comes from the gateway; exposure state is `n.reach`.)
+    const publicUrlOf = new Map(
+      routes
+        .filter((r) => r.public_url && r.name)
+        .map((r) => [r.name as string, r.public_url as string]),
     )
 
     // Per-node lookups from the graph itself (authoritative for sockets/reach now).
@@ -487,11 +494,15 @@ export function SystemMapPage() {
     // http-exposed service served at <name>.<domain>. TCP/tools/jobs aren't.
     const domain = gateway?.domain ?? null
     const launchOf = (n: (typeof graph.nodes)[number]): string | undefined => {
-      if (!domain || !n.reach || n.reach === "off") return undefined
-      if (n.kind === "static") return `https://${n.name}.${domain}`
-      if (n.kind === "service" && n.endpoints.some((e) => e.protocol === "http"))
-        return `https://${n.name}.${domain}`
-      return undefined
+      if (!n.reach || n.reach === "off") return undefined
+      const isHttp =
+        n.kind === "static" ||
+        (n.kind === "service" && n.endpoints.some((e) => e.protocol === "http"))
+      if (!isHttp) return undefined
+      // Public services live at both URLs; prefer the internet one so the link
+      // matches the green Internet edge instead of reading as internal-only.
+      if (n.reach === "public" && publicUrlOf.has(n.name)) return publicUrlOf.get(n.name)
+      return domain ? `https://${n.name}.${domain}` : undefined
     }
 
     // Remote launch: <subdomain>.<node-domain>, using the node's own acme domain
@@ -745,17 +756,19 @@ export function SystemMapPage() {
       }
     }
 
-    // Reach is modal: one line per exposed node. public → a single green line to
-    // Internet; internal → a single blue line to Gateway. Dragging a new line to
-    // the other target switches the mode; deleting the line removes exposure.
+    // Reach is modal: one line per exposed node, driven by the node's own `reach`
+    // (the single source of truth). public → a single green line to Internet;
+    // internal → a single blue line to Gateway. Dragging a new line to the other
+    // target switches the mode; deleting the line removes exposure.
     const reachOf: Record<string, "internal" | "public"> = {}
-    for (const name of exposed) {
-      if (!present.has(name)) continue
-      const isPub = publicSet.has(name)
-      reachOf[name] = isPub ? "public" : "internal"
+    for (const n of graph.nodes) {
+      if (!present.has(n.name)) continue
+      if (n.reach !== "internal" && n.reach !== "public") continue
+      const isPub = n.reach === "public"
+      reachOf[n.name] = isPub ? "public" : "internal"
       edges.push({
-        id: `exp:${name}`,
-        source: name,
+        id: `exp:${n.name}`,
+        source: n.name,
         target: isPub ? "__internet__" : "__gateway__",
         sourceHandle: "rs",
         targetHandle: "lt",
