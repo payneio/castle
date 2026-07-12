@@ -29,14 +29,16 @@ STACK_DEFAULTS: dict[str, str] = {
     "python-cli": "tool",
     "react-vite": "static",
     "supabase": "static",
+    "hugo": "static",
 }
 
 # Static build output per stack, for `static` (caddy) deployments. The gateway
 # serves this dir in place at <name>.<gateway.domain> (no service, no process).
-# A supabase app ships a raw `public/`; react-vite builds to `dist/`.
+# A supabase app ships a raw `public/`; react-vite builds to `dist/`; hugo to `public/`.
 STACK_BUILD_OUTPUTS: dict[str, str] = {
     "supabase": "public",
     "react-vite": "dist",
+    "hugo": "public",
 }
 
 # Substrate a stack's apps depend on — seeded as a deployment `requires` at creation
@@ -180,6 +182,10 @@ def run_create(args: argparse.Namespace) -> int:
         print("  # edit migrations/, functions/, public/ — targets the shared substrate")
         print(f"  castle program build {name}   # apply migrations to the substrate")
         print(f"  castle apply   # serve at {name}.<gateway.domain>")
+    elif stack == "hugo":
+        print("  # edit content/, layouts/ (or add a theme under themes/)")
+        print(f"  castle program build {name}   # hugo --gc --minify -> public/")
+        print(f"  castle apply {name}   # serve at {name}.<gateway.domain>")
     elif stack:
         print("  uv sync")
         if kind == "service":

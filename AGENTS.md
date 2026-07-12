@@ -145,8 +145,9 @@ castle apply                # served at my-frontend.<domain>
 ```
 
 The gateway serves the build **in place** from `<source>/<root>` — no copy, no
-Node process. Stack: **`docs/stacks/react-vite.md`**. Database-backed apps on the
-shared Supabase substrate: **`docs/stacks/supabase.md`**.
+Node process. Stack: **`docs/stacks/react-vite.md`**. Content-driven static sites
+built by Hugo: **`docs/stacks/hugo.md`**. Database-backed apps on the shared
+Supabase substrate: **`docs/stacks/supabase.md`**.
 
 ### Adopt an existing repo (no stack needed)
 
@@ -324,6 +325,7 @@ Inspect + drive from the CLI: **`castle mesh status`** / **`castle mesh nodes`**
 | Writing FastAPI services | **`docs/stacks/python-fastapi.md`** |
 | Writing CLI tools | **`docs/stacks/python-cli.md`** |
 | Writing React/Vite frontends | **`docs/stacks/react-vite.md`** |
+| Writing Hugo static sites | **`docs/stacks/hugo.md`** |
 | Database-backed apps (shared Supabase) | **`docs/stacks/supabase.md`** |
 | **Developing Castle itself** (CLI/core/api/app, key files, endpoints) | **`docs/developing-castle.md`** |
 

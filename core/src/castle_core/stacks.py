@@ -111,6 +111,14 @@ class StackHandler:
     # stacks whose `teardown` actually destroys something.
     owns_data: bool = False
 
+    # The dev verbs this stack advertises — what `available_actions` offers and
+    # `run_action` will dispatch. Defaults to every stack verb (the python/react/
+    # supabase handlers implement them all); a narrow stack like hugo (build-only,
+    # no native lint/test/type-check) overrides this so callers aren't offered verbs
+    # that would only error. `check` composes the sub-verbs, so a handler that drops
+    # lint/type-check/test also drops `check` implicitly.
+    provides: set[str] = _STACK_VERBS
+
     async def build(self, name: str, comp: ProgramSpec, root: Path) -> ActionResult:
         raise NotImplementedError
 
@@ -366,6 +374,59 @@ class ReactViteHandler(StackHandler):
 
         Deactivating one means dropping its gateway route — handled by removing the
         program from the registry, not by deleting build output."""
+        return ActionResult(
+            program=name,
+            action="uninstall",
+            status="ok",
+            output=f"{name}: served in place; nothing to uninstall.",
+        )
+
+
+class HugoHandler(StackHandler):
+    """Handler for the hugo stack — a static site built by the Hugo generator.
+
+    Hugo has one real dev verb: **build** (`hugo --gc --minify` → `public/`), which
+    a `caddy` deployment then serves in place at `<name>.<gateway.domain>`. There is
+    no native lint/test/type-check, so `provides` is narrowed to the verbs that do
+    something. A theme with an asset pipeline (e.g. Blowfish + Tailwind) declares its
+    own two-step `build.commands` (`pnpm build` then `hugo …`), which override this
+    default per the usual declared-command-wins resolution."""
+
+    provides = {"build", "install", "uninstall"}
+
+    async def build(self, name: str, comp: ProgramSpec, root: Path) -> ActionResult:
+        src = _source_dir(comp, root)
+        rc, output = await _run(["hugo", "--gc", "--minify"], src)
+        return ActionResult(
+            program=name,
+            action="build",
+            status="ok" if rc == 0 else "error",
+            output=output,
+        )
+
+    async def install(self, name: str, comp: ProgramSpec, root: Path) -> ActionResult:
+        """Build the site in place. The gateway serves it directly from
+        <source>/<build.outputs[0]> (default `public/`) — no copy step."""
+        result = await self.build(name, comp, root)
+        if result.status != "ok":
+            return ActionResult(
+                program=name,
+                action="install",
+                status="error",
+                output=f"Build failed:\n{result.output}",
+            )
+        outputs = comp.build.outputs if comp.build else []
+        dist = _source_dir(comp, root) / (outputs[0] if outputs else "public")
+        return ActionResult(
+            program=name,
+            action="install",
+            status="ok",
+            output=f"Built; served in place from {dist}",
+        )
+
+    async def uninstall(self, name: str, comp: ProgramSpec, root: Path) -> ActionResult:
+        """Static sites have no install footprint — served in place. Deactivating one
+        means dropping its gateway route, not deleting build output."""
         return ActionResult(
             program=name,
             action="uninstall",
@@ -655,6 +716,7 @@ HANDLERS: dict[str, StackHandler] = {
     "python-fastapi": PythonHandler(),
     "react-vite": ReactViteHandler(),
     "supabase": SupabaseHandler(),
+    "hugo": HugoHandler(),
 }
 
 
@@ -687,12 +749,12 @@ def _declared_commands(comp: ProgramSpec, verb: str) -> list[list[str]] | None:
 
 
 def _stack_provides(comp: ProgramSpec, verb: str) -> bool:
-    """Whether the program's stack handler can run this verb."""
-    return (
-        bool(comp.source)
-        and verb in _STACK_VERBS
-        and get_handler(comp.stack) is not None
-    )
+    """Whether the program's stack handler advertises this verb.
+
+    Consults the handler's ``provides`` set (default: all of ``_STACK_VERBS``) so a
+    build-only stack like hugo doesn't offer lint/test/type-check it can't run."""
+    handler = get_handler(comp.stack)
+    return bool(comp.source) and handler is not None and verb in handler.provides
 
 
 def is_available(comp: ProgramSpec, verb: str) -> bool:

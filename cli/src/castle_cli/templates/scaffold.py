@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import shutil
+import subprocess
 from pathlib import Path
 
 
@@ -20,6 +22,8 @@ def scaffold_project(
         _scaffold_tool(project_dir, name, package_name, description)
     elif stack == "supabase":
         _scaffold_supabase(project_dir, name, description)
+    elif stack == "hugo":
+        _scaffold_hugo(project_dir, name, description)
     else:
         raise ValueError(f"No scaffold template for stack: {stack}")
 
@@ -766,6 +770,200 @@ live on the substrate; rebuild the rest from git anytime.
 RLS protects rows, not the static shell or Storage. For a `private`/`shared` app,
 also gate the shell and use signed Storage URLs — RLS alone is not leak-proof.
 Auth/WebCrypto apps should get their own HTTPS host route (secure context).
+"""
+        ),
+    )
+
+
+def _hugo_new_site(project_dir: Path) -> bool:
+    """Create the canonical site skeleton with Hugo's own scaffolder.
+
+    Delegates the standard structure (archetypes/, the content/layouts/static/…
+    dir tree, hugo.toml) to `hugo new site` rather than reinventing it. Returns
+    False if the hugo binary isn't present at create time — the caller then falls
+    back to a minimal hand-written skeleton (the build needs hugo regardless)."""
+    if shutil.which("hugo") is None:
+        return False
+    # `hugo new site` requires an empty/absent target; create runs before git init,
+    # so project_dir doesn't exist yet.
+    result = subprocess.run(
+        ["hugo", "new", "site", str(project_dir), "--format", "toml"],
+        capture_output=True,
+        text=True,
+    )
+    return result.returncode == 0
+
+
+def _scaffold_hugo(project_dir: Path, name: str, description: str) -> None:
+    """Scaffold a Hugo site that builds and serves theme-less out of the box.
+
+    The canonical skeleton comes from Hugo's own `hugo new site`; on top of it we
+    overlay the pieces a bare skeleton lacks — the layouts needed to render a home
+    page without a theme, sample content, and a castle-flavored hugo.toml/README.
+
+    `castle program build` runs `hugo --gc --minify` → `public/`, which a caddy
+    deployment serves in place at <name>.<gateway.domain>. baseURL is `/` so assets
+    resolve at the root of the site's own subdomain. A theme (with its own asset
+    pipeline) can be dropped under themes/ later; such themes declare a two-step
+    `build.commands` in the program spec, which overrides the stack default."""
+
+    def sub(text: str) -> str:
+        return text.replace("__NAME__", name).replace("__DESC__", description)
+
+    # Prefer Hugo's native scaffolder; fall back to the bits it would have made.
+    if not _hugo_new_site(project_dir):
+        _write(
+            project_dir / "archetypes" / "default.md",
+            """+++
+date = '{{ .Date }}'
+draft = true
+title = '{{ replace .File.ContentBaseName "-" " " | title }}'
++++
+""",
+        )
+
+    # --- hugo.toml — overwrite Hugo's example.org default; baseURL '/' serves at
+    # the subdomain root ---
+    _write(
+        project_dir / "hugo.toml",
+        sub(
+            """baseURL = "/"
+languageCode = "en-us"
+title = "__NAME__"
+
+[params]
+description = "__DESC__"
+"""
+        ),
+    )
+
+    # --- layouts/_default/baseof.html — the shared page skeleton (blocks) ---
+    _write(
+        project_dir / "layouts" / "_default" / "baseof.html",
+        sub(
+            """<!DOCTYPE html>
+<html lang="{{ .Site.LanguageCode | default "en" }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ block "title" . }}{{ .Site.Title }}{{ end }}</title>
+  <meta name="description" content="{{ .Site.Params.description }}">
+</head>
+<body>
+  <header><a href="{{ "/" | relURL }}">{{ .Site.Title }}</a></header>
+  <main>{{ block "main" . }}{{ end }}</main>
+  <footer>&copy; {{ now.Year }} {{ .Site.Title }}</footer>
+</body>
+</html>
+"""
+        ),
+    )
+
+    # --- layouts/index.html — the home page ---
+    _write(
+        project_dir / "layouts" / "index.html",
+        """{{ define "main" }}
+  {{ .Content }}
+  <ul>
+  {{ range (where .Site.RegularPages "Type" "posts") }}
+    <li>
+      <a href="{{ .RelPermalink }}">{{ .Title }}</a>
+      <time datetime="{{ .Date.Format "2006-01-02" }}">{{ .Date.Format "Jan 2, 2006" }}</time>
+    </li>
+  {{ end }}
+  </ul>
+{{ end }}
+""",
+    )
+
+    # --- layouts/_default/{single,list}.html — content pages ---
+    _write(
+        project_dir / "layouts" / "_default" / "single.html",
+        """{{ define "title" }}{{ .Title }} &middot; {{ .Site.Title }}{{ end }}
+{{ define "main" }}
+  <article>
+    <h1>{{ .Title }}</h1>
+    <time datetime="{{ .Date.Format "2006-01-02" }}">{{ .Date.Format "Jan 2, 2006" }}</time>
+    {{ .Content }}
+  </article>
+{{ end }}
+""",
+    )
+    _write(
+        project_dir / "layouts" / "_default" / "list.html",
+        """{{ define "title" }}{{ .Title }} &middot; {{ .Site.Title }}{{ end }}
+{{ define "main" }}
+  <h1>{{ .Title }}</h1>
+  {{ .Content }}
+  <ul>
+  {{ range .Pages }}
+    <li><a href="{{ .RelPermalink }}">{{ .Title }}</a></li>
+  {{ end }}
+  </ul>
+{{ end }}
+""",
+    )
+
+    # --- content — home + an example post ---
+    _write(
+        project_dir / "content" / "_index.md",
+        sub(
+            """---
+title: "__NAME__"
+---
+
+Welcome to **__NAME__** — a Hugo site on castle. Edit `content/_index.md` and
+add posts under `content/posts/`.
+"""
+        ),
+    )
+    _write(
+        project_dir / "content" / "posts" / "hello.md",
+        """---
+title: "Hello, world"
+date: 2024-01-01
+---
+
+Your first post. Edit me in `content/posts/`, or run `hugo new posts/next.md`.
+""",
+    )
+
+    # --- .gitignore — build output is regenerated, never committed ---
+    _write(
+        project_dir / ".gitignore",
+        "/public/\n/resources/\n.hugo_build.lock\n",
+    )
+
+    # --- README ---
+    _write(
+        project_dir / "README.md",
+        sub(
+            """# __NAME__
+
+__DESC__
+
+A [Hugo](https://gohugo.io) static site managed by castle.
+
+## Develop
+
+    hugo server -D        # live preview at http://localhost:1313
+
+## Build & serve
+
+    castle program build __NAME__   # hugo --gc --minify -> public/
+    castle apply __NAME__           # serve at __NAME__.<gateway.domain>
+
+## Themes
+
+Drop a theme under `themes/` (often a git submodule) and set `theme` in
+`hugo.toml`. A theme with an asset pipeline (Tailwind, etc.) needs a pre-build
+step; declare it in `programs/__NAME__.yaml` so it overrides the stack default:
+
+    build:
+      commands:
+        - [pnpm, build]
+        - [hugo, --gc, --minify]
+      outputs: [public]
 """
         ),
     )
