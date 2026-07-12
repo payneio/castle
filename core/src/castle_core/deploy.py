@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -329,6 +330,7 @@ def apply(
         # No writes: for systemd, predict the new unit bytes by rendering to a string
         # so "would restart" is accurate; other managers never restart.
         result.planned = True
+        _stack_preflight(config, items, result.messages)
         for k, n, _ in items:
             after = _render_unit_preview(config, n, desired[(k, n)], k)
             _record(result, n, _classify((k, n), after))
@@ -339,6 +341,7 @@ def apply(
     deploy_result = deploy(target_name, root)
     result.messages = list(deploy_result.messages)
     result.registry = deploy_result.registry
+    _stack_preflight(config, items, result.messages)
 
     # Materialize TLS cert files before (re)starting so a TLS service finds them on
     # start. On a fresh node the gateway reload above only kicks off ACME issuance,
@@ -370,6 +373,32 @@ def apply(
             result.unchanged.append(n)
 
     return result
+
+
+def _stack_preflight(
+    config: CastleConfig,
+    items: Sequence[tuple[str, str, object]],
+    messages: list[str],
+) -> None:
+    """Warn (never fail) when an enabled deployment's stack toolchain is missing
+    *where it runs* — the moment drift actually bites: a service whose `uv`/`pnpm`
+    isn't on its runtime PATH won't build or start. Mirrors `_acme_preflight`: an
+    advisory message, no writes, no gate. The exact fix comes from the tool's hint."""
+    from castle_core.relations import _tool_available
+    from castle_core.stacks import tools_for
+
+    for _k, n, spec in items:
+        if not getattr(spec, "enabled", True):
+            continue
+        prog = config.programs.get(getattr(spec, "program", None) or n)
+        if not prog or not prog.stack:
+            continue
+        for tool in tools_for(prog.stack):
+            if not _tool_available(spec, tool):
+                messages.append(
+                    f"Warning: {n} ({prog.stack}) needs '{tool.command}' but it's "
+                    f"missing where the service runs — {tool.install_hint}"
+                )
 
 
 def _record(result: ApplyResult, name: str, action: str) -> None:
@@ -451,7 +480,7 @@ def _write_tunnel_config(registry: NodeRegistry, messages: list[str]) -> None:
             config_path.unlink()
             messages.append("No public services — removed cloudflared config.")
         # Still reconcile so any CNAMEs castle created earlier are cleaned up.
-        reconcile_public_dns(node.public_domain, node.tunnel_id, [], messages)
+        reconcile_public_dns(node.tunnel_id, [], messages)
         return
 
     config_path.write_text(content)
@@ -459,7 +488,7 @@ def _write_tunnel_config(registry: NodeRegistry, messages: list[str]) -> None:
     messages.append(f"Tunnel config written: {config_path} ({len(hosts)} public)")
     # Reconcile the public CNAMEs to the tunnel. Falls back to surfacing the manual
     # `cloudflared tunnel route dns` commands when no DNS token is configured.
-    if not reconcile_public_dns(node.public_domain, node.tunnel_id, hosts, messages):
+    if not reconcile_public_dns(node.tunnel_id, hosts, messages):
         for h in hosts:
             messages.append(
                 f"  public: {h}  "
@@ -712,6 +741,7 @@ def _build_deployed(
             stack=stack,
             subdomain=name,
             public=bool(dep.public),
+            public_host=(dep.public_host if dep.public else None),
             static_root=static_root,
             managed=False,
             enabled=dep.enabled,
@@ -845,6 +875,7 @@ def _build_deployed(
         health_path=health_path,
         subdomain=(name if expose else None),
         public=bool(dep.public and expose),
+        public_host=(dep.public_host if (dep.public and expose) else None),
         tcp_port=tcp_port,
         schedule=getattr(dep, "schedule", None),
         managed=managed,

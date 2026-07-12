@@ -345,15 +345,20 @@ def _check_tls_exposure(config) -> list[Check]:
         checks.append(_check_privileged_ports())
 
     # Public exposure (only relevant if a deployment opts in).
-    public = [n for _k, n, d in config.all_deployments() if getattr(d, "public", False)]
+    public_specs = [(n, d) for _k, n, d in config.all_deployments() if getattr(d, "public", False)]
+    public = [n for n, _d in public_specs]
     if public:
         from castle_core.lifecycle import is_active
 
-        if gw.public_domain and gw.tunnel_id:
+        # A public deployment gets its public name from its own `public_host`
+        # override or the node-wide `public_domain`; the default domain is only
+        # required if some public deployment relies on it.
+        need_default = any(not getattr(d, "public_host", None) for _n, d in public_specs)
+        if gw.tunnel_id and (gw.public_domain or not need_default):
             checks.append(Check(OK, "tunnel configured", detail=f"{len(public)} public service(s)"))
         else:
             missing = []
-            if not gw.public_domain:
+            if need_default and not gw.public_domain:
                 missing.append("public_domain")
             if not gw.tunnel_id:
                 missing.append("tunnel_id")
@@ -403,20 +408,26 @@ def _check_public_dns(config) -> Check:
             "public DNS not automated",
             detail=f"no {PUBLIC_DNS_TOKEN} secret — CNAMEs are manual",
             hint=(
-                f"add a Cloudflare token with DNS:Edit on {gw.public_domain} "
+                f"add a Cloudflare token with DNS:Edit on "
+                f"{gw.public_domain or 'the public zone(s)'} "
                 f"('Edit zone DNS' template) → ~/.castle/secrets/{PUBLIC_DNS_TOKEN} "
                 "(else route each host by hand)"
             ),
         )
     try:
-        zres = (_api(token, "GET", f"/zones?name={gw.public_domain}").get("result")) or []
+        # With a node-wide public_domain, probe that specific zone; otherwise
+        # (custom public_host hosts only) confirm the token can list *some* zone —
+        # reconcile resolves each host's zone by longest-suffix match at apply.
+        query = f"/zones?name={gw.public_domain}" if gw.public_domain else "/zones?per_page=1"
+        zres = (_api(token, "GET", query).get("result")) or []
         if not zres:
+            where = gw.public_domain or "any zone"
             return Check(
                 FAIL,
                 "public DNS token can't see the zone",
-                detail=f"{gw.public_domain} not visible",
+                detail=f"{where} not visible",
                 hint=(
-                    f"token needs DNS:Edit scoped to {gw.public_domain}, in that "
+                    f"token needs DNS:Edit scoped to {where}, in that "
                     "zone's account ('Edit zone DNS' template)"
                 ),
             )
@@ -436,7 +447,7 @@ def _check_public_dns(config) -> Check:
     return Check(
         OK,
         "public DNS token valid",
-        detail=f"can reach {gw.public_domain} + its records",
+        detail=f"can reach {gw.public_domain or 'its zones'} + records",
     )
 
 
@@ -457,6 +468,39 @@ def _check_privileged_ports() -> Check:
 
 
 # --- Driver -----------------------------------------------------------------
+
+
+def _check_stacks(config: object) -> list[Check]:
+    """Stack toolchains: is each *in-use* stack's host tooling present where its
+    programs need it (run-phase tools against the service's runtime PATH)? A missing
+    tool for an enabled deployment is a FAIL (its service can't build/run); missing
+    for a not-yet-enabled program is a WARN. Unused stacks are skipped — no nagging
+    about pnpm when there are no frontends."""
+    from castle_core.stack_status import all_stack_status
+
+    checks: list[Check] = []
+    for st in all_stack_status(config, with_version=False):
+        if not st.in_use or not st.tools:
+            continue
+        n = len(st.programs)
+        label = f"{st.name}  ({n} program{'s' if n != 1 else ''})"
+        missing = [t for t in st.tools if not t.present]
+        if not missing:
+            present = ", ".join(t.command for t in st.tools)
+            checks.append(Check(OK, label, detail=f"{present} present"))
+            continue
+        status = FAIL if st.has_enabled_deployment else WARN
+        checks.append(
+            Check(
+                status,
+                label,
+                detail="missing: " + ", ".join(t.command for t in missing),
+                hint=missing[0].install_hint,
+            )
+        )
+    if not checks:
+        checks.append(Check(OK, "no stack toolchains in use"))
+    return checks
 
 
 def run_doctor(args: argparse.Namespace) -> int:
@@ -482,6 +526,7 @@ def run_doctor(args: argparse.Namespace) -> int:
     sections: list[tuple[str, list[Check]]] = [
         ("Environment", _check_environment()),
         ("Configuration", _check_configuration(config)),
+        ("Stacks & dependencies", _check_stacks(config)),
         ("Runtime", _check_runtime(config)),
         ("TLS & exposure", _check_tls_exposure(config)),
     ]

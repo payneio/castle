@@ -135,6 +135,30 @@ class ProgramDetail(ProgramSummary):
     manifest: dict
 
 
+class ToolStatusModel(BaseModel):
+    """One host toolchain a stack needs, and whether it's present where used."""
+
+    command: str
+    purpose: str
+    phase: str  # "run" | "build" | "both"
+    present: bool
+    install_hint: str
+    version: str | None = None
+
+
+class StackStatusModel(BaseModel):
+    """A stack's dependency health — its tools + who uses it. Powers the Stacks page."""
+
+    name: str
+    tools: list[ToolStatusModel]
+    programs: list[str]
+    deployments: list[str]
+    verbs: list[str]
+    has_enabled_deployment: bool
+    in_use: bool
+    ok: bool
+
+
 class HealthStatus(BaseModel):
     """Health status of a single component."""
 

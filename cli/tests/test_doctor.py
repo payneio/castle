@@ -7,7 +7,14 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-from castle_cli.commands.doctor import FAIL, OK, WARN, _check_configuration, run_doctor
+from castle_cli.commands.doctor import (
+    FAIL,
+    OK,
+    WARN,
+    _check_configuration,
+    _check_stacks,
+    run_doctor,
+)
 
 
 class TestDoctor:
@@ -85,3 +92,57 @@ class TestDataDirChecks:
         warn = next(c for c in _check_configuration(cfg) if "overrides castle.yaml" in c.label)
         assert warn.status == WARN
         assert "CASTLE_DATA_DIR" in warn.detail
+
+
+class TestStackChecks:
+    """The stacks section: a stack's toolchain must be present where its programs
+    run. Missing tooling for an enabled deployment is a FAIL with a copyable fix."""
+
+    def _fastapi_cfg(self):
+        import castle_core.config as C
+        from castle_core.manifest import ProgramSpec, SystemdDeployment
+
+        prog = ProgramSpec(id="svc", stack="python-fastapi")
+        dep = SystemdDeployment.model_validate(
+            {
+                "manager": "systemd",
+                "program": "svc",
+                "run": {"launcher": "command", "argv": ["svc"]},
+            }
+        )
+        return C.CastleConfig(
+            root=None,
+            gateway=C.GatewayConfig(port=9000),
+            repo=None,
+            programs={"svc": prog},
+            deployments={"svc": dep},
+        )
+
+    def test_present_tool_is_ok(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import castle_core.stack_status as SS
+
+        monkeypatch.setattr(SS, "_tool_available", lambda dep, tool: True)
+        fa = next(
+            c for c in _check_stacks(self._fastapi_cfg()) if c.label.startswith("python-fastapi")
+        )
+        assert fa.status == OK
+
+    def test_missing_tool_for_enabled_deployment_fails_with_hint(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import castle_core.stack_status as SS
+
+        monkeypatch.setattr(SS, "_tool_available", lambda dep, tool: False)
+        fa = next(
+            c for c in _check_stacks(self._fastapi_cfg()) if c.label.startswith("python-fastapi")
+        )
+        assert fa.status == FAIL
+        assert "uv" in fa.detail and fa.hint  # names the tool + offers a fix
+
+    def test_unused_stacks_are_skipped(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """No react-vite program → no pnpm nag."""
+        import castle_core.stack_status as SS
+
+        monkeypatch.setattr(SS, "_tool_available", lambda dep, tool: True)
+        labels = [c.label for c in _check_stacks(self._fastapi_cfg())]
+        assert not any(label.startswith("react-vite") for label in labels)

@@ -42,6 +42,30 @@ class ActionResult:
     output: str = ""
 
 
+@dataclass(frozen=True)
+class ToolRequirement:
+    """A host toolchain a stack needs — the declarative counterpart to the argv each
+    handler hard-codes (``uv sync``, ``pnpm build``, …). Made explicit so castle can
+    *check* whether the tool is present (on the box and, for run-phase tools, on the
+    service's own PATH) and, when it isn't, show a copyable fix instead of failing
+    mid-subprocess with a raw ``command not found``.
+
+    - ``phase`` — when the tool is needed. ``build`` tools run only at
+      ``castle apply``/build time (checked against the build env); ``run`` tools must
+      also be on the *running service's* PATH (the curated systemd env, which can
+      drift from your shell); ``both`` is checked in both places.
+    - ``install_hint`` — the exact command a user can copy to install it.
+    """
+
+    command: (
+        str  # the executable, e.g. "uv" | "pnpm" | "node" | "hugo" | "deno" | "psql"
+    )
+    purpose: str  # human phrase, e.g. "build & run Python programs"
+    phase: str  # "run" | "build" | "both"
+    install_hint: str  # copyable install command
+    version_min: str | None = None
+
+
 def _build_env(node_source: Path | None = None) -> dict[str, str]:
     """Build a subprocess env with user tool dirs on PATH.
 
@@ -119,6 +143,11 @@ class StackHandler:
     # lint/type-check/test also drops `check` implicitly.
     provides: set[str] = _STACK_VERBS
 
+    # The host toolchains this stack needs, declared so castle can check them and
+    # hint a fix. Empty by default (a stackless / declared-command program depends on
+    # nothing castle can name); each real handler overrides it. See `tools_for`.
+    tools: tuple[ToolRequirement, ...] = ()
+
     async def build(self, name: str, comp: ProgramSpec, root: Path) -> ActionResult:
         raise NotImplementedError
 
@@ -177,6 +206,15 @@ class StackHandler:
 
 class PythonHandler(StackHandler):
     """Handler for python-cli and python-fastapi stacks."""
+
+    tools = (
+        ToolRequirement(
+            command="uv",
+            purpose="build & run Python programs",
+            phase="both",
+            install_hint="curl -LsSf https://astral.sh/uv/install.sh | sh",
+        ),
+    )
 
     async def build(self, name: str, comp: ProgramSpec, root: Path) -> ActionResult:
         src = _source_dir(comp, root)
@@ -286,6 +324,24 @@ def _pnpm(*args: str) -> list[str]:
 class ReactViteHandler(StackHandler):
     """Handler for react-vite stack."""
 
+    # Build-phase only: the output is a static `dist/` the gateway serves in place,
+    # so no node/pnpm process runs at serve time. node is resolved per-program from
+    # its pin (see toolchains); the hint names nvm, the ecosystem-standard installer.
+    tools = (
+        ToolRequirement(
+            command="node",
+            purpose="build the frontend (Vite/React toolchain)",
+            phase="build",
+            install_hint="nvm install --lts   # or match the program's .node-version",
+        ),
+        ToolRequirement(
+            command="pnpm",
+            purpose="install deps & run the Vite build",
+            phase="build",
+            install_hint="npm install -g pnpm   # or: corepack enable pnpm",
+        ),
+    )
+
     async def build(self, name: str, comp: ProgramSpec, root: Path) -> ActionResult:
         src = _source_dir(comp, root)
         # Build against the gateway serve root so absolute asset URLs resolve at /
@@ -393,6 +449,14 @@ class HugoHandler(StackHandler):
     default per the usual declared-command-wins resolution."""
 
     provides = {"build", "install", "uninstall"}
+    tools = (
+        ToolRequirement(
+            command="hugo",
+            purpose="build the static site",
+            phase="build",
+            install_hint="sudo apt install hugo   # or: snap install hugo",
+        ),
+    )
 
     async def build(self, name: str, comp: ProgramSpec, root: Path) -> ActionResult:
         src = _source_dir(comp, root)
@@ -527,6 +591,20 @@ class SupabaseHandler(StackHandler):
     """
 
     owns_data = True
+    tools = (
+        ToolRequirement(
+            command="psql",
+            purpose="run schema migrations against the substrate DB",
+            phase="both",
+            install_hint="sudo apt install postgresql-client",
+        ),
+        ToolRequirement(
+            command="deno",
+            purpose="serve/deploy edge functions",
+            phase="both",
+            install_hint="curl -fsSL https://deno.land/install.sh | sh",
+        ),
+    )
 
     async def build(self, name: str, comp: ProgramSpec, root: Path) -> ActionResult:
         """Apply unapplied migrations into the app's own schema (idempotent)."""
@@ -732,6 +810,14 @@ def available_stacks() -> list[str]:
     CLI ``--stack`` choices, the ``GET /stacks`` endpoint, and the dashboard select.
     """
     return sorted(HANDLERS)
+
+
+def tools_for(stack: str | None) -> tuple[ToolRequirement, ...]:
+    """The host toolchains a stack declares it needs (empty for an unknown/absent
+    stack). The single source of truth for the dependency checks in `relations`,
+    `castle stack`, `castle doctor`, and the dashboard Stacks page."""
+    handler = get_handler(stack)
+    return handler.tools if handler is not None else ()
 
 
 def _declared_commands(comp: ProgramSpec, verb: str) -> list[list[str]] | None:

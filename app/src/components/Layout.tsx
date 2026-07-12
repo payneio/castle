@@ -9,6 +9,7 @@ import {
   Gauge,
   Globe,
   KeyRound,
+  Layers,
   LayoutDashboard,
   Menu,
   Search,
@@ -44,6 +45,7 @@ const NAV: (NavLeaf | NavGroup)[] = [
     ],
   },
   { to: "/programs", label: "Programs", icon: SquareCode },
+  { to: "/stacks", label: "Stacks", icon: Layers },
   { to: "/mesh", label: "Mesh", icon: Share2 },
   { to: "/secrets", label: "Secrets", icon: KeyRound },
 ]

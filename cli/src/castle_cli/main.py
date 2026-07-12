@@ -94,6 +94,20 @@ def _build_tool_group(subparsers: argparse._SubParsersAction) -> None:
     p.add_argument("--format", choices=fmt_choices, default="openai", help=fmt_help)
 
 
+def _build_stack_group(subparsers: argparse._SubParsersAction) -> None:
+    """The `stack` lens — the toolchains each stack needs + whether they're present."""
+    grp = subparsers.add_parser("stack", help="Stacks + the toolchains they require")
+    grp.set_defaults(resource="stack")
+    sub = grp.add_subparsers(dest="stack_command")
+
+    p = sub.add_parser("list", help="List stacks with their toolchain health")
+    p.add_argument("--json", action="store_true", help="Machine-readable output")
+
+    p = sub.add_parser("info", help="Show a stack's tools, versions, fixes, and users")
+    _add_name(p, "Stack name")
+    p.add_argument("--json", action="store_true", help="Machine-readable output")
+
+
 def _add_service_create(sub: argparse._SubParsersAction, kind: str) -> None:
     p = sub.add_parser("create", help=f"Create a {kind} in castle.yaml")
     _add_name(p, f"{kind.capitalize()} name")
@@ -166,6 +180,7 @@ def build_parser() -> argparse.ArgumentParser:
     _build_deployment_group(subparsers, "service")
     _build_deployment_group(subparsers, "job")
     _build_tool_group(subparsers)
+    _build_stack_group(subparsers)
 
     # Gateway (inspection). The gateway is a deployment — start/stop/reload it via
     # `castle apply` / `castle restart castle-gateway`; this lens just shows routes.
@@ -287,6 +302,22 @@ def _dispatch_tool(args: argparse.Namespace) -> int:
     return 1
 
 
+def _dispatch_stack(args: argparse.Namespace) -> int:
+    sub = args.stack_command
+    if not sub:
+        print("Usage: castle stack {list|info}")
+        return 1
+    if sub == "list":
+        from castle_cli.commands.stack import run_stack_list
+
+        return run_stack_list(args)
+    if sub == "info":
+        from castle_cli.commands.stack import run_stack_info
+
+        return run_stack_info(args)
+    return 1
+
+
 def _dispatch_deployment(args: argparse.Namespace, kind: str) -> int:
     sub = getattr(args, f"{kind}_command")
     if not sub:
@@ -335,6 +366,8 @@ def main() -> int:
         return _dispatch_deployment(args, cmd)
     if cmd == "tool":
         return _dispatch_tool(args)
+    if cmd == "stack":
+        return _dispatch_stack(args)
     if cmd == "gateway":
         from castle_cli.commands.gateway import run_gateway
 

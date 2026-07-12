@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import asdict
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
@@ -20,6 +21,10 @@ from castle_core.stacks import available_actions, available_stacks, run_action
 
 from castle_api import stream
 from castle_api.config import get_config
+from castle_api.models import StackStatusModel, ToolStatusModel
+
+if TYPE_CHECKING:
+    from castle_core.stack_status import StackStatus
 
 programs_router = APIRouter(tags=["programs"])
 
@@ -29,6 +34,40 @@ def list_stacks() -> list[str]:
     """Stack names castle has handlers for — populates the dashboard's stack select
     and keeps it in sync with the backend (no hardcoded frontend list)."""
     return available_stacks()
+
+
+def _stack_model(st: StackStatus) -> StackStatusModel:
+    return StackStatusModel(
+        name=st.name,
+        tools=[ToolStatusModel(**asdict(t)) for t in st.tools],
+        programs=st.programs,
+        deployments=st.deployments,
+        verbs=st.verbs,
+        has_enabled_deployment=st.has_enabled_deployment,
+        in_use=st.in_use,
+        ok=st.ok,
+    )
+
+
+@programs_router.get("/stacks/status")
+def stacks_status() -> list[StackStatusModel]:
+    """Every stack's dependency health — tools present-where-needed (run-phase tools
+    against the service runtime PATH), who uses it, and the fix for anything missing.
+    The Stacks page renders this; `castle stack list` is its CLI twin."""
+    from castle_core.stack_status import all_stack_status
+
+    return [_stack_model(s) for s in all_stack_status(get_config())]
+
+
+@programs_router.get("/stacks/{name}")
+def stack_detail(name: str) -> StackStatusModel:
+    """One stack's dependency detail (tool versions included)."""
+    from castle_core.stack_status import stack_status
+
+    st = stack_status(get_config(), name)
+    if st is None:
+        raise HTTPException(status_code=404, detail=f"No stack '{name}'")
+    return _stack_model(st)
 
 
 # ---------------------------------------------------------------------------

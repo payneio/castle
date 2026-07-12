@@ -16,6 +16,7 @@ not the reverse.
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from collections import Counter
@@ -23,8 +24,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from castle_core import git
-from castle_core.config import CastleConfig
+from castle_core.config import USER_TOOL_PATH_DIRS, CastleConfig
+from castle_core.generators.systemd import runtime_path
 from castle_core.manifest import Requirement, SystemdDeployment
+from castle_core.stacks import ToolRequirement, tools_for
 
 
 @dataclass
@@ -131,17 +134,21 @@ def derive_repos(config: CastleConfig) -> dict[str, Repo]:
 
 def requirements_of(config: CastleConfig, dep_name: str) -> list[Requirement]:
     """The full requirement set for a deployment: its own ``requires`` (deployment
-    dependencies) plus its program's ``system_dependencies`` synthesized as
-    ``kind: system`` requirements, de-duplicated by (kind, ref)."""
+    dependencies), its program's ``system_dependencies`` synthesized as
+    ``kind: system`` requirements, and its stack's toolchains synthesized as
+    ``kind: tool`` requirements — de-duplicated by (kind, ref)."""
     reqs: list[Requirement] = []
-    # A bare name may span kinds — union their requirements (plus their program's
-    # host-package deps as the synthesized `kind: system` set).
+    # A bare name may span kinds — union their requirements (plus each program's
+    # host-package deps as `kind: system` and its stack's toolchains as `kind: tool`).
     for _kind, dep in config.deployments_named(dep_name):
         reqs += list(getattr(dep, "requires", []) or [])
         prog = config.programs.get(_program_of(dep_name, dep))
         if prog:
             reqs += [
                 Requirement(kind="system", ref=pkg) for pkg in prog.system_dependencies
+            ]
+            reqs += [
+                Requirement(kind="tool", ref=t.command) for t in tools_for(prog.stack)
             ]
     seen: set[tuple[str, str]] = set()
     out: list[Requirement] = []
@@ -150,6 +157,20 @@ def requirements_of(config: CastleConfig, dep_name: str) -> list[Requirement]:
             seen.add((r.kind, r.ref))
             out.append(r)
     return out
+
+
+def stack_tools_of(config: CastleConfig, dep_name: str) -> dict[str, ToolRequirement]:
+    """command → its :class:`ToolRequirement`, for every stack toolchain the
+    deployment(s) named ``dep_name`` need. The metadata (phase, install hint) behind
+    the ``kind: tool`` requirements ``requirements_of`` synthesizes — used to check
+    them (phase picks the PATH) and to hint a fix."""
+    meta: dict[str, ToolRequirement] = {}
+    for _kind, dep in config.deployments_named(dep_name):
+        prog = config.programs.get(_program_of(dep_name, dep))
+        if prog and prog.stack:
+            for t in tools_for(prog.stack):
+                meta.setdefault(t.command, t)
+    return meta
 
 
 def _dpkg_installed(pkg: str) -> bool:
@@ -162,8 +183,41 @@ def _dpkg_installed(pkg: str) -> bool:
     return r.returncode == 0 and "install ok installed" in r.stdout
 
 
-def _check(config: CastleConfig, req: Requirement) -> bool:
-    """Is a single requirement satisfied? (The check is fixed by its kind.)"""
+def _build_path() -> str:
+    """The PATH a *build/dev* verb runs with — the caller's own PATH plus the user
+    tool dirs (mirrors ``stacks._build_env``, minus the per-program node pin resolved
+    separately). Build-phase tools (pnpm, hugo, node) are checked against this."""
+    dirs = [str(d) for d in USER_TOOL_PATH_DIRS if d.exists()]
+    return ":".join([*dirs, os.environ.get("PATH", "")])
+
+
+def _tool_available(dep: object, tool: ToolRequirement) -> bool:
+    """Is a stack tool present *where the deployment needs it*? A ``run``/``both``
+    tool of a systemd service must be on the **service's runtime PATH** (the curated
+    unit PATH, which can differ from your shell — the drift this catches); every
+    other case (build-only tools, or a non-service deployment like a static site) is
+    checked against the build/dev PATH."""
+    runs_service = isinstance(dep, SystemdDeployment)
+    if tool.phase in ("run", "both") and runs_service:
+        defaults = getattr(dep, "defaults", None)
+        env_path = (defaults.env.get("PATH") if defaults else None) or None
+        # `path_prepend` (resolved toolchain) lives on the registry deployment, not
+        # the manifest one; absent here it's the base runtime PATH, which is what a
+        # service without a pinned toolchain actually runs with.
+        path = env_path or runtime_path(list(getattr(dep, "path_prepend", []) or ()))
+        return shutil.which(tool.command, path=path) is not None
+    return shutil.which(tool.command, path=_build_path()) is not None
+
+
+def _check(
+    config: CastleConfig,
+    req: Requirement,
+    dep: object | None = None,
+    tool: ToolRequirement | None = None,
+) -> bool:
+    """Is a single requirement satisfied? The check is fixed by its ``kind``. For a
+    ``tool`` requirement, ``dep`` and ``tool`` supply the deployment context and the
+    stack-tool metadata (phase decides which PATH to probe)."""
     if req.kind == "system":
         # `system_dependencies` holds PACKAGE names, not executables. A PATH lookup
         # only coincides with 'installed' when the package name equals its command
@@ -173,7 +227,22 @@ def _check(config: CastleConfig, req: Requirement) -> bool:
         return shutil.which(req.ref) is not None or _dpkg_installed(req.ref)
     if req.kind == "deployment":
         return bool(config.deployments_named(req.ref))
+    if req.kind == "tool":
+        # No metadata (unknown stack) → don't raise a false alarm.
+        return tool is None or _tool_available(dep, tool)
     return True
+
+
+def hint_for(req: Requirement, tool: ToolRequirement | None = None) -> str:
+    """A copyable next step for an *unmet* requirement — the piece that makes a
+    diagnostic actionable. ``tool`` carries a stack tool's precise install command."""
+    if req.kind == "tool":
+        return tool.install_hint if tool else f"install {req.ref}"
+    if req.kind == "system":
+        return f"sudo apt install {req.ref}"
+    if req.kind == "deployment":
+        return f"create & apply the '{req.ref}' deployment"
+    return ""
 
 
 # Well-known TCP ports → a friendlier protocol label (display heuristic only).
@@ -229,11 +298,12 @@ def build_model(
 
     nodes: list[Node] = []
     for _nk, name, dep in config.all_deployments():
+        tmeta = stack_tools_of(config, name) if check else {}
         unmet = (
             [
                 f"{r.kind}:{r.ref}"
                 for r in requirements_of(config, name)
-                if not _check(config, r)
+                if not _check(config, r, dep=dep, tool=tmeta.get(r.ref))
             ]
             if check
             else []

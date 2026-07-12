@@ -17,6 +17,19 @@ UNIT_PREFIX = "castle-"
 SECRET_ENV_DIR = SECRETS_DIR / "env"
 
 
+def runtime_path(path_prepend: list[str] | tuple[str, ...] = ()) -> str:
+    """The PATH a castle service runs with: resolved toolchain dirs (e.g. a pinned
+    node bin) + the user tool dirs that exist + system bins. This is the single
+    definition of a service's runtime PATH — the unit generator writes it into
+    ``Environment=PATH`` and the dependency checker (``relations``) probes tools
+    against it, so the two can never disagree about where a service finds its tools.
+    """
+    dirs = list(path_prepend)
+    dirs += [str(d) for d in USER_TOOL_PATH_DIRS if d.exists()]
+    dirs += ["/usr/local/bin", "/usr/bin", "/bin"]
+    return ":".join(dirs)
+
+
 def unit_basename(name: str, kind: str = "service") -> str:
     """The systemd unit stem for a deployment. Jobs carry a ``-job`` marker so a
     service and a job can share a name (`castle-<name>.service` vs
@@ -127,10 +140,7 @@ def generate_unit_from_deployed(
     # ${PATH} across Environment= lines, so a service that overrides PATH must
     # spell out the full value, tool dirs included.
     if "PATH" not in deployed.env:
-        dirs = list(deployed.path_prepend)  # resolved toolchain (e.g. pinned node bin)
-        dirs += [str(d) for d in USER_TOOL_PATH_DIRS if d.exists()]
-        dirs += ["/usr/local/bin", "/usr/bin", "/bin"]
-        env_lines += f'Environment="PATH={":".join(dirs)}"\n'
+        env_lines += f'Environment="PATH={runtime_path(deployed.path_prepend)}"\n'
     if env_file is not None:
         env_lines += f"EnvironmentFile={env_file}\n"
 
@@ -176,7 +186,7 @@ SuccessExitStatus=143
 
     # Post-start hooks (e.g. OpenBao auto-unseal). `-` prefix → failure is ignored,
     # so a hiccup in the hook never fails the unit.
-    for cmd in (sd.exec_start_post if sd else []):
+    for cmd in sd.exec_start_post if sd else []:
         argv = cmd.split()
         resolved = shutil.which(argv[0])
         if resolved:

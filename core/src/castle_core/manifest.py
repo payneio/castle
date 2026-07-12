@@ -263,13 +263,14 @@ class Requirement(BaseModel):
     requirement, never scraped back into it.
 
     A deployment declares these in its ``requires`` list; ``kind`` defaults to
-    ``deployment`` (write just ``- ref: foo``). The ``system`` kind is not written
-    here — a program's host-package preconditions live in ``system_dependencies``,
-    and the relationship model synthesizes ``kind: system`` requirements from it for
-    the ``functional?`` check. See docs/relationships.md.
+    ``deployment`` (write just ``- ref: foo``). The ``system`` and ``tool`` kinds are
+    not written here — a program's host-package preconditions live in
+    ``system_dependencies`` (synthesized as ``kind: system``), and its stack's
+    toolchains (``uv``/``pnpm``/``hugo``/…) are synthesized as ``kind: tool`` — both by
+    the relationship model for the ``functional?`` check. See docs/relationships.md.
     """
 
-    kind: Literal["system", "deployment"] = "deployment"
+    kind: Literal["system", "deployment", "tool"] = "deployment"
     ref: str
     bind: str | None = None
 

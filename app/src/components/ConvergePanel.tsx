@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
-import { Check, GitCompare, Loader2, Play } from "lucide-react"
+import { AlertTriangle, Check, GitCompare, Loader2, Play } from "lucide-react"
 import { apiClient } from "@/services/api/client"
 import type { ApplyResult } from "@/services/api/hooks"
 
@@ -85,6 +85,18 @@ export function ConvergePanel() {
           <Check size={14} /> {msg}
         </div>
       )}
+
+      {/* Advisory warnings from the render/preflight (missing stack toolchains,
+          acme prerequisites, tunnel notes) — surfaced so a service that can't
+          build or start doesn't fail silently at apply time. */}
+      {plan?.messages
+        ?.filter((m) => m.startsWith("Warning"))
+        .map((m) => (
+          <div key={m} className="mt-2 flex items-start gap-1.5 text-sm text-amber-400">
+            <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+            <span>{m.replace(/^Warning:\s*/, "")}</span>
+          </div>
+        ))}
 
       {plan && (
         <div className="mt-3 space-y-1">

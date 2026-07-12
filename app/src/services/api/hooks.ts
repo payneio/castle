@@ -69,6 +69,36 @@ export function useStacks() {
   })
 }
 
+// A host toolchain a stack needs + whether it's present where its programs run.
+export interface ToolStatus {
+  command: string
+  purpose: string
+  phase: "run" | "build" | "both"
+  present: boolean
+  install_hint: string
+  version: string | null
+}
+
+// A stack's dependency health — powers the Stacks page.
+export interface StackStatus {
+  name: string
+  tools: ToolStatus[]
+  programs: string[]
+  deployments: string[]
+  verbs: string[]
+  has_enabled_deployment: boolean
+  in_use: boolean
+  ok: boolean
+}
+
+// Per-stack toolchain health (tools present-where-needed + who uses each stack).
+export function useStacksStatus() {
+  return useQuery({
+    queryKey: ["stacks", "status"],
+    queryFn: () => apiClient.get<StackStatus[]>("/stacks/status"),
+  })
+}
+
 export function useJob(name: string) {
   return useQuery({
     queryKey: ["jobs", name],

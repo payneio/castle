@@ -89,6 +89,7 @@ USER_TOOL_PATH_DIRS = [
     Path.home() / ".local" / "bin",
     Path.home() / ".local" / "share" / "pnpm" / "bin",
     Path.home() / ".local" / "share" / "pnpm",
+    Path.home() / ".deno" / "bin",  # deno's installer target (supabase edge fns)
     Path("/usr/local/go/bin"),
 ]
 
