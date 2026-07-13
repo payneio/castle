@@ -2,7 +2,7 @@ import { useState } from "react"
 import type { ServiceDetail } from "@/types"
 import { useGateway } from "@/services/api/hooks"
 import { gatewayHost, publicGatewayHost } from "@/lib/labels"
-import { Field, TextField, FormFooter, useEnvSecrets, useRequires } from "./fields"
+import { Field, TextField, FormFooter, PublicHostRadios, useEnvSecrets, useRequires } from "./fields"
 import type { Requirement } from "./fields"
 
 interface Props {
@@ -77,6 +77,13 @@ export function ServiceFields({ service, onSave, onDelete }: Props) {
   const [reach, setReach] = useState(
     (m.reach as string) ?? (m.public === true ? "public" : m.proxy === true ? "internal" : "off"),
   )
+  // Optional exact public FQDN (apex or another zone) that overrides the default
+  // <name>.<public_domain>. Only applies when reach is public; `publicMode` picks
+  // default vs a custom host, and `publicHost` holds the custom value.
+  const [publicHost, setPublicHost] = useState((m.public_host as string) ?? "")
+  const [publicMode, setPublicMode] = useState<"default" | "custom">(
+    m.public_host ? "custom" : "default",
+  )
 
   const { element: envEditor, merged } = useEnvSecrets(obj(obj(m.defaults).env) as Record<string, string>)
   const { element: requiresEditor, value: requiresValue } = useRequires(
@@ -111,6 +118,12 @@ export function ServiceFields({ service, onSave, onDelete }: Props) {
         }
         // reach needs a port to route through the gateway; without one it's off.
         config.reach = port ? reach : "off"
+        // public_host only applies to a public service using a custom domain; else
+        // clear it (send null so the PATCH merge drops any stale override).
+        config.public_host =
+          config.reach === "public" && publicMode === "custom" && publicHost.trim()
+            ? publicHost.trim()
+            : null
       }
       delete config.proxy
       delete config.public
@@ -201,7 +214,7 @@ export function ServiceFields({ service, onSave, onDelete }: Props) {
           />
           <Field
             label="Reach"
-            hint={`How far this service is exposed. off: host:port only. internal: ${gatewayHost(service.id, domain)} via the gateway. public: also to the internet via the Cloudflare tunnel.`}
+            hint="How far this service is exposed. off: host:port only. internal: via the gateway. public: also to the internet via the Cloudflare tunnel."
           >
             <div className="flex items-center gap-1.5">
               <select
@@ -210,15 +223,36 @@ export function ServiceFields({ service, onSave, onDelete }: Props) {
                 disabled={!port}
                 className="bg-black/30 border border-[var(--border)] rounded px-2 py-1 text-xs font-mono focus:outline-none focus:border-[var(--primary)] disabled:opacity-50"
               >
-                <option value="off">{port ? `localhost:${port} (local)` : "off"}</option>
-                <option value="internal">{`${gatewayHost(service.id, domain)} (internal)`}</option>
-                <option value="public">{`${publicGatewayHost(service.id, publicDomain)} (public)`}</option>
+                <option value="off">off</option>
+                <option value="internal">internal</option>
+                <option value="public">public</option>
               </select>
               {!port && (
                 <span className="font-mono text-[var(--muted)] text-xs">set a port to expose</span>
               )}
             </div>
           </Field>
+          {port && (
+            <Field label="Address" hint="Where this service is reachable.">
+              {reach === "off" && (
+                <span className="font-mono text-xs text-[var(--muted)]">localhost:{port}</span>
+              )}
+              {reach === "internal" && (
+                <span className="font-mono text-xs text-[var(--muted)]">
+                  {gatewayHost(service.id, domain)}
+                </span>
+              )}
+              {reach === "public" && (
+                <PublicHostRadios
+                  mode={publicMode}
+                  onModeChange={setPublicMode}
+                  value={publicHost}
+                  onChange={setPublicHost}
+                  defaultHost={publicGatewayHost(service.id, publicDomain)}
+                />
+              )}
+            </Field>
+          )}
         </>
       )}
       {requiresEditor}

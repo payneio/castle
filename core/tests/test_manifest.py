@@ -176,6 +176,40 @@ class TestSystemdDeployment:
                 }
             )
 
+    def test_public_host_override_accepted_with_reach_public(self) -> None:
+        base = dict(
+            manager="systemd",
+            run=RunCommand(launcher="command", argv=["x"]),
+            expose={"http": {"internal": {"port": 9001}}},
+        )
+        s = SystemdDeployment.model_validate(
+            {**base, "reach": "public", "public_host": "payne.io"}
+        )
+        assert s.public_host == "payne.io"
+
+    def test_public_host_requires_reach_public(self) -> None:
+        """public_host without reach: public is a no-op; reject it at load."""
+        base = dict(
+            manager="systemd",
+            run=RunCommand(launcher="command", argv=["x"]),
+            expose={"http": {"internal": {"port": 9001}}},
+        )
+        with pytest.raises(ValueError, match="public_host is only valid"):
+            SystemdDeployment.model_validate(
+                {**base, "reach": "internal", "public_host": "payne.io"}
+            )
+
+    def test_public_host_must_be_bare_hostname(self) -> None:
+        base = dict(
+            manager="systemd",
+            run=RunCommand(launcher="command", argv=["x"]),
+            expose={"http": {"internal": {"port": 9001}}},
+            reach="public",
+        )
+        for bad in ("https://payne.io", "payne.io/path", "payne.io:443", "payne .io"):
+            with pytest.raises(ValueError, match="bare hostname"):
+                SystemdDeployment.model_validate({**base, "public_host": bad})
+
     def test_no_run_is_invalid(self) -> None:
         """A systemd deployment requires a run (launch) spec."""
         with pytest.raises(Exception):

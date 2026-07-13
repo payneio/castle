@@ -129,6 +129,49 @@ Without the token, `castle apply` instead prints the exact command to run per ho
 cloudflared tunnel route dns <tunnel-id> <name>.pub.payne.io
 ```
 
+### Publishing on a different domain (`public_host`)
+
+By default a public deployment is projected at `<name>.<gateway.public_domain>` —
+`public_domain` is the *default* public zone. To publish a specific deployment on a
+**different** domain, or at an **apex** (e.g. `payne.io`, which can't be expressed
+as `<name>.<zone>`), set an exact `public_host` on the deployment:
+
+```yaml
+# deployments/statics/payne-io.yaml
+manager: caddy
+program: payne-io
+root: public
+reach: public
+public_host: payne.io      # exact FQDN — overrides <name>.<public_domain>
+```
+
+`public_host` is an exact hostname (no scheme/port/path) and only applies with
+`reach: public`. When set:
+
+- **Tunnel ingress** maps that hostname to the tunnel; the origin still bridges to
+  the deployment's *internal* host (`<name>.<gateway.domain>`), so Caddy routes it
+  and the internal wildcard cert validates — same as the default path.
+- **Public DNS** reconcile routes the CNAME into whichever accessible Cloudflare
+  zone is the longest suffix of the host (so `payne.io` lands in zone `payne.io`,
+  `x.other.org` in `other.org`). It reconciles across **every** zone the
+  `CLOUDFLARE_PUBLIC_DNS_TOKEN` can see, so the token must have `DNS:Edit` on each
+  target zone. Cloudflare flattens the apex CNAME automatically.
+- **LAN-direct HTTPS.** The gateway also serves the custom host directly as its own
+  Caddy site, obtaining that host's cert via DNS-01 (the global `acme_dns`). This
+  requires the gateway's `CLOUDFLARE_API_TOKEN` to have `DNS:Edit` on the host's
+  zone too, and LAN DNS to resolve the host to this node — for an apex add e.g.
+  `address=/payne.io/<node-ip>` on the LAN resolver (the `*.<gateway.domain>`
+  wildcard doesn't cover a foreign apex).
+
+A deployment with `public_host` publishes even if no node-wide `public_domain` is
+configured. Prerequisites in one place, for `payne-io` → `https://payne.io`:
+
+| need | why |
+|------|-----|
+| `CLOUDFLARE_PUBLIC_DNS_TOKEN` has `DNS:Edit` on `payne.io` | the proxied apex CNAME → tunnel |
+| `CLOUDFLARE_API_TOKEN` (gateway) has `DNS:Edit` on `payne.io` | the LAN-direct apex cert (DNS-01) |
+| LAN DNS `address=/payne.io/<node-ip>` | LAN browsers resolve the apex to the gateway |
+
 ## The part that isn't the tunnel
 
 Reachability is the easy half. Anything public also needs, per service:

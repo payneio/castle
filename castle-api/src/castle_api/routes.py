@@ -920,15 +920,18 @@ def get_gateway() -> GatewayInfo:
         except FileNotFoundError:
             pass
 
-    # Which local deployments are public → their public URL (<name>.<public_domain>).
-    # Scan ALL deployments, not just `config.services` — a public *static* (caddy)
-    # is not a service, so filtering to services dropped its public_url (calculator).
+    # Which local deployments are public → their public URL. A `public_host`
+    # override (apex / another zone) wins; otherwise <name>.<public_domain>.
     public_domain = registry.node.public_domain
-    public_names = {
-        name
-        for _k, name, dep in (config.all_deployments() if config else [])
-        if getattr(dep, "public", False)
-    }
+
+    def _public_url(r) -> str | None:
+        if not getattr(r, "public", False):
+            return None
+        if r.public_host:
+            return f"https://{r.public_host}"
+        if public_domain:
+            return f"https://{r.name}.{public_domain}"
+        return None
 
     remote = {h: r.registry for h, r in mesh_state.all_nodes().items()}
     routes = [
@@ -938,11 +941,7 @@ def get_gateway() -> GatewayInfo:
             target=r.target,
             name=r.name,
             node=r.node or registry.node.hostname,
-            public_url=(
-                f"https://{r.name}.{public_domain}"
-                if public_domain and r.name in public_names
-                else None
-            ),
+            public_url=_public_url(r),
         )
         for r in compute_routes(registry, config, remote or None)
     ]

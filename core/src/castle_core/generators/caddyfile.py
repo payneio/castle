@@ -41,6 +41,9 @@ class GatewayRoute:
     name: str | None = None  # backing program/service
     node: str | None = None
     public: bool = False  # also served under public_domain
+    # Optional exact public-facing FQDN override (apex allowed). When set, the
+    # public name is this instead of the derived <address>.<public_domain>.
+    public_host: str | None = None
 
     @property
     def is_host(self) -> bool:
@@ -67,15 +70,15 @@ def service_proxy_targets(name: str, dep: SystemdDeployment) -> ProxyTargets:
 
 def _local_routes(
     config: CastleConfig | None, registry: NodeRegistry
-) -> list[tuple[str, str, str, bool]]:
-    """Each local deployment's route as ``(name, kind, target, public)``.
+) -> list[tuple[str, str, str, bool, str | None]]:
+    """Each local deployment's route as ``(name, kind, target, public, public_host)``.
 
     ``kind`` is ``static`` (a caddy deployment — file-serve a built dir) or
     ``proxy`` (a proxied systemd process). Prefers ``castle.yaml``
     (``config.deployments``) so a regenerated Caddyfile reflects the current spec;
     falls back to the deployed registry snapshot when config isn't available.
     """
-    out: list[tuple[str, str, str, bool]] = []
+    out: list[tuple[str, str, str, bool, str | None]] = []
     if config is not None:
         # Only HTTP-exposed kinds route: static (file-serve) and service (proxy).
         # jobs/tools/references never do.
@@ -87,20 +90,22 @@ def _local_routes(
             if kind == "static" and isinstance(dep, CaddyDeployment):
                 src = _program_source(config, dep.program)
                 if src is not None:
-                    out.append((name, "static", str(src / dep.root), bool(dep.public)))
+                    pub_host = dep.public_host if dep.public else None
+                    out.append((name, "static", str(src / dep.root), bool(dep.public), pub_host))
             elif kind == "service" and isinstance(dep, SystemdDeployment):
                 expose, port, base_url = service_proxy_targets(name, dep)
                 if expose and (port or base_url):
-                    out.append((name, "proxy", base_url or f"localhost:{port}", bool(dep.public)))
+                    pub_host = dep.public_host if dep.public else None
+                    out.append((name, "proxy", base_url or f"localhost:{port}", bool(dep.public), pub_host))
         return out
     # No config → route from the deployed registry snapshot.
     for _kind, name, d in registry.all():
         if not d.enabled:
             continue
         if d.static_root:
-            out.append((name, "static", d.static_root, d.public))
+            out.append((name, "static", d.static_root, d.public, d.public_host))
         elif d.subdomain and (d.port or d.base_url):
-            out.append((name, "proxy", d.base_url or f"localhost:{d.port}", d.public))
+            out.append((name, "proxy", d.base_url or f"localhost:{d.port}", d.public, d.public_host))
     return out
 
 
@@ -141,8 +146,8 @@ def compute_routes(
     # built dir; everything else that's exposed reverse-proxies its port/base_url.
     # (Static frontends are `runner: static` services now — no separate program
     # branch, so routing derives from one place.)
-    for name, kind, target, is_public in _local_routes(config, registry):
-        routes.append(GatewayRoute(name, kind, target, name, node, is_public))
+    for name, kind, target, is_public, pub_host in _local_routes(config, registry):
+        routes.append(GatewayRoute(name, kind, target, name, node, is_public, pub_host))
 
     if remote_registries:
         routes.extend(_remote_routes(config, registry, remote_registries))
@@ -238,6 +243,34 @@ def _host_static_block(label: str, host: str, serve_dir: str) -> list[str]:
     ]
 
 
+def _public_site_block(host: str, kind: str, target: str) -> list[str]:
+    """A standalone Caddy site for a custom ``public_host`` (apex or another zone).
+
+    Unlike the ``*.<public_domain>`` wildcard site, an apex/foreign host isn't
+    covered by a wildcard cert, so it gets its own site. Caddy issues that exact
+    host's cert via the global ``acme_dns`` (DNS-01) — provided the gateway's
+    Cloudflare token can edit the host's zone."""
+    if kind == "static":
+        body = [
+            f"    root * {target}",
+            "    try_files {path} /index.html",
+            "    file_server",
+        ]
+    elif kind == "remote":
+        body = [
+            f"    reverse_proxy {target} {{",
+            "        lb_try_duration 1s",
+            "        fail_duration 30s",
+            "        transport http {",
+            "            dial_timeout 2s",
+            "        }",
+            "    }",
+        ]
+    else:
+        body = [f"    reverse_proxy {target}"]
+    return [f"{host} {{", *body, "}", ""]
+
+
 # Castle's own control plane: the dashboard frontend and the API it calls. These
 # names are the subdomains they're published at in acme mode, and the pair served
 # on the :<port> site in off mode (no domain → no subdomains).
@@ -308,14 +341,21 @@ def generate_caddyfile_from_registry(
                     lines += _host_matcher_block(r.name or r.address, host, r.target)
             lines.append("}")
             lines.append("")
-        # Public domain: public services are also reachable under a separate zone
-        # (e.g. domain0.org) so LAN clients can access them by their public name.
-        # Central passes TLS through; Caddy obtains a separate wildcard cert.
+        # Public exposure: public deployments are also reachable by their public
+        # name so LAN clients can use it directly. Two shapes:
+        #  - default → <address>.<public_domain>, all served by one wildcard site
+        #    (*.<public_domain>, its own wildcard cert), when a node-wide
+        #    public_domain distinct from the internal zone is configured.
+        #  - override → an exact `public_host` (an apex or a name in another zone),
+        #    which a wildcard can't cover, so each gets a standalone site with its
+        #    own cert (DNS-01 via the global acme_dns).
         public_domain = node.public_domain
         public_routes = [r for r in routes if r.public]
-        if public_domain and public_domain != domain and public_routes:
+        default_pub = [r for r in public_routes if not r.public_host]
+        custom_pub = [r for r in public_routes if r.public_host]
+        if public_domain and public_domain != domain and default_pub:
             lines.append(f"*.{public_domain} {{")
-            for r in public_routes:
+            for r in default_pub:
                 host = f"{r.address}.{public_domain}"
                 label = f"{r.name or r.address}_pub"
                 if r.kind == "static":
@@ -326,6 +366,9 @@ def generate_caddyfile_from_registry(
                     lines += _host_matcher_block(label, host, r.target)
             lines.append("}")
             lines.append("")
+        for r in custom_pub:
+            if r.public_host:  # always true (custom_pub filter); narrows the type
+                lines += _public_site_block(r.public_host, r.kind, r.target)
         # Redirect the bare gateway port to the dashboard subdomain.
         lines += [
             f":{gw_port} {{",

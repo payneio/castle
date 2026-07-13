@@ -37,21 +37,42 @@ def tunnel_credentials_path(tunnel_id: str) -> Path:
     return TUNNEL_CREDENTIALS_DIR / f"{tunnel_id}.json"
 
 
+def public_fqdn(d: Deployment, node) -> str | None:
+    """The public-facing hostname for a deployment, or None if it has none.
+
+    A deployment may override its public name with an exact FQDN (``public_host`` —
+    an apex like ``example.com`` or a name in another zone); otherwise it publishes
+    at ``<subdomain>.<public_domain>`` using the node-wide default public domain.
+    None when neither an override nor a default public domain is available.
+    """
+    if d.public_host:
+        return d.public_host
+    if node.public_domain and d.subdomain:
+        return f"{d.subdomain}.{node.public_domain}"
+    return None
+
+
 def public_deployments(registry: NodeRegistry) -> list[tuple[str, Deployment]]:
     """The deployed services flagged public (and actually routed), name-sorted."""
     return sorted(
-        (name, d)
-        for _kind, name, d in registry.all()
-        if d.public and d.subdomain
+        (
+            (name, d)
+            for _kind, name, d in registry.all()
+            if d.public and d.subdomain
+        ),
+        key=lambda nd: nd[0],
     )
 
 
 def public_hostnames(registry: NodeRegistry) -> list[str]:
-    """The public hostnames that need a DNS route (``<sub>.<public_domain>``)."""
-    dom = registry.node.public_domain
-    if not dom:
-        return []
-    return [f"{d.subdomain}.{dom}" for _, d in public_deployments(registry)]
+    """The public hostnames that need a DNS route.
+
+    Each is either a per-deployment ``public_host`` override or the default
+    ``<sub>.<public_domain>``; deployments with neither are skipped.
+    """
+    node = registry.node
+    hosts = [public_fqdn(d, node) for _, d in public_deployments(registry)]
+    return [h for h in hosts if h]
 
 
 def generate_tunnel_config(registry: NodeRegistry) -> str | None:
@@ -62,7 +83,10 @@ def generate_tunnel_config(registry: NodeRegistry) -> str | None:
     removes any stale config and leaves the tunnel down.
     """
     node = registry.node
-    if not (node.tunnel_id and node.public_domain and node.gateway_domain):
+    # A public deployment needs a tunnel + an internal host to bridge to; the
+    # node-wide public_domain is only the *default* public name, so it isn't
+    # required (a deployment may carry its own public_host override instead).
+    if not (node.tunnel_id and node.gateway_domain):
         return None
     pubs = public_deployments(registry)
     if not pubs:
@@ -70,7 +94,10 @@ def generate_tunnel_config(registry: NodeRegistry) -> str | None:
 
     ingress: list[dict] = []
     for _name, d in pubs:
-        public_host = f"{d.subdomain}.{node.public_domain}"
+        public_host = public_fqdn(d, node)
+        if not public_host:
+            # public but no override and no default public domain — nothing to map.
+            continue
         internal_host = f"{d.subdomain}.{node.gateway_domain}"
         ingress.append(
             {
@@ -84,6 +111,9 @@ def generate_tunnel_config(registry: NodeRegistry) -> str | None:
                 },
             }
         )
+    if not ingress:
+        # Every public deployment was skipped (no override, no default domain).
+        return None
     # Cloudflared requires a terminal catch-all; anything unmapped is refused.
     ingress.append({"service": "http_status:404"})
 

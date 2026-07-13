@@ -5,7 +5,6 @@ import { useServiceAction, useSetEnabled } from "@/services/api/hooks"
 import { launcherLabel, subdomainUrl } from "@/lib/labels"
 import { HealthBadge } from "./HealthBadge"
 import { StackBadge } from "./StackBadge"
-import { KindBadge } from "./KindBadge"
 
 interface ServiceCardProps {
   service: ServiceSummary
@@ -27,7 +26,15 @@ export function ServiceCard({ service, health }: ServiceCardProps) {
         >
           {service.id}
         </Link>
-        {health ? (
+        {/* A static site is served from disk by the gateway, so it's inherently
+            "up" — show a green pill in the same slot as a service's health, rather
+            than a separate kind badge, so statics and services read consistently. */}
+        {service.kind === "static" ? (
+          <span className="inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full bg-green-800/50 text-green-300">
+            <span className="w-1.5 h-1.5 rounded-full bg-green-400" />
+            static
+          </span>
+        ) : health ? (
           <HealthBadge status={health.status} latency={health.latency_ms} />
         ) : hasHttp ? (
           <HealthBadge status="unknown" />
@@ -35,8 +42,6 @@ export function ServiceCard({ service, health }: ServiceCardProps) {
       </div>
 
       <div className="flex items-center gap-1.5 mb-2">
-        {/* A static (caddy-served) "service" is distinguished from a systemd one. */}
-        {service.kind === "static" && <KindBadge kind="static" />}
         <StackBadge stack={service.stack} />
       </div>
 

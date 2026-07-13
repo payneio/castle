@@ -163,17 +163,20 @@ def run_delete(args: argparse.Namespace) -> int:
 
 
 def _public_hosts(config, deployments: list[tuple[str, str]]) -> list[str]:
-    """The Cloudflare CNAMEs (<subdomain>.<public_domain>) of any public deployments
-    being removed — surfaced so the operator can clean up DNS."""
+    """The Cloudflare CNAMEs (a ``public_host`` override, else
+    <subdomain>.<public_domain>) of any public deployments being removed —
+    surfaced so the operator can clean up DNS."""
     gw = getattr(config, "gateway", None)
     public_domain = getattr(gw, "public_domain", None) if gw else None
-    if not public_domain:
-        return []
     hosts: list[str] = []
     for kind, d in deployments:
         spec = config.deployment(kind, d)
         if spec is None or not getattr(spec, "public", False):
             continue
-        sub = getattr(spec, "subdomain", None) or d
-        hosts.append(f"{sub}.{public_domain}")
+        override = getattr(spec, "public_host", None)
+        if override:
+            hosts.append(override)
+        elif public_domain:
+            sub = getattr(spec, "subdomain", None) or d
+            hosts.append(f"{sub}.{public_domain}")
     return hosts

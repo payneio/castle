@@ -370,6 +370,26 @@ to the backend root, so root-relative asset URLs and `window.location`-derived
 WebSocket URLs just work (the failure mode of the old prefix-stripping `handle_path`
 routes is gone). Caddy proxies WebSocket upgrades transparently.
 
+#### `public_host` — Publish on a different domain / apex (opt-in)
+
+`gateway.public_domain` is the **default** public zone. To project a specific
+deployment on a *different* domain, or at an **apex** (`payne.io`, which can't be a
+`<name>.<zone>` subdomain), set an exact `public_host` FQDN on the deployment (only
+valid with `reach: public` / `public: true`):
+
+```yaml
+reach: public
+public_host: payne.io   # exact hostname; overrides <name>.<public_domain>
+```
+
+The tunnel origin still bridges to the internal `<name>.<gateway.domain>` host, and
+the gateway also serves the custom host **LAN-direct** with its own DNS-01 cert. The
+public CNAME is reconciled into whichever accessible Cloudflare zone is the host's
+longest suffix, so the `CLOUDFLARE_PUBLIC_DNS_TOKEN` (and the gateway's
+`CLOUDFLARE_API_TOKEN`, for the cert) must have `DNS:Edit` on that zone. A
+deployment with `public_host` publishes even with no node-wide `public_domain`. Full
+prerequisites (tokens + LAN DNS for the apex): @docs/tunnel-setup.md.
+
 **Gateway routes — one concept, three target kinds.** The gateway maps a public
 **address** (always a subdomain host, `<name>.<domain>`) to a **target**:
 

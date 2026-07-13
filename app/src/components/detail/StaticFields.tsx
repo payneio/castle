@@ -2,7 +2,7 @@ import { useState } from "react"
 import type { DeploymentDetail } from "@/types"
 import { useGateway } from "@/services/api/hooks"
 import { gatewayHost, publicGatewayHost } from "@/lib/labels"
-import { Field, TextField, FormFooter, useEnvSecrets, useRequires } from "./fields"
+import { Field, TextField, FormFooter, PublicHostRadios, useEnvSecrets, useRequires } from "./fields"
 import type { Requirement } from "./fields"
 
 interface Props {
@@ -29,6 +29,11 @@ export function StaticFields({ static_: dep, onSave, onDelete }: Props) {
   const [isPublic, setIsPublic] = useState(
     ((m.reach as string) ?? (m.public === true ? "public" : "internal")) === "public",
   )
+  // Optional exact public FQDN (apex or another zone) overriding <name>.<public_domain>.
+  const [publicHost, setPublicHost] = useState((m.public_host as string) ?? "")
+  const [publicMode, setPublicMode] = useState<"default" | "custom">(
+    m.public_host ? "custom" : "default",
+  )
   const { element: envEditor, merged } = useEnvSecrets(
     obj(obj(m.defaults).env) as Record<string, string>,
   )
@@ -46,6 +51,10 @@ export function StaticFields({ static_: dep, onSave, onDelete }: Props) {
       config.description = description || null
       config.root = root || "dist"
       config.reach = isPublic ? "public" : "internal"
+      // public_host only applies to a public site using a custom domain; else clear
+      // (null) so the merge drops any stale override.
+      config.public_host =
+        isPublic && publicMode === "custom" && publicHost.trim() ? publicHost.trim() : null
       delete config.public
       config.requires = requiresValue()
       const env = merged()
@@ -73,7 +82,7 @@ export function StaticFields({ static_: dep, onSave, onDelete }: Props) {
       />
       <Field
         label="Reach"
-        hint={`How far this static site is served. internal: ${gatewayHost(dep.id, domain)}. public: also to the internet via the Cloudflare tunnel. (A static site is always served, so there's no 'off'.)`}
+        hint="How far this static site is served. internal: via the gateway. public: also to the internet via the Cloudflare tunnel. (A static site is always served, so there's no 'off'.)"
       >
         <div className="flex items-center gap-1.5">
           <select
@@ -81,10 +90,23 @@ export function StaticFields({ static_: dep, onSave, onDelete }: Props) {
             onChange={(e) => setIsPublic(e.target.value === "public")}
             className="bg-black/30 border border-[var(--border)] rounded px-2 py-1 text-xs font-mono focus:outline-none focus:border-[var(--primary)]"
           >
-            <option value="internal">{`${gatewayHost(dep.id, domain)} (internal)`}</option>
-            <option value="public">{`${publicGatewayHost(dep.id, publicDomain)} (public)`}</option>
+            <option value="internal">internal</option>
+            <option value="public">public</option>
           </select>
         </div>
+      </Field>
+      <Field label="Address" hint="Where this site is reachable.">
+        {isPublic ? (
+          <PublicHostRadios
+            mode={publicMode}
+            onModeChange={setPublicMode}
+            value={publicHost}
+            onChange={setPublicHost}
+            defaultHost={publicGatewayHost(dep.id, publicDomain)}
+          />
+        ) : (
+          <span className="font-mono text-xs text-[var(--muted)]">{gatewayHost(dep.id, domain)}</span>
+        )}
       </Field>
       {requiresEditor}
       {envEditor}

@@ -55,6 +55,53 @@ export function TextField({
   )
 }
 
+/** The public-address sub-control shown when a deployment's reach is `public`:
+ * a default/custom choice. `default` uses `<name>.<public_domain>` (shown
+ * read-only); `custom` reveals a text input for an exact FQDN (apex or another
+ * zone) that becomes the deployment's `public_host`. */
+export function PublicHostRadios({
+  mode,
+  onModeChange,
+  value,
+  onChange,
+  defaultHost,
+}: {
+  mode: "default" | "custom"
+  onModeChange: (m: "default" | "custom") => void
+  value: string
+  onChange: (v: string) => void
+  defaultHost: string
+}) {
+  return (
+    <div className="space-y-1.5">
+      <label className="flex items-center gap-2 text-sm cursor-pointer">
+        <input type="radio" checked={mode === "default"} onChange={() => onModeChange("default")} />
+        <span className="font-mono text-xs text-[var(--muted)]">
+          {defaultHost} <span className="opacity-60">· default</span>
+        </span>
+      </label>
+      <label className="flex items-center gap-2 text-sm cursor-pointer">
+        <input type="radio" checked={mode === "custom"} onChange={() => onModeChange("custom")} />
+        <span className="text-sm">custom domain</span>
+      </label>
+      {mode === "custom" && (
+        <div className="ml-6 space-y-1">
+          <input
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder="example.com"
+            className={`w-64 ${INPUT} font-mono`}
+          />
+          <p className="text-xs text-[var(--muted)] leading-snug">
+            An exact hostname — an apex (example.com) or a name in another zone. The
+            Cloudflare token(s) need DNS:Edit on that zone.
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // A value that is *exactly* a secret ref → fully editable via SecretsEditor.
 const SECRET_RE = /^\$\{secret:([^}]+)\}$/
 // A secret ref embedded anywhere in a value (e.g. `neo4j/${secret:PW}`). These

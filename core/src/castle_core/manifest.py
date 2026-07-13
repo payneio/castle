@@ -33,6 +33,28 @@ class Reach(str, Enum):
     PUBLIC = "public"
 
 
+def _validate_public_host(host: str | None, reach: Reach) -> None:
+    """Validate an optional ``public_host`` override on an exposable deployment.
+
+    A ``public_host`` only makes sense for a publicly-projected deployment, and
+    must be a bare hostname (no scheme, path, port, or whitespace) — it becomes a
+    tunnel ingress ``hostname`` and a Caddy site address verbatim.
+    """
+    if host is None:
+        return
+    if reach != Reach.PUBLIC:
+        raise ValueError(
+            f"public_host is only valid with reach: public (got reach: {reach.value})"
+        )
+    bad = any(c.isspace() for c in host) or any(
+        tok in host for tok in ("://", "/", ":")
+    )
+    if not host or host != host.strip(".") or bad:
+        raise ValueError(
+            f"public_host must be a bare hostname (e.g. example.com), got {host!r}"
+        )
+
+
 # ---------------------
 # Launch specs — how systemd starts a process (discriminated union on `launcher`)
 # ---------------------
@@ -420,6 +442,11 @@ class SystemdDeployment(DeploymentBase):
     expose: ExposeSpec | None = None
     # How far this process is exposed (off | internal | public). See `Reach`.
     reach: Reach = Reach.OFF
+    # Optional public hostname override (an exact FQDN, e.g. `api.example.com` or an
+    # apex `example.com`). Only meaningful with `reach: public`; when set it is the
+    # public-facing name instead of the derived `<name>.<gateway.public_domain>`.
+    # Unset → the node-wide public domain is the default. See docs/tunnel-setup.md.
+    public_host: str | None = None
     manage: ManageSpec | None = None
 
     @model_validator(mode="after")
@@ -448,6 +475,7 @@ class SystemdDeployment(DeploymentBase):
                 "reach: public for a raw-TCP service isn't supported yet "
                 "(see docs/tcp-exposure.md step 5); use reach: internal"
             )
+        _validate_public_host(self.public_host, self.reach)
         return self
 
     # Derived, read-only back-compat accessors (not serialized) so existing
@@ -488,11 +516,15 @@ class CaddyDeployment(DeploymentBase):
     # A static site is inherently served at its subdomain, so `reach` is
     # `internal` or `public` (never `off`). `public` = also project via the tunnel.
     reach: Reach = Reach.INTERNAL
+    # Optional public hostname override (exact FQDN, apex allowed). Only meaningful
+    # with `reach: public`; see SystemdDeployment.public_host.
+    public_host: str | None = None
 
     @model_validator(mode="after")
     def _validate_reach(self) -> CaddyDeployment:
         if self.reach == Reach.OFF:
             raise ValueError("a static (caddy) deployment is always served; reach must be internal|public")
+        _validate_public_host(self.public_host, self.reach)
         return self
 
     @property

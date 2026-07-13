@@ -41,6 +41,7 @@ def _make_registry(
     gateway_tls: str | None = None,
     gateway_domain: str | None = None,
     acme_email: str | None = None,
+    public_domain: str | None = None,
 ) -> NodeRegistry:
     reg = NodeRegistry(
         node=NodeConfig(
@@ -49,6 +50,7 @@ def _make_registry(
             gateway_tls=gateway_tls,
             gateway_domain=gateway_domain,
             acme_email=acme_email,
+            public_domain=public_domain,
         ),
     )
     for name, d in (deployed or {}).items():
@@ -68,9 +70,14 @@ def _dep(port: int, *, expose: bool, name: str | None = None, launcher: str = "p
     )
 
 
-def _acme(deployed: dict[str, Deployment], domain: str | None = "example.com") -> NodeRegistry:
+def _acme(
+    deployed: dict[str, Deployment],
+    domain: str | None = "example.com",
+    public_domain: str | None = None,
+) -> NodeRegistry:
     return _make_registry(
-        gateway_tls="acme", gateway_domain=domain, acme_email="p@e.com", deployed=deployed
+        gateway_tls="acme", gateway_domain=domain, acme_email="p@e.com",
+        public_domain=public_domain, deployed=deployed,
     )
 
 
@@ -131,6 +138,52 @@ class TestAcmeMode:
         assert "root * /data/repos/castle/app/dist" in cf
         assert "try_files {path} /index.html" in cf
         assert "file_server" in cf
+
+
+class TestPublicExposure:
+    """Public deployments are served under the public zone; a `public_host`
+    override (apex / other zone) gets its own standalone site with its own cert."""
+
+    def _static_pub(self, name: str, public_host: str | None = None) -> Deployment:
+        return Deployment(
+            manager="caddy", run_cmd=[], subdomain=name,
+            static_root=f"/data/repos/{name}/public", public=True, public_host=public_host,
+        )
+
+    def test_default_public_uses_wildcard_site(self) -> None:
+        reg = _acme({"blog": self._static_pub("blog")}, public_domain="pub.example.org")
+        cf = generate_caddyfile_from_registry(reg)
+        assert "*.pub.example.org {" in cf
+        assert "@host_blog_pub host blog.pub.example.org" in cf
+
+    def test_public_host_override_is_standalone_apex_site(self) -> None:
+        reg = _acme({"payne-io": self._static_pub("payne-io", "payne.io")},
+                    public_domain="pub.example.org")
+        cf = generate_caddyfile_from_registry(reg)
+        # An explicit apex site (not under the *.pub wildcard) so Caddy issues its
+        # own cert via DNS-01; file_server serves the same local dir directly.
+        assert "payne.io {" in cf
+        assert "root * /data/repos/payne-io/public" in cf
+        # The override host must NOT appear as a *.pub.example.org subdomain.
+        assert "payne-io.pub.example.org" not in cf
+
+    def test_override_and_default_coexist(self) -> None:
+        reg = _acme(
+            {"blog": self._static_pub("blog"),
+             "payne-io": self._static_pub("payne-io", "payne.io")},
+            public_domain="pub.example.org",
+        )
+        cf = generate_caddyfile_from_registry(reg)
+        assert "*.pub.example.org {" in cf  # default wildcard block still present
+        assert "@host_blog_pub host blog.pub.example.org" in cf
+        assert "payne.io {" in cf  # standalone apex site
+
+    def test_public_host_without_default_domain(self) -> None:
+        # No node-wide public_domain: only the override host gets a site.
+        reg = _acme({"payne-io": self._static_pub("payne-io", "payne.io")})
+        cf = generate_caddyfile_from_registry(reg)
+        assert "payne.io {" in cf
+        assert "*.None" not in cf
 
 
 class TestOffMode:

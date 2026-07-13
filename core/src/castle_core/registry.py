@@ -83,6 +83,9 @@ class Deployment:
     # Also projected to the public internet via the tunnel at
     # <subdomain>.<gateway.public_domain>. Requires subdomain.
     public: bool = False
+    # Optional public hostname override (exact FQDN, apex allowed). When set it is
+    # the public-facing name instead of the derived <subdomain>.<public_domain>.
+    public_host: str | None = None
     # Raw-TCP exposure port (postgres, redis, …). Set → reachable at
     # <name>.<gateway.domain>:<tcp_port> via bind + wildcard DNS (no Caddy route).
     tcp_port: int | None = None
@@ -186,6 +189,7 @@ def load_registry(path: Path | None = None) -> NodeRegistry:
             health_path=comp_data.get("health_path"),
             subdomain=comp_data.get("subdomain"),
             public=comp_data.get("public", False),
+            public_host=comp_data.get("public_host"),
             tcp_port=comp_data.get("tcp_port"),
             static_root=comp_data.get("static_root"),
             base_url=comp_data.get("base_url"),
@@ -263,6 +267,8 @@ def save_registry(registry: NodeRegistry, path: Path | None = None) -> None:
             entry["subdomain"] = comp.subdomain
         if comp.public:
             entry["public"] = comp.public
+        if comp.public_host:
+            entry["public_host"] = comp.public_host
         if comp.tcp_port is not None:
             entry["tcp_port"] = comp.tcp_port
         if comp.static_root:

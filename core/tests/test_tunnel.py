@@ -80,3 +80,43 @@ def test_public_static_frontend_gets_ingress() -> None:
     hosts = {r["hostname"] for r in yaml.safe_load(generate_tunnel_config(reg))["ingress"]
              if "hostname" in r}
     assert hosts == {"guestbook.pub.payne.io"}
+
+
+def test_public_host_override_used_as_ingress_hostname() -> None:
+    # An apex `public_host` overrides <sub>.<public_domain> for the public name,
+    # but the origin still bridges to the internal <sub>.<gateway_domain> host.
+    reg = _registry(deployed={
+        "payne-io": Deployment(manager="caddy", run_cmd=[], subdomain="payne-io",
+                              static_root="/data/repos/payne-io/public", public=True,
+                              public_host="payne.io"),
+    })
+    cfg = yaml.safe_load(generate_tunnel_config(reg))
+    rules = {r["hostname"]: r for r in cfg["ingress"] if "hostname" in r}
+    assert set(rules) == {"payne.io"}
+    assert rules["payne.io"]["originRequest"]["httpHostHeader"] == "payne-io.civil.payne.io"
+    assert public_hostnames(reg) == ["payne.io"]
+
+
+def test_public_host_default_and_override_coexist() -> None:
+    reg = _registry(deployed={
+        "app": Deployment(manager="systemd", launcher="python", run_cmd=["x"], port=9001,
+                          subdomain="app", public=True),
+        "payne-io": Deployment(manager="caddy", run_cmd=[], subdomain="payne-io",
+                              static_root="/d/public", public=True, public_host="payne.io"),
+    })
+    assert set(public_hostnames(reg)) == {"app.pub.payne.io", "payne.io"}
+
+
+def test_public_host_works_without_default_public_domain() -> None:
+    # A deployment with its own public_host publishes even if the node has no
+    # default public_domain; the plain public service (no override) is skipped.
+    reg = _registry(public_domain=None, deployed={
+        "app": Deployment(manager="systemd", launcher="python", run_cmd=["x"], port=9001,
+                          subdomain="app", public=True),
+        "payne-io": Deployment(manager="caddy", run_cmd=[], subdomain="payne-io",
+                              static_root="/d/public", public=True, public_host="payne.io"),
+    })
+    assert public_hostnames(reg) == ["payne.io"]
+    cfg = yaml.safe_load(generate_tunnel_config(reg))
+    hosts = {r["hostname"] for r in cfg["ingress"] if "hostname" in r}
+    assert hosts == {"payne.io"}

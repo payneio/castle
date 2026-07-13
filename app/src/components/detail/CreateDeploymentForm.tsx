@@ -5,7 +5,7 @@ import { X } from "lucide-react"
 import { apiClient } from "@/services/api/client"
 import { useGateway } from "@/services/api/hooks"
 import { gatewayHost, publicGatewayHost } from "@/lib/labels"
-import { Field, TextField } from "./fields"
+import { Field, TextField, PublicHostRadios } from "./fields"
 
 const SELECT =
   "bg-black/30 border border-[var(--border)] rounded px-3 py-1.5 text-sm focus:outline-none focus:border-[var(--primary)]"
@@ -57,6 +57,9 @@ export function CreateDeploymentForm({
   const [health, setHealth] = useState("/health")
   const [proxy, setProxy] = useState(true)
   const [isPublic, setIsPublic] = useState(false)
+  // Optional exact public FQDN (apex / another zone) overriding <name>.<public_domain>.
+  const [publicHost, setPublicHost] = useState("")
+  const [publicMode, setPublicMode] = useState<"default" | "custom">("default")
   const [schedule, setSchedule] = useState("0 2 * * *")
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState("")
@@ -81,7 +84,14 @@ export function CreateDeploymentForm({
       ...(description ? { description } : {}),
     }
     if (kind === "tool") return { ...base, manager: "path" }
-    if (kind === "static") return { ...base, manager: "caddy", root }
+    if (kind === "static") {
+      const cfg: Record<string, unknown> = { ...base, manager: "caddy", root }
+      if (isPublic) {
+        cfg.reach = "public"
+        if (publicMode === "custom" && publicHost.trim()) cfg.public_host = publicHost.trim()
+      }
+      return cfg
+    }
 
     // systemd (service or job)
     const cfg: Record<string, unknown> = {
@@ -103,7 +113,10 @@ export function CreateDeploymentForm({
       }
     }
     if (proxy) cfg.proxy = true
-    if (proxy && isPublic) cfg.public = true
+    if (proxy && isPublic) {
+      cfg.public = true
+      if (publicMode === "custom" && publicHost.trim()) cfg.public_host = publicHost.trim()
+    }
     return cfg
   }
 
@@ -231,6 +244,17 @@ export function CreateDeploymentForm({
               </label>
             </Field>
           )}
+          {proxy && isPublic && (
+            <Field label="Public address" hint="Where it's published on the internet.">
+              <PublicHostRadios
+                mode={publicMode}
+                onModeChange={setPublicMode}
+                value={publicHost}
+                onChange={setPublicHost}
+                defaultHost={publicGatewayHost(name || "<name>", publicDomain)}
+              />
+            </Field>
+          )}
         </>
       )}
 
@@ -239,14 +263,33 @@ export function CreateDeploymentForm({
       )}
 
       {kind === "static" && (
-        <TextField
-          label="Root"
-          value={root}
-          onChange={setRoot}
-          width="w-48"
-          mono
-          placeholder="dist"
-        />
+        <>
+          <TextField
+            label="Root"
+            value={root}
+            onChange={setRoot}
+            width="w-48"
+            mono
+            placeholder="dist"
+          />
+          <Field label="Public" hint={`A static site is always served at ${gatewayHost(name || "<name>", domain)}. Enable to also publish it to the internet via the Cloudflare tunnel.`}>
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input type="checkbox" checked={isPublic} onChange={(e) => setIsPublic(e.target.checked)} />
+              <span className="font-mono text-[var(--muted)]">{isPublic ? "public (via tunnel)" : "internal only"}</span>
+            </label>
+          </Field>
+          {isPublic && (
+            <Field label="Public address" hint="Where it's published on the internet.">
+              <PublicHostRadios
+                mode={publicMode}
+                onModeChange={setPublicMode}
+                value={publicHost}
+                onChange={setPublicHost}
+                defaultHost={publicGatewayHost(name || "<name>", publicDomain)}
+              />
+            </Field>
+          )}
+        </>
       )}
 
       <div className="flex justify-end gap-2 pt-2">

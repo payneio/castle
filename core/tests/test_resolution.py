@@ -46,6 +46,31 @@ class TestSupabaseStackResolution:
         assert "install" in actions and "uninstall" in actions
 
 
+class TestHugoStackResolution:
+    def test_hugo_provides_only_build_verbs(self) -> None:
+        """Hugo is build-only: it resolves build/install/uninstall but NOT the
+        lint/test/type-check/check verbs it has no native tooling for."""
+        p = ProgramSpec.model_validate({"source": "/tmp/x", "stack": "hugo"})
+        actions = available_actions(p)
+        assert "build" in actions
+        assert "install" in actions and "uninstall" in actions
+        for absent in ("lint", "test", "type-check", "check"):
+            assert absent not in actions
+
+    def test_declared_command_still_overrides_hugo(self) -> None:
+        """A hugo program can still declare a verb the stack doesn't provide —
+        declared commands are resolved regardless of the handler's `provides`."""
+        p = ProgramSpec.model_validate(
+            {
+                "source": "/tmp/x",
+                "stack": "hugo",
+                "commands": {"test": [["htmltest"]]},
+            }
+        )
+        actions = available_actions(p)
+        assert "test" in actions and "build" in actions
+
+
 class TestResolution:
     def test_stack_only_program_unchanged(self) -> None:
         """A program with a stack and no commands resolves all stack verbs."""
@@ -61,7 +86,11 @@ class TestResolution:
         p = ProgramSpec.model_validate(
             {
                 "source": "/tmp/y",
-                "commands": {"lint": [["make", "lint"]], "test": [["make", "test"]], "run": [["./bin/y"]]},
+                "commands": {
+                    "lint": [["make", "lint"]],
+                    "test": [["make", "test"]],
+                    "run": [["./bin/y"]],
+                },
             }
         )
         actions = available_actions(p)
@@ -79,15 +108,24 @@ class TestResolution:
     def test_hybrid_override_one_verb(self) -> None:
         """A stack program can override a single verb; the rest fall back to stack."""
         p = ProgramSpec.model_validate(
-            {"source": "/tmp/z", "stack": "python-cli", "commands": {"test": [["pytest", "-x"]]}}
+            {
+                "source": "/tmp/z",
+                "stack": "python-cli",
+                "commands": {"test": [["pytest", "-x"]]},
+            }
         )
         assert _declared_commands(p, "test") == [["pytest", "-x"]]
-        assert _declared_commands(p, "build") is None  # build still comes from the stack
+        assert (
+            _declared_commands(p, "build") is None
+        )  # build still comes from the stack
 
     def test_build_declared_via_buildspec(self) -> None:
         """`build` is declared through BuildSpec.commands, not CommandsSpec."""
         p = ProgramSpec.model_validate(
-            {"source": "/tmp/w", "build": {"commands": [["make"]], "outputs": ["dist/"]}}
+            {
+                "source": "/tmp/w",
+                "build": {"commands": [["make"]], "outputs": ["dist/"]},
+            }
         )
         assert _declared_commands(p, "build") == [["make"]]
         assert "build" in available_actions(p)

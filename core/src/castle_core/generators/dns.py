@@ -1,13 +1,15 @@
 """Reconcile public DNS (Cloudflare CNAMEs) for tunnel-exposed services.
 
-Castle owns the CNAMEs in the public zone that point at its Cloudflare tunnel:
-on deploy it creates one per public service and deletes any that point at this
-tunnel but no longer correspond to a public service. It **only ever touches
-records whose content is `<tunnel_id>.cfargotunnel.com`** — never other records in
-the zone — so a hand-managed A/CNAME in the same zone is safe.
+Castle owns the CNAMEs — across every zone the token can see — that point at its
+Cloudflare tunnel: on deploy it creates one per public host (each routed to the
+accessible zone whose name is its longest suffix, so apex and multi-zone hosts both
+work) and deletes any that point at this tunnel but no longer correspond to a
+public service. It **only ever touches records whose content is
+`<tunnel_id>.cfargotunnel.com`** — never other records in a zone — so a
+hand-managed A/CNAME in the same zone is safe.
 
-Needs a Cloudflare API token with **DNS:Edit** on the public zone (Cloudflare's
-"Edit zone DNS" template — that single permission both resolves the zone by name
+Needs a Cloudflare API token with **DNS:Edit** on every target zone (Cloudflare's
+"Edit zone DNS" template — that single permission both lists the accessible zones
 and edits records; no separate Zone:Read is needed), stored at
 `~/.castle/secrets/CLOUDFLARE_PUBLIC_DNS_TOKEN`. Absent → this is a no-op and the
 caller falls back to surfacing the manual `cloudflared tunnel route dns` hints.
@@ -43,65 +45,100 @@ def _api(token: str, method: str, path: str, body: dict | None = None) -> dict:
         return json.loads(resp.read())
 
 
+def _zone_for(host: str, zones: list[dict]) -> dict | None:
+    """The visible zone whose name is the longest suffix of ``host`` (or None).
+
+    Longest-suffix so an apex (``example.com`` in zone ``example.com``) and a
+    subdomain in any accessible zone both resolve, even when zones nest.
+    """
+    matches = [
+        z
+        for z in zones
+        if host == z["name"] or host.endswith("." + z["name"])
+    ]
+    return max(matches, key=lambda z: len(z["name"])) if matches else None
+
+
 def reconcile_public_dns(
-    public_domain: str | None,
     tunnel_id: str | None,
     desired_hosts: list[str],
     messages: list[str],
     token: str | None = None,
 ) -> bool:
-    """Make the public zone's tunnel CNAMEs exactly `desired_hosts`.
+    """Make the tunnel CNAMEs across every accessible zone exactly `desired_hosts`.
 
-    Creates missing CNAMEs (proxied → the tunnel) and deletes castle-managed ones
-    (content == `<tunnel_id>.cfargotunnel.com`) not in `desired_hosts`. Never
-    touches records pointing elsewhere.
+    Each desired host is routed to the accessible zone whose name is its longest
+    suffix (so apex hosts and hosts in different zones are handled), then per zone
+    castle creates missing CNAMEs (proxied → the tunnel; Cloudflare flattens apex
+    CNAMEs) and deletes castle-managed ones (content == `<tunnel_id>.cfargotunnel.com`)
+    no longer desired. Never touches records pointing elsewhere. Scanning every
+    visible zone also cleans up stale CNAMEs after a host moves zones or all public
+    services are removed.
 
     Returns True if reconciliation was attempted (a token was configured) — the
     caller then suppresses the manual route hints — or False if skipped (no token /
-    no tunnel / no public domain), so the caller can fall back to those hints.
+    no tunnel), so the caller can fall back to those hints.
     """
     token = token or public_dns_token()
-    if not (token and public_domain and tunnel_id):
+    if not (token and tunnel_id):
         return False
     target = f"{tunnel_id}.cfargotunnel.com"
     try:
-        zres = (_api(token, "GET", f"/zones?name={public_domain}").get("result")) or []
-        if not zres:
+        zones = (_api(token, "GET", "/zones?per_page=50").get("result")) or []
+        if not zones:
             messages.append(
-                f"Warning: DNS token can't see zone '{public_domain}' — public "
-                "CNAMEs not reconciled. The token needs DNS:Edit (Cloudflare's "
-                f"'Edit zone DNS' template) scoped to {public_domain}."
+                "Warning: DNS token can't see any zone — public CNAMEs not "
+                "reconciled. The token needs DNS:Edit (Cloudflare's 'Edit zone "
+                "DNS' template) on the target zone(s)."
             )
-            return False
-        zone_id = zres[0]["id"]
-        # Castle-managed set = existing CNAMEs whose content is our tunnel.
-        recs = _api(
-            token, "GET", f"/zones/{zone_id}/dns_records?type=CNAME&per_page=100"
-        ).get("result") or []
-        managed = {r["name"]: r["id"] for r in recs if r.get("content") == target}
+            return True
 
-        desired = set(desired_hosts)
-        created = sorted(desired - set(managed))
-        removed = sorted(set(managed) - desired)
-        for host in created:
-            _api(
-                token,
-                "POST",
-                f"/zones/{zone_id}/dns_records",
-                {"type": "CNAME", "name": host, "content": target, "proxied": True},
-            )
-        for host in removed:
-            _api(token, "DELETE", f"/zones/{zone_id}/dns_records/{managed[host]}")
+        # Route each desired host to its zone (longest-suffix match). Hosts with no
+        # accessible zone can't be created — surface them rather than silently drop.
+        desired_by_zone: dict[str, set[str]] = {z["id"]: set() for z in zones}
+        for host in desired_hosts:
+            z = _zone_for(host, zones)
+            if z is None:
+                messages.append(
+                    f"Warning: no accessible Cloudflare zone for public host "
+                    f"'{host}' — its CNAME was not created. The DNS token needs "
+                    f"DNS:Edit on that host's zone."
+                )
+                continue
+            desired_by_zone[z["id"]].add(host)
+
+        created: list[str] = []
+        removed: list[str] = []
+        # Reconcile every visible zone (not just those with desired hosts) so a
+        # CNAME orphaned by a host moving zones / going internal is cleaned up.
+        for z in zones:
+            zone_id = z["id"]
+            recs = _api(
+                token, "GET", f"/zones/{zone_id}/dns_records?type=CNAME&per_page=100"
+            ).get("result") or []
+            managed = {r["name"]: r["id"] for r in recs if r.get("content") == target}
+            desired = desired_by_zone[zone_id]
+            for host in sorted(desired - set(managed)):
+                _api(
+                    token,
+                    "POST",
+                    f"/zones/{zone_id}/dns_records",
+                    {"type": "CNAME", "name": host, "content": target, "proxied": True},
+                )
+                created.append(host)
+            for host in sorted(set(managed) - desired):
+                _api(token, "DELETE", f"/zones/{zone_id}/dns_records/{managed[host]}")
+                removed.append(host)
 
         if created or removed:
             parts = []
             if created:
-                parts.append(f"+{len(created)} ({', '.join(created)})")
+                parts.append(f"+{len(created)} ({', '.join(sorted(created))})")
             if removed:
-                parts.append(f"-{len(removed)} ({', '.join(removed)})")
+                parts.append(f"-{len(removed)} ({', '.join(sorted(removed))})")
             messages.append(f"Public DNS reconciled: {' '.join(parts)}")
         else:
-            messages.append(f"Public DNS up to date ({len(desired)} CNAME(s)).")
+            messages.append(f"Public DNS up to date ({len(desired_hosts)} CNAME(s)).")
         return True
     except urllib.error.HTTPError as e:
         body = e.read().decode(errors="replace")[:200]
